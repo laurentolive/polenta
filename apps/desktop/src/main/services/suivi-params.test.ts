@@ -443,6 +443,17 @@ describe('GH125 — valeurs choisies par widget (.pref)', () => {
     fs.writeFileSync(prefPath, JSON.stringify({ ...pref, suiviWidgetParamValues: { [d.id]: { w1: 'x', w2: ['y'], w3: { 'campaign:campaign': 'CAMP-0001' } } } }))
     expect(await dashboards.getParamValues(repo, U, d.id)).toEqual({ w3: { 'campaign:campaign': 'CAMP-0001' } })
   })
+
+  it('ids reçus de l\'IPC : vides ou __proto__ refusés ; réinitialiser un widget sans valeur n\'écrit rien', async () => {
+    const d = await dashboards.create(repo, U, { title: 'D', scope: 'shared', createdBy: U })
+    await expect(dashboards.setParamValues(repo, U, d.id, '__proto__', { 'campaign:campaign': 'CAMP-0001' })).rejects.toThrow()
+    await expect(dashboards.setParamValues(repo, U, '__proto__', 'w1', { 'campaign:campaign': 'CAMP-0001' })).rejects.toThrow()
+    await expect(dashboards.setParamValues(repo, U, d.id, '', null)).rejects.toThrow()
+    const prefPath = path.join(repo, `.${U}.pref`)
+    const before = fs.existsSync(prefPath) ? fs.readFileSync(prefPath, 'utf8') : null
+    await dashboards.setParamValues(repo, U, d.id, 'constructor', null)
+    expect(fs.existsSync(prefPath) ? fs.readFileSync(prefPath, 'utf8') : null).toBe(before)
+  })
 })
 
 // ─── MCP ─────────────────────────────────────────────────────────────────────

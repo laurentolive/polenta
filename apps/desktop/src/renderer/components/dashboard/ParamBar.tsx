@@ -3,7 +3,7 @@
  * GH125 : sur un dashboard, plus de barre — chaque widget porte ses sélecteurs dans son en-tête
  * (`WidgetParamSelectors`, mêmes contrôles). En impression : texte « Libellé : valeur ».
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import type { DashboardSelector, GraphParamValue } from '@polenta/types'
@@ -75,6 +75,10 @@ export function WidgetParamSelectors({ widgetId, selectors, values, invalid = {}
 }) {
   const { t, i18n } = useTranslation()
   const lang = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'fr'
+  // Démonté sous le pointeur (pointerleave jamais reçu) : la carte redevient déplaçable.
+  const onPointerInsideRef = useRef(onPointerInside)
+  onPointerInsideRef.current = onPointerInside
+  useEffect(() => () => onPointerInsideRef.current?.(false), [])
   if (selectors.length === 0) return null
 
   if (printMode) {
@@ -131,8 +135,8 @@ function ParamInput({ selector: s, idPrefix, value, options, lang, onChange, com
   const id = `${idPrefix}-${s.key}`
   const testId = `param-${s.name}`
 
-  if (s.kind === 'text') return <TextInput id={id} testId={testId} value={typeof value === 'string' ? value : ''} onChange={onChange} />
-  if (s.kind === 'period') return <PeriodInput id={id} testId={testId} value={value && typeof value === 'object' ? value : null} onChange={onChange} />
+  if (s.kind === 'text') return <TextInput id={id} testId={testId} value={typeof value === 'string' ? value : ''} onChange={onChange} compact={compact} />
+  if (s.kind === 'period') return <PeriodInput id={id} testId={testId} value={value && typeof value === 'object' ? value : null} onChange={onChange} compact={compact} />
 
   let choices: { value: string; label: string }[]
   switch (s.kind) {
@@ -167,7 +171,7 @@ function ParamInput({ selector: s, idPrefix, value, options, lang, onChange, com
 }
 
 /** Texte appliqué à la validation (Entrée ou perte du focus), pas à chaque frappe. */
-function TextInput({ id, testId, value, onChange }: { id: string; testId: string; value: string; onChange: (v: GraphParamValue) => void }) {
+function TextInput({ id, testId, value, onChange, compact = false }: { id: string; testId: string; value: string; onChange: (v: GraphParamValue) => void; compact?: boolean }) {
   const [draft, setDraft] = useState(value)
   useEffect(() => setDraft(value), [value])
   const commit = () => {
@@ -183,13 +187,14 @@ function TextInput({ id, testId, value, onChange }: { id: string; testId: string
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === 'Enter') commit() }}
-      className="input-field text-xs py-1 w-48"
+      className={compact ? 'input-field text-[11px] py-0.5 w-32' : 'input-field text-xs py-1 w-48'}
     />
   )
 }
 
 /** Deux dates facultatives ; « du » postérieur à « au » : refusé, valeur précédente conservée. */
-function PeriodInput({ id, testId, value, onChange }: {
+function PeriodInput({ id, testId, value, onChange, compact = false }: {
+  compact?: boolean
   id: string
   testId: string
   value: { from: string | null; to: string | null } | null
@@ -208,9 +213,9 @@ function PeriodInput({ id, testId, value, onChange }: {
     <span className="flex flex-col gap-0.5">
       <span className="flex items-center gap-1.5 text-[11px] text-ink-3">
         {t('suiviParams.from')}
-        <input id={id} data-testid={`${testId}-from`} type="date" value={from} onChange={(e) => set({ from: e.target.value, to })} className="input-field text-xs py-0.5" />
+        <input id={id} data-testid={`${testId}-from`} type="date" value={from} onChange={(e) => set({ from: e.target.value, to })} className={compact ? 'input-field text-[11px] py-0 px-1' : 'input-field text-xs py-0.5'} />
         {t('suiviParams.to')}
-        <input data-testid={`${testId}-to`} type="date" value={to} onChange={(e) => set({ from, to: e.target.value })} className="input-field text-xs py-0.5" />
+        <input data-testid={`${testId}-to`} type="date" value={to} onChange={(e) => set({ from, to: e.target.value })} className={compact ? 'input-field text-[11px] py-0 px-1' : 'input-field text-xs py-0.5'} />
       </span>
       {error && <span className="text-[11px] text-status-danger" data-testid="param-period-error">{t('suiviParams.periodInvalid')}</span>}
     </span>

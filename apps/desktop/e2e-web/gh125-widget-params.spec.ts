@@ -43,6 +43,8 @@ async function openDashboard(title: string) {
 }
 
 const widget = (title: string) => s.page.getByTestId('widget-card').filter({ has: s.page.getByText(title, { exact: true }) })
+/** Résultat rendu du widget (hors sélecteurs de l'en-tête, dont les options citent les campagnes). */
+const body = (title: string) => widget(title).getByTestId('widget-body')
 
 test('1 — seed Campagnes : pas de barre, un sélecteur Campagne dans chaque widget', async () => {
   await openDashboard('Campagnes')
@@ -62,19 +64,21 @@ test('2 / 3 / 5 / 6 — deux widgets de la même requête : valeurs indépendant
   await openDashboard('GH125 widgets')
   const left = widget('Gauche')
   const right = widget('Droite')
-  await expect(left).toContainText('toutes', { timeout: 15_000 })
-  await expect(right).toContainText('toutes')
+  await expect(left.getByTestId('widget-body')).toContainText('toutes', { timeout: 15_000 })
+  await expect(right.getByTestId('widget-body')).toContainText('toutes')
 
   await left.getByTestId('param-campaign').selectOption(camp1.id)
-  await expect(left).toContainText(camp1.id, { timeout: 15_000 })
-  await expect(right).toContainText('toutes')
+  await expect(left.getByTestId('widget-body')).toContainText(camp1.id, { timeout: 15_000 })
+  await expect(right.getByTestId('widget-body')).toContainText('toutes')
+  await expect(right.getByTestId('widget-body')).not.toContainText(camp1.id)
   await expect(right.getByTestId('param-campaign')).toHaveValue('')
   await expect(left.getByTestId('widget-param-reset')).toBeVisible()
   await expect(right.getByTestId('widget-param-reset')).toHaveCount(0)
 
   await right.getByTestId('param-campaign').selectOption(camp2.id)
-  await expect(right).toContainText(camp2.id, { timeout: 15_000 })
-  await expect(left).toContainText(camp1.id)
+  await expect(right.getByTestId('widget-body')).toContainText(camp2.id, { timeout: 15_000 })
+  await expect(left.getByTestId('widget-body')).toContainText(camp1.id)
+  await expect(left.getByTestId('widget-body')).not.toContainText(camp2.id)
   await s.shot('gh125-two-widgets')
 
   // Rechargement : chaque widget retrouve sa valeur ; .pref par dashboard + widget.
@@ -93,9 +97,9 @@ test('2 / 3 / 5 / 6 — deux widgets de la même requête : valeurs indépendant
 
   // Réinitialiser un widget : lui seul revient au défaut, l'icône disparaît.
   await widget('Gauche').getByTestId('widget-param-reset').click()
-  await expect(widget('Gauche')).toContainText('toutes', { timeout: 15_000 })
+  await expect(body('Gauche')).toContainText('toutes', { timeout: 15_000 })
   await expect(widget('Gauche').getByTestId('widget-param-reset')).toHaveCount(0)
-  await expect(widget('Droite')).toContainText(camp2.id)
+  await expect(body('Droite')).toContainText(camp2.id)
 })
 
 test('7 — valeur introuvable : signalée sur le seul widget concerné', async () => {
@@ -105,7 +109,7 @@ test('7 — valeur introuvable : signalée sur le seul widget concerné', async 
   await openDashboard('GH125 widgets')
   await expect(widget('Gauche').getByTestId('param-not-found')).toContainText('CAMP-9999')
   await expect(widget('Droite').getByTestId('param-not-found')).toHaveCount(0)
-  await expect(widget('Gauche')).toContainText('toutes', { timeout: 15_000 })
+  await expect(body('Gauche')).toContainText('toutes', { timeout: 15_000 })
   await widget('Gauche').getByTestId('widget-param-reset').click()
   await expect(s.page.getByTestId('param-not-found')).toHaveCount(0)
 })

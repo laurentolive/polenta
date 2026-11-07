@@ -92,7 +92,7 @@ export function useDashboardParams(args: {
       .catch(() => qc.invalidateQueries({ queryKey: storedKey }))
   }
 
-  const forWidget = (widget: Pick<Widget, 'id' | 'queryId'>): WidgetParams => {
+  const computeWidget = (widget: Pick<Widget, 'id' | 'queryId'>): WidgetParams => {
     const decls = declsOf(widget.queryId)
     const selectors = widgetSelectors(widget.id, decls)
     const own = storedAll[widget.id] ?? {}
@@ -105,12 +105,29 @@ export function useDashboardParams(args: {
       missing: missingRequired(decls, eff.values, locale),
       canReset: selectors.length > 0 && differsFromDefault(selectors, eff, options),
       setValue: (key, value) => write(widget.id, storedChoices(own, key, value)),
-      reset: () => write(widget.id, null),
+      // Valeurs des paramètres déclarés seulement : celles d'un `name:kind` que la requête ne déclare
+      // plus restent mémorisées (elles reprennent effet si la déclaration revient).
+      reset: () => {
+        const kept = Object.fromEntries(Object.entries(own).filter(([k]) => !selectors.some((s) => s.key === k)))
+        write(widget.id, Object.keys(kept).length ? kept : null)
+      },
       describe: () => selectors.map((s) => ({
         label: labelText(s.label, locale),
         value: paramValueText(s, eff.values[s.key] ?? null, locale, (kind, v) => optionTitle(options, kind, v)),
       })),
     }
+  }
+
+  // Un calcul par widget et par changement de données (pas un par appel : grille, export, aperçu).
+  const byWidget = useMemo(() => {
+    const out = new Map<string, WidgetParams>()
+    for (const w of dashboard?.widgets ?? []) out.set(w.id, computeWidget(w))
+    return out
+  }, [dashboard, declsOf, storedAll, options, locale, repoPath, username, dashboardId])
+  const forWidget = (widget: Pick<Widget, 'id' | 'queryId'>): WidgetParams => {
+    const cached = byWidget.get(widget.id)
+    // Requête différente de celle du widget enregistré (aperçu de la modale) : calcul à la demande.
+    return cached && dashboard?.widgets.find((w) => w.id === widget.id)?.queryId === widget.queryId ? cached : computeWidget(widget)
   }
 
   return {

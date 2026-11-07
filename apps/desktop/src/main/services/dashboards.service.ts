@@ -304,8 +304,13 @@ export class DashboardsService {
       widgets: d.widgets.filter((w) => w.id !== widgetId),
       widgetOrder: d.widgetOrder.filter((id) => id !== widgetId),
     }))
-    // GH125 — après l'écriture du dashboard seulement : un échec garde les choix.
-    this.writeParamValues(repoPath, username, dashboardId, widgetId, null)
+    // GH125 — après l'écriture du dashboard seulement, au mieux : le widget est supprimé même si le
+    // nettoyage du .pref échoue (valeurs orphelines, ignorées).
+    try {
+      this.writeParamValues(repoPath, username, dashboardId, widgetId, null)
+    } catch {
+      /* nettoyage secondaire */
+    }
     return out
   }
 
@@ -452,7 +457,7 @@ export class DashboardsService {
     const all = this.readPref(repoPath, username).suiviWidgetParamValues?.[dashboardId]
     if (!all || typeof all !== 'object') return out
     for (const [widgetId, values] of Object.entries(all)) {
-      if (!values || typeof values !== 'object' || Array.isArray(values)) continue
+      if (!isPrefKey(widgetId) || !values || typeof values !== 'object' || Array.isArray(values)) continue
       const clean = cleanParamValues(values)
       if (Object.keys(clean).length) out[widgetId] = clean
     }
@@ -462,7 +467,8 @@ export class DashboardsService {
   /** Remplace les valeurs choisies d'un widget ; `null` = Réinitialiser. Jamais d'écriture dans le
    *  dashboard : autorisé sur une branche en lecture seule et pour un dashboard en lecture seule. */
   async setParamValues(repoPath: string, username: string, dashboardId: string, widgetId: string, values: Record<string, unknown> | null): Promise<void> {
-    if (typeof widgetId !== 'string' || !widgetId || widgetId === '__proto__') throw new Error('Widget attendu')
+    if (!isPrefKey(dashboardId)) throw new Error('Dashboard attendu')
+    if (!isPrefKey(widgetId)) throw new Error('Widget attendu')
     this.writeParamValues(repoPath, username, dashboardId, widgetId, values)
   }
 
@@ -472,7 +478,7 @@ export class DashboardsService {
     const all = { ...(pref.suiviWidgetParamValues ?? {}) }
     const widgets = { ...(all[dashboardId] ?? {}) }
     const clean = values ? cleanParamValues(values) : {}
-    const had = widgetId in widgets
+    const had = Object.prototype.hasOwnProperty.call(widgets, widgetId)
     if (Object.keys(clean).length) widgets[widgetId] = clean
     else delete widgets[widgetId]
     if (!had && !Object.keys(clean).length && !legacy) return
@@ -531,6 +537,11 @@ export class DashboardsService {
 
 /** Valeurs au format de leur type (porté par la clé `name:kind`) ; les autres sont ignorées. Une
  *  valeur d'énumération n'est pas vérifiée ici (les valeurs déclarées peuvent changer). */
+/** Id utilisable comme clé du `.pref` (reçu de l'IPC / du web, ou lu d'un fichier modifié à la main). */
+function isPrefKey(id: unknown): id is string {
+  return typeof id === 'string' && id !== '' && id !== '__proto__'
+}
+
 function cleanParamValues(raw: Record<string, unknown> | undefined): Record<string, GraphParamValue> {
   const out: Record<string, GraphParamValue> = {}
   for (const [key, v] of Object.entries(raw ?? {})) {

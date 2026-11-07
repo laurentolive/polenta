@@ -143,7 +143,7 @@ function WidgetCard({
         />
       )}
       </div>
-      <div className="flex-1 min-h-0 p-2">
+      <div className="flex-1 min-h-0 p-2" data-testid="widget-body">
         {!query ? (
           <div className="flex items-center justify-center h-full gap-2 text-xs text-ink-3 italic px-4 text-center">
             <AlertTriangle size={13} className="shrink-0" />

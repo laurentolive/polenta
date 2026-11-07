@@ -82,6 +82,12 @@ test('4 / 6 — choix mémorisé (rechargement), propre à l\'utilisateur ; Réi
 
   await widget('Avancement par campagne').getByTestId('widget-param-reset').click()
   await expect(campaignSelect('Avancement par campagne')).toHaveValue('')
+  // Les autres widgets recentrés au test 1 reviennent aussi au défaut (pas d'état laissé aux tests suivants).
+  for (const title of ['Entrées en échec', 'Avancement dans le temps']) {
+    await widget(title).getByTestId('widget-param-reset').click()
+    await expect(campaignSelect(title)).toHaveValue('')
+  }
+  await expect(s.page.getByTestId('widget-param-reset')).toHaveCount(0)
   await expect(widget('Avancement par campagne').locator(`[aria-label*="${OPEN_TITLE}"]`).first()).toBeAttached({ timeout: 15_000 })
 })
 
@@ -129,18 +135,18 @@ test('10 / 19 / 23 — requête écrite à la main : texte, énumération, oblig
   await expect(widget('Valeurs').getByTestId('widget-param-missing')).toContainText('Choisir Campagne')
   await expect(bar.getByTestId('param-campaign').locator('option', { hasText: 'Toutes' })).toHaveCount(0)
   await bar.getByTestId('param-campaign').selectOption(open.id)
-  await expect(widget('Valeurs')).toContainText(open.id, { timeout: 15_000 })
-  await expect(widget('Valeurs')).toContainText('aucun')
+  await expect(widget('Valeurs').getByTestId('widget-body')).toContainText(open.id, { timeout: 15_000 })
+  await expect(widget('Valeurs').getByTestId('widget-body')).toContainText('aucun')
 
   // Texte appliqué à la validation seulement, espaces retirés.
   const lot = bar.getByTestId('param-lot')
   await lot.fill('  L42 ')
-  await expect(widget('Valeurs')).toContainText('aucun')
+  await expect(widget('Valeurs').getByTestId('widget-body')).toContainText('aucun')
   await lot.press('Enter')
-  await expect(widget('Valeurs')).toContainText('L42', { timeout: 15_000 })
+  await expect(widget('Valeurs').getByTestId('widget-body')).toContainText('L42', { timeout: 15_000 })
 
   await bar.getByTestId('param-statut').selectOption('A')
-  await expect(widget('Valeurs')).not.toContainText('toutes', { timeout: 15_000 })
+  await expect(widget('Valeurs').getByTestId('widget-body')).not.toContainText('toutes', { timeout: 15_000 })
   await expect(bar.getByTestId('param-statut').locator('option', { hasText: 'Alpha' })).toHaveCount(1)
   await s.shot('gh93-custom-params')
 })

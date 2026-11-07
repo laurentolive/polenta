@@ -40,10 +40,27 @@ jamais `queryId` (compatibilité #67).
 
 ## Divergences par rapport au design
 
-- `setParamValues` refuse un `widgetId` vide (garde ajoutée en relecture, non prévue au design).
-- `/code-review` (effort medium) a analysé un diff sans rapport avec la branche (fichiers d'autres
-  tickets : `typeLabels.ts`, `runner.ts`…) ; aucun constat sur GH125. Relecture manuelle du diff à
-  la place.
+- `setParamValues` refuse un `dashboardId` / `widgetId` vide ou `__proto__` (`isPrefKey`), non prévu
+  au design ; présence d'un widget testée par `hasOwnProperty` (pas la chaîne de prototypes).
+- Un premier `/code-review` avait relu un diff sans rapport (le `main` local contient des merges non
+  poussés) ; relancé sur la PR (`/code-review medium 315`). Corrigé à la suite :
+  - e2e : les assertions sur le résultat d'un widget portent sur `widget-body` (nouveau `data-testid`
+    du corps de la carte) — les options du sélecteur de l'en-tête citent les campagnes et rendaient
+    `toContainText(<id>)` toujours vrai (`gh125-widget-params`, `gh93-params` « Valeurs ») ;
+    `gh93-params` 4 / 6 remet aussi au défaut les deux autres widgets recentrés au test 1 ;
+  - `deleteWidget` : nettoyage des valeurs du `.pref` au mieux (`try/catch`), le widget supprimé
+    n'est plus signalé en échec si l'écriture du `.pref` échoue ;
+  - Réinitialiser ne retire que les valeurs des paramètres déclarés (les valeurs d'un `name:kind` non
+    déclaré restent, conformément à la spec §2.3) ;
+  - verrou de glisser relâché au démontage des sélecteurs (pointerleave jamais reçu) ;
+  - `forWidget` calculé une fois par widget (`useMemo`), plus à chaque appel ;
+  - champs texte et période compacts dans l'en-tête, comme les listes.
+- Écarté : borner le `.pref` en refusant un widget absent du dashboard ou en élaguant les ids
+  inconnus. Les valeurs sont personnelles et peu nombreuses ; elles sont retirées à la suppression
+  du widget ou du dashboard par l'utilisateur ; la spec garde volontairement les valeurs non
+  déclarées ; refuser un widget inconnu imposerait une lecture du dashboard à chaque choix et
+  casserait le cas d'un dashboard d'un format plus récent (widgets non lus). Restent orphelines les
+  valeurs d'un widget supprimé par un autre utilisateur (ignorées).
 
 ## Mises à jour SPEC
 
@@ -61,6 +78,8 @@ jamais `queryId` (compatibilité #67).
 - Niveau 2 : `pnpm test` — merge-core 79, admin-service 119 (+3 ignorés), desktop 1598 tests / 147
   fichiers, tous verts ; `pnpm build:web` puis
   `npx playwright test e2e-web/gh125- e2e-web/gh93-` (ports 8940–8943) : 10 passed.
+- Après les corrections de revue : `pnpm typecheck` OK ; tests touchés (`suivi-params.test.ts`,
+  `suiviParamValues.test.ts`) 38 passed ; `pnpm build:web` puis e2e `gh125-` + `gh93-` : 10 passed.
 - Non lancé : suite e2e complète (niveau 3, au merge), `test:e2e:desktop`.
 
 ## Tester manuellement

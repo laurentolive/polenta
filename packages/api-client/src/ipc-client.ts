@@ -423,6 +423,7 @@ export function createIpcClient(
       getOrder: (repoPath, username) => invoke('queries:order-get', repoPath, username),
       setOrder: (repoPath, username, order) => invoke('queries:order-set', repoPath, username, order),
       setScope: (repoPath, username, id, scope: QueryScope) => invoke('queries:set-scope', repoPath, username, id, scope),
+      scopePreview: (repoPath, username, id, scope: QueryScope) => invoke('queries:scope-preview', repoPath, username, id, scope),
     },
     dashboards: {
       list: (repoPath, username, locale?: string) => invoke('dashboards:list', repoPath, username, locale),
@@ -431,6 +432,8 @@ export function createIpcClient(
       update: (repoPath, username, id, dto: UpdateDashboardDto) => invoke('dashboards:update', repoPath, username, id, dto),
       delete: (repoPath, username, id) => invoke('dashboards:delete', repoPath, username, id),
       setScope: (repoPath, username, id, scope: QueryScope) => invoke('dashboards:set-scope', repoPath, username, id, scope),
+      sharePreview: (repoPath, username, id) => invoke('dashboards:share-preview', repoPath, username, id),
+      shareWithQueries: (repoPath, username, id) => invoke('dashboards:share-with-queries', repoPath, username, id),
       addWidget: (repoPath, username, dashboardId, dto: AddWidgetDto) =>
         invoke('dashboards:add-widget', repoPath, username, dashboardId, dto),
       updateWidget: (repoPath, username, dashboardId, widgetId, dto: UpdateWidgetDto) =>

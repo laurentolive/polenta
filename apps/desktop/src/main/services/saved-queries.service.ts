@@ -3,7 +3,7 @@ import { legacyQueryCodeForHashWithColumn, queryCodeForHash, readQueryRecord, SU
 import type { GitService } from './git.service'
 import type { DashboardsService } from './dashboards.service'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
-import { generatePrivateId, isPrivateScopeId } from './id-scope.util'
+import { assertScope, generatePrivateId, isPrivateScopeId } from './id-scope.util'
 import { nextCounterId } from './id-counter.util'
 import { contentHash } from './dashboard-library.service'
 import {
@@ -218,6 +218,7 @@ export class SavedQueriesService {
    * dépendent). L'id change (schémas d'id différents). L'ordre du panneau latéral suit.
    */
   async setScope(repoPath: string, username: string, id: string, newScope: QueryScope): Promise<SavedQuery> {
+    assertScope(newScope)
     const current = await this.findOne(repoPath, username, id)
     if (!current) throw new Error(`Requête introuvable : ${id}`)
     if (current.scope === newScope) return current

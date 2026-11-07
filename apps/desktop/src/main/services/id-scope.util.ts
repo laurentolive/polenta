@@ -10,13 +10,20 @@
  * whether a widget's `queryId` points at a private or shared `SavedQuery` without
  * importing `SavedQueriesService` (which would create a circular dependency, since
  * `SavedQueriesService` imports `DashboardsService` for `findDependentWidgets`).
+ *
+ * GH67 — prefix and test live in `@polenta/types` (the renderer needs them too).
  */
-export const PRIVATE_ID_PREFIX = 'local-'
+import { PRIVATE_SCOPE_ID_PREFIX, isPrivateScopeId } from '@polenta/types'
 
-export function isPrivateScopeId(id: string): boolean {
-  return id.startsWith(PRIVATE_ID_PREFIX)
-}
+export const PRIVATE_ID_PREFIX = PRIVATE_SCOPE_ID_PREFIX
+export { isPrivateScopeId }
 
 export function generatePrivateId(): string {
   return `${PRIVATE_ID_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** GH67 — portée reçue d'un canal IPC / HTTP : toute autre valeur est refusée (jamais traitée
+ *  comme une promotion). */
+export function assertScope(scope: unknown): asserts scope is 'private' | 'shared' {
+  if (scope !== 'private' && scope !== 'shared') throw new Error(`Portée invalide : ${String(scope)}`)
 }

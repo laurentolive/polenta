@@ -71,7 +71,9 @@ export function ReleaseVersionDialog({ repoPath, version, workspaceDir, onClose 
           <p className="text-xs text-ink-2">{t('versions.release.explain')}</p>
           <label className="flex flex-col gap-1 text-xs text-ink-2">
             {t('versions.release.tag')}
-            <input value={tag} onChange={e => setTyped(e.target.value)} className="input-field text-sm font-mono" data-testid="release-tag" />
+            {/* GH307 — non éditable tant que le tag proposé n'est pas chargé : arrivé pendant une saisie,
+                il s'afficherait sous le curseur et le texte saisi s'y ajouterait (`<proposé><saisi>`). */}
+            <input value={tag} onChange={e => setTyped(e.target.value)} readOnly={isLoading} className="input-field text-sm font-mono" data-testid="release-tag" />
           </label>
           {isLoading && <p className="text-xs text-ink-3 italic">{t('common.loading')}</p>}
           {problems.length > 0 && (

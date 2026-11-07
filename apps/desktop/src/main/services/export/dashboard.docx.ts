@@ -16,13 +16,12 @@ export async function exportDashboardDocx(
   const children: (Paragraph | Table)[] = [
     new Paragraph({ text: `Dashboard — ${dashboard.title}`, heading: HeadingLevel.TITLE }),
   ]
-  // GH93 — valeurs des paramètres choisis à l'affichage.
-  for (const p of payload.parameters ?? []) {
-    children.push(new Paragraph({ children: [new TextRun({ text: `${p.label} : `, bold: true }), new TextRun({ text: p.value })] }))
-  }
-
   for (const widget of dashboard.widgets) {
     children.push(new Paragraph({ text: widget.title, heading: HeadingLevel.HEADING_2 }))
+    // GH125 — valeurs des paramètres choisis à l'affichage de ce widget, sous son titre.
+    for (const p of payload.widgetParameters?.[widget.id] ?? []) {
+      children.push(new Paragraph({ children: [new TextRun({ text: `${p.label} : `, bold: true }), new TextRun({ text: p.value })] }))
+    }
 
     const result = widgetResults[widget.id]
     // `columns.length === 0` inclus : un `Table` docx sans colonne (TableRow aux enfants vides)

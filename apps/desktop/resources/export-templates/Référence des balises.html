@@ -107,6 +107,7 @@
   <tr><td><code>{{@table}}</code></td><td>Tableau des résultats du widget (paragraphe seul).</td></tr>
   <tr><td><code>{{hasData}}</code>, <code>{{rowCount}}</code></td><td>Résultat non vide, nombre de lignes.</td></tr>
   <tr><td><code>{{#columns}}{{name}}{{/columns}}</code>, <code>{{#rows}}{{#cells}}{{.}}{{/cells}}{{/rows}}</code></td><td>Colonnes et cellules pour une mise en forme libre.</td></tr>
+  <tr><td><code>{{#parameters}}{{label}} : {{value}}{{/parameters}}</code> (dans <code>{{#widgets}}</code>)</td><td>Paramètres choisis à l'affichage du widget (libellé, valeur lisible) ; vide pour un widget sans paramètre. Hors de <code>{{#widgets}}</code> : liste toujours vide (dépréciée).</td></tr>
 </table>
 <p>Les graphiques ne sont pas repris dans le Word (export PDF pour un rendu visuel).</p>
 

@@ -137,7 +137,7 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       title: 'Create saved query',
       description:
         'Crée une requête de la vue Suivi : un script JS fourni, ou un modèle + paramètres (cf. list_templates). ' +
-        'parameters (avec script) : paramètres choisis à l\'affichage dans la barre du dashboard, lus dans ' +
+        'parameters (avec script) : paramètres choisis à l\'affichage dans l\'en-tête de chaque widget (valeur propre au widget), lus dans ' +
         'polenta.params (un modèle génère les siens). ' +
         'column (scope shared, avec script ou template — un modèle peut en proposer une) : la requête devient une ' +
         'colonne calculée proposée dans la Vue Système (panneau des champs) ; son script renvoie une ligne par élément ' +

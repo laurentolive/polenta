@@ -147,10 +147,13 @@ export function buildDashboardData(payload: DashboardExportPayload, toTable: Tab
       hasData,
       rowCount: rows.length,
       table: hasData ? toTable(columns, rows.map(r => r.cells)) : '',
+      // GH125 — `{#parameters}{label} : {value}{/parameters}` dans `{#widgets}` : valeurs du widget.
+      parameters: payload.widgetParameters?.[widget.id] ?? [],
     }
   })
-  // GH93 — `{#parameters}{label} : {value}{/parameters}` : valeurs de la barre de paramètres.
-  return { dashboard: { id: dashboard.id, title: dashboard.title }, widgets, count: widgets.length, parameters: payload.parameters ?? [] }
+  // GH125 (D3) — `parameters` de premier niveau (barre du dashboard, GH93) : déprécié, toujours vide,
+  // gardé pour qu'un gabarit qui l'utilise s'exporte encore.
+  return { dashboard: { id: dashboard.id, title: dashboard.title }, widgets, count: widgets.length, parameters: [] as { label: string; value: string }[] }
 }
 
 /** Champs personnalisés en texte simple (richtext Markdown retiré, listes jointes). */

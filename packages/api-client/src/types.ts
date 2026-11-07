@@ -1,6 +1,6 @@
 import type {
   AdoptRepoRequest, ReadmeState, ReadmeSyncOutcome, RepoAccessLevel, RepoSettings, RepoVisibility, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
+  FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, WidgetParamValues, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
@@ -973,10 +973,11 @@ export interface ApiClient {
     /** Ordre d'affichage de la section "Dashboards" du panneau latéral (préférence perso). */
     getOrder(repoPath: string, username: string): Promise<string[]>
     setOrder(repoPath: string, username: string, order: string[]): Promise<void>
-    /** GH93 — valeurs choisies dans la barre de paramètres du dashboard (clé `name:kind`), privées. */
-    getParamValues(repoPath: string, username: string, dashboardId: string): Promise<Record<string, GraphParamValue>>
-    /** `null` : Réinitialiser (retour aux défauts des déclarations). */
-    setParamValues(repoPath: string, username: string, dashboardId: string, values: Record<string, GraphParamValue> | null): Promise<void>
+    /** GH125 — valeurs choisies dans les sélecteurs des widgets du dashboard (`widgetId → name:kind`),
+     *  privées. */
+    getParamValues(repoPath: string, username: string, dashboardId: string): Promise<WidgetParamValues>
+    /** Valeurs d'un widget ; `null` : Réinitialiser (retour aux défauts des déclarations). */
+    setParamValues(repoPath: string, username: string, dashboardId: string, widgetId: string, values: Record<string, GraphParamValue> | null): Promise<void>
   }
   /** Base de paramètres (T171) — `repoPath` = repo qui porte la base. */
   parameters: {

@@ -292,11 +292,11 @@ Un `TestRun` représente **une exécution concrète** d'un cas de test à un ins
 | `result` | ENUM | Résultat global (voir §3.3) |
 | `executedAt` | DATETIME | Date/heure de début |
 | `executedBy` | USER | Testeur |
-| `duration` | NUMBER | Durée en secondes |
+| `duration` | NUMBER | Durée en secondes — 0 pour une saisie dans l'outil ; *(GH129)* durée du rapport pour un import JUnit |
 | `equipmentUsed` | list | Identification physique de chaque équipement (voir §3.2) |
 | `stepResults` | list | Résultat par étape (voir §3.4) |
 | `notes` | RICHTEXT | Observations générales, contexte global de l'exécution. Liens OneDrive pour les fichiers annexes (logs, exports CSV). |
-| `origin` | `'excel-import'` | *(GH36)* Origine du résultat : absent = saisi dans l'outil ; `excel-import` = réimporté depuis le classeur d'exécution (§4.5), avec testeur et date lus dans le fichier |
+| `origin` | `'excel-import'` \| `'junit-import'` | *(GH36)* Origine du résultat : absent = saisi dans l'outil ; `excel-import` = réimporté depuis le classeur d'exécution (§4.5), avec testeur et date lus dans le fichier ; *(GH129)* `junit-import` = importé d'un rapport JUnit (§3.5) |
 | `fields` | map? | *(GH196)* Valeurs des **champs d'exécution** (`runFields` du type de test), typées comme des champs d'objet ; absent tant que vide. Chaque `stepResults[]` porte de même `fields` (champs d'étape, `stepFields`), sur une étape exécutée seulement |
 | `testedConfig` | objet? | *(GH202)* Copie figée de la structure testée, voir ci-dessous ; absent : run antérieur, ou repo sans version sélectionnable |
 
@@ -439,14 +439,52 @@ stepResults:
 - Aucun `FAIL`, aucun `BLOCKED`, au moins un `NOT_EXECUTED` → global `INCOMPLETE`
 - Tous `PASS` ou `SKIP` → global `PASS`
 
-### 3.5 Import de résultats automatisés
+### 3.5 Import de résultats automatisés (GH129)
 
-Pour les tests automatisés, les résultats sont importés depuis un fichier externe.
+Import **sans interface** de rapports **JUnit XML** (pytest, JUnit/Surefire, Jest, e2Unit, e2Sim) :
+commande `polenta-cli.cjs import-results` et outil MCP `import_test_results` (SPEC-MCP-SERVER §4.11),
+un seul service (`ResultsImportService`, `junit-report.util.ts`). Spec détaillée : `specs/GH129.md`.
+Pas d'import depuis l'interface ; le « JSON Polenta » des versions précédentes de cette section n'a
+jamais été défini ni implémenté (retiré).
 
-**Formats supportés :**
+**Correspondance** — le champ `automationId` (type `text`, nom fixe) d'un type de test est comparé, à
+l'identique, à `classname.name` puis à `name` du `<testcase>`. Secours, sans correspondance : la
+propriété JUnit `requirement` du testcase (ID Polenta d'exigence) ; un seul test **sans** `automationId`
+couvrant l'exigence (lien dans un sens ou l'autre) → correspondance, avertissement
+`mapped_by_requirement`. Plusieurs candidats → `ambiguous`, jamais de choix. Tests à statut terminal
+exclus ; test d'un nœud ou repo en lecture seule → `readonly_node`.
 
-| Format | Usage |
-|--------|-------|
+**Verdicts** — pass → `PASS`, `<failure>` → `FAIL`, `<error>` → `BLOCKED`, `<skipped>` → non importé.
+Plusieurs résultats d'un même test dans une invocation (plusieurs fichiers) → **un** run : verdict le
+plus défavorable, date la plus récente, durées additionnées, une ligne de notes par source.
+
+**Run écrit** — `TestsService.execute` : `origin: junit-import`, `stepResults: []`, `duration` du
+rapport, `executedAt` = `timestamp` de la `testsuite` (sans fuseau : UTC ; absent : instant de
+l'import, avertissement `no_timestamp`), `executedBy` = option, sinon `git config user.name`, notes en
+texte brut échappé. Champ d'exécution obligatoire non satisfait → `required_field_missing` (les autres
+résultats importés). Écrit dans l'arbre de travail, **jamais de commit**.
+
+**Campagne** — sans `--campaign` : runs isolés. Avec : le test doit avoir une entrée (plusieurs :
+départagées par `requirementId` contre les propriétés `requirement`), le run porte `campaignEntry`,
+l'entrée prend le résultat, campagne `planned` → `in_progress` (comme l'import du classeur, §4.5).
+Campagne inconnue ou clôturée : erreur globale. Version testée (GH202) obligatoire dès qu'une version
+est sélectionnable (`--tested-version`, ID / label / texte libre), sinon erreur globale.
+
+**Réimport** — un run n'est pas recréé si le test a déjà un run `junit-import` de même `executedAt`
+et même `campaignEntry` (« déjà importé ») ; une entrée restée `pending` après une interruption est
+complétée avec ce run. Limite : la date d'un run agrégé est celle du plus récent des fichiers de
+l'invocation ; réimporter un sous-ensemble (ou un sur-ensemble) des mêmes fichiers donne une autre date,
+donc un nouveau run. `--tested-version` sans `--campaign` : avertissement `tested_version_ignored`
+(la version testée ne porte que sur un run de campagne, GH202). Le compteur « imported » compte des
+runs (un par test et entrée), les autres compteurs des `<testcase>`.
+
+**Codes retour** — 0 tout importé ; 1 au moins un résultat non importé (non mappé, ambigu, hors
+campagne, refusé), les autres importés ; 2 erreur globale (arguments, repo, fichier ou motif sans
+fichier, XML invalide, campagne, version testée), rien d'écrit. `--dry-run` : mêmes contrôles et mêmes
+codes, aucune écriture. Relecture d'un run importé : badge « Importé depuis JUnit », origine « import
+JUnit » dans la section Exécutions.
+
+--------|-------|
 | JUnit XML | Frameworks Java/Python/JS (pytest, Jest, JUnit) |
 | JSON Polenta | Format natif, mapping explicite |
 
@@ -1054,5 +1092,5 @@ TestsIndex (par projet/branche)
 | Retest | **Nouveau TestRun indépendant** — pas de lien `retestOf`. L'historique chronologique suffit. |
 | Pièces jointes | **Champ `link` structuré** (GH195), ou lien collé dans un RICHTEXT — pas de stockage dans Polenta. Pas d'AWS S3. |
 | Statut de campagne | **Manuel uniquement** — le testeur décide quand clôturer. Pas d'auto-complete. |
-| Import JUnit XML | **TestRun isolés** — pas de rattachement automatique à une campagne. Rattachement manuel si besoin. |
+| Import JUnit XML | **TestRun isolés** — pas de rattachement automatique à une campagne ; rattachement **explicite** par `--campaign` / `campaignId` (GH129, §3.5). Pas d'import depuis l'interface. |
 | Paramètres de test | **Détection automatique par `{label}`** — pas de liste déclarée séparément (T97). |

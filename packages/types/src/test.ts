@@ -95,8 +95,8 @@ export interface TestRun {
   equipmentUsed: EquipmentUsed[]
   stepResults: StepResult[]
   notes: string                // HTML (RICHTEXT)
-  /** GH36 — origine du résultat ; absent = saisi dans l'outil. */
-  origin?: 'excel-import'
+  /** GH36 — origine du résultat ; absent = saisi dans l'outil. GH129 : `junit-import` = import JUnit sans interface. */
+  origin?: 'excel-import' | 'junit-import'
   /** GH196 — valeurs des `runFields` du type de test ; absent tant que vide. Immuable comme le run. */
   fields?: Record<string, unknown>
   /** GH202 — copie figée de la structure testée ; absent : run antérieur, ou repo sans version. */

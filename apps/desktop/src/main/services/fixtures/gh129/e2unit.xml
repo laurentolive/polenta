@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuite name="fan.host" tests="2" failures="0" errors="0" skipped="0" time="0.020" timestamp="2026-11-07T09:00:00">
+  <properties>
+    <property name="runner" value="host" />
+    <property name="hash" value="ab12" />
+  </properties>
+  <testcase classname="fan.host" name="T01 CRC16 known vectors" time="0.010">
+    <system-out>1. [PASS] crc: ok</system-out>
+  </testcase>
+  <testcase classname="fan.host" name="T02 PI saturation" time="0.010">
+    <system-out>1. [PASS] sat: ok</system-out>
+  </testcase>
+</testsuite>

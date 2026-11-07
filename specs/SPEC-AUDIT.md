@@ -54,7 +54,8 @@ L'interface `StepResult` déclare `executedAt: string | null` mais le schéma Zo
 
 ### §3.5 — Import JUnit XML
 
-**[ABSENT]** Aucun handler IPC `tests:import`, aucun service d'import JUnit XML / JSON Polenta.
+~~**[ABSENT]** Aucun handler IPC `tests:import`, aucun service d'import JUnit XML / JSON Polenta.~~
+**Résolu (GH129, 2026-11-07)** : import JUnit sans interface (CLI, outil MCP), SPEC-TESTS §3.5 réécrit ; JSON Polenta retiré de la spec, pas d'import dans l'interface.
 
 ### §4.1 — TestCampaign vs CampaignRun
 

@@ -19,6 +19,8 @@ export type ResultsImportWarningCode =
   | 'test_not_approved'
   | 'tested_version_undocumented'
   | 'no_automation_field'
+  /** `testedVersion` sans campagne : non enregistrée (la version testée ne porte que sur un run de campagne). */
+  | 'tested_version_ignored'
 
 /** Erreur globale : rien n'est écrit (sauf `write_failed`, interruption en cours d'écriture). */
 export type ResultsImportErrorCode =
@@ -67,7 +69,7 @@ export interface ResultsImportReport {
   counts: {
     /** `<testcase>` lus. */
     results: number
-    /** Runs écrits (ou à écrire en dry run). */
+    /** Runs écrits (ou à écrire en dry run) : un par cas de test et entrée, pas par `<testcase>` (spec §2.4). */
     imported: number
     /** Cas de test déjà importés avec la même date (aucun run). */
     alreadyImported: number

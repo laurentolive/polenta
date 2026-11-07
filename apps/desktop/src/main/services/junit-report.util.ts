@@ -113,10 +113,11 @@ export function parseJunit(xml: string, file: string): JunitResult[] | { fatal: 
   let doc
   try {
     doc = new DOMParser({
+      // `error` : xmldom a récupéré (ex. `&` non échappé dans un attribut) ; seul `fatalError` arrête.
       onError: (level: string, message: string) => {
-        if (level !== 'warning' && !fatal) fatal = message
+        if (level === 'fatalError' && !fatal) fatal = message
       },
-    }).parseFromString(xml, 'text/xml')
+    }).parseFromString(xml.replace(/^\uFEFF/, ''), 'text/xml')
   } catch (err) {
     return { fatal: err instanceof Error ? err.message : String(err) }
   }

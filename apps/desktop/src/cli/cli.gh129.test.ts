@@ -67,6 +67,13 @@ describe('fichiers (21)', () => {
     expect(await runFiles()).toHaveLength(0)
   })
 
+  it('fichier existant dont le nom contient des métacaractères : pris tel quel', async () => {
+    await fsP.copyFile(path.join(base, 'out', 'junit', 'sim32.xml'), path.join(base, 'out', 'run[1].xml'))
+    const out = await cli(['--repo', 'polenta', '--junit', 'out/run[1].xml', '--json'])
+    expect(out.code).toBe(0)
+    expect((JSON.parse(out.stdout) as ResultsImportReport).files).toEqual(['out/run[1].xml'])
+  })
+
   it('motif et séparateurs Windows développés par Polenta', async () => {
     const out = await cli(['--repo', 'polenta', '--junit', 'out\\junit\\*.xml', '--junit', 'out/junit/sim32.xml', '--json'])
     const report = JSON.parse(out.stdout) as ResultsImportReport
@@ -78,7 +85,7 @@ describe('sortie et codes (22)', () => {
   it('texte : compteurs et une ligne par non importé, code 1 ; puis réimport code 0', async () => {
     const out = await cli(['--repo', 'polenta', '--junit', 'out/junit/*.xml', '--executed-by', 'ci'])
     expect(out.code).toBe(1)
-    expect(out.stdout).toContain('results read: 2, imported: 1')
+    expect(out.stdout).toContain('results read: 2, runs imported: 1')
     expect(out.stdout).toContain('imported TA-0001 PASS -> TA-0001-run-0001')
     expect(out.stdout).toContain('not imported: out/junit/sim64.xml k.test_b: unmapped')
     expect(await runFiles()).toHaveLength(1)

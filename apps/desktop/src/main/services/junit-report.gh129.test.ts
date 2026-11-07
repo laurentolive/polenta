@@ -64,6 +64,11 @@ describe('parseJunit', () => {
     expect(parseJunit('<report><testcase name="x"/></report>', 'r.xml')).toHaveProperty('fatal')
   })
 
+  it('BOM UTF-8 en tête ; erreur récupérable (« & » non échappé) : lu', () => {
+    expect(ok('﻿<?xml version="1.0" encoding="utf-8"?><testsuite><testcase name="a"/></testsuite>')).toHaveLength(1)
+    expect(ok('<testsuite><testcase name="a&b"/></testsuite>')[0].name).toBe('a&b')
+  })
+
   it('message tronqué', () => {
     const long = 'x'.repeat(JUNIT_MESSAGE_MAX + 50)
     const [r] = ok(`<testsuite><testcase name="t"><failure>${long}</failure></testcase></testsuite>`)

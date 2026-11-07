@@ -16,9 +16,13 @@ Commands:
 
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv
-  if (!command || command === '--help' || command === '-h' || command === 'help') {
+  if (!command) {
+    process.stderr.write(USAGE)
+    return 2
+  }
+  if (command === '--help' || command === '-h' || command === 'help') {
     process.stdout.write(USAGE)
-    return command ? 0 : 2
+    return 0
   }
   if (command !== 'import-results') {
     process.stderr.write(`unknown command: ${command}\n\n${USAGE}`)

@@ -257,6 +257,13 @@ describe('dry run, réimport, contrôles (14–19)', () => {
     expect(after.runs[0]).toMatchObject({ status: 'PASS', runId: written.id })
   })
 
+  it('version testée sans campagne : avertissement, non enregistrée', async () => {
+    const id = await createTest('T', 't')
+    const report = await run([await writeXml('a.xml', tc('k', 't'))], { testedVersion: '1.2.0' })
+    expect(report.warnings).toContainEqual(expect.objectContaining({ code: 'tested_version_ignored' }))
+    expect((await runsOf(id))[0].testedConfig).toBeUndefined()
+  })
+
   it('sans timestamp : avertissement, réimport non détecté', async () => {
     const id = await createTest('T', 't')
     const file = await writeXml('a.xml', tc('k', 't'), null)

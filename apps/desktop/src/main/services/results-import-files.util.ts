@@ -14,7 +14,8 @@ export async function expandResultFiles(patterns: string[], cwd: string): Promis
   for (const raw of patterns) {
     // Séparateurs Windows : tinyglobby attend des « / ».
     const pattern = raw.replace(/\\/g, '/')
-    if (!isDynamicPattern(pattern)) {
+    // Un fichier qui existe sous ce nom est pris tel quel, même avec des [ ] ( ) dans son chemin.
+    if (!isDynamicPattern(pattern) || fs.existsSync(path.resolve(cwd, raw))) {
       const file = path.resolve(cwd, raw)
       if (!fs.existsSync(file)) throw new ResultsImportError('no_files', `${raw}: file not found`)
       out.push(file)

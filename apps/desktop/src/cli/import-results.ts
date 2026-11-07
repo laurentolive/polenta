@@ -56,7 +56,7 @@ export function parseImportResultsArgs(argv: string[]): ImportResultsArgs | { er
 }
 
 const COUNT_LABELS: Array<[keyof ResultsImportReport['counts'], string]> = [
-  ['results', 'results read'], ['imported', 'imported'], ['alreadyImported', 'already imported'],
+  ['results', 'results read'], ['imported', 'runs imported'], ['alreadyImported', 'already imported'],
   ['skipped', 'skipped'], ['unmapped', 'unmapped'], ['ambiguous', 'ambiguous'], ['rejected', 'rejected'],
 ]
 

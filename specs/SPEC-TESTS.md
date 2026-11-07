@@ -472,7 +472,11 @@ est sélectionnable (`--tested-version`, ID / label / texte libre), sinon erreur
 
 **Réimport** — un run n'est pas recréé si le test a déjà un run `junit-import` de même `executedAt`
 et même `campaignEntry` (« déjà importé ») ; une entrée restée `pending` après une interruption est
-complétée avec ce run.
+complétée avec ce run. Limite : la date d'un run agrégé est celle du plus récent des fichiers de
+l'invocation ; réimporter un sous-ensemble (ou un sur-ensemble) des mêmes fichiers donne une autre date,
+donc un nouveau run. `--tested-version` sans `--campaign` : avertissement `tested_version_ignored`
+(la version testée ne porte que sur un run de campagne, GH202). Le compteur « imported » compte des
+runs (un par test et entrée), les autres compteurs des `<testcase>`.
 
 **Codes retour** — 0 tout importé ; 1 au moins un résultat non importé (non mappé, ambigu, hors
 campagne, refusé), les autres importés ; 2 erreur globale (arguments, repo, fichier ou motif sans

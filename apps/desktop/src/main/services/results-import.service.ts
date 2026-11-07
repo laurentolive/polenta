@@ -19,6 +19,7 @@ import type { WorkspaceTreeService } from './workspace-tree.service'
 import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 import { repoKey } from './schema-refs.util'
 import { TestedVersionError } from './tested-config.service'
+import { FieldWriteError } from './field-write.util'
 import { findObjectTypeDef, isRefInReadonlyNode } from './schema-lookup.util'
 import { matchCoverageLink } from './traceability.service'
 import { plainTextToMarkdown } from './plain-text-markdown.util'
@@ -184,6 +185,9 @@ export class ResultsImportService {
     }
 
     const warnings: ResultsImportWarning[] = []
+    if (!o.campaignId && o.testedVersion?.trim()) {
+      warnings.push({ code: 'tested_version_ignored', detail: 'the tested version is recorded on campaign runs only (--campaign)' })
+    }
     if (!hasAutomationField) warnings.push({ code: 'no_automation_field', detail: `no test type declares the field ${AUTOMATION_FIELD}` })
 
     // 3. Campagne et version testée, contrôlées avant toute écriture.
@@ -285,7 +289,7 @@ export class ResultsImportService {
 
       const runs = await deps.tests.findRuns(target.repoPath, target.test.id)
       const previous = runs.find(run => run.origin === 'junit-import' && sameInstant(run.executedAt, executedAt)
-        && sameEntry(run, entry && o.campaignId, entry?.entryId))
+        && sameEntry(run, entry && campaign?.id, entry?.entryId))
       if (previous) {
         alreadyImported.push({ testId: target.test.id, ...(entry && { entryId: entry.entryId }), runId: previous.id })
         // Run écrit mais entrée restée sans résultat (import interrompu entre les deux écritures) :
@@ -361,6 +365,11 @@ export class ResultsImportService {
             })
           }
         } catch (err) {
+          // Champ d'exécution refusé par `execute` (type lu autrement qu'au contrôle) : ce résultat seul.
+          if (!written && err instanceof FieldWriteError) {
+            for (const r of group.results) reject(r, 'required_field_missing', { candidates: [target.test.id], field: err.field })
+            continue
+          }
           // Run écrit, entrée non mise à jour : le run figure dans le rapport partiel.
           if (written) imported.push(item)
           throw new ResultsImportError('write_failed', `${target.test.id}: ${err instanceof Error ? err.message : String(err)}`, report())

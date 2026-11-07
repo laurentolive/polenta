@@ -1,0 +1,69 @@
+# GH67 — Sprint 2 : confirmations, `/query`, panneau latéral, dashboard (renderer)
+
+## Fichiers modifiés
+
+| Fichier | Modification |
+|---|---|
+| `renderer/components/dashboard/ScopeChangeParts.tsx` (nouveau) | cadre et lignes communes des confirmations ; `invalidateAfterScopeChange` ; `noteQueryRenamed` / `queryRenamedFrom` (nouvel id → ancien id) ; `scopeErrorText` |
+| `renderer/components/dashboard/QueryScopeModal.tsx` (nouveau) | confirmation de portée d'une requête seule |
+| `renderer/components/dashboard/DashboardShareModal.tsx` (nouveau) | confirmation du partage d'un dashboard avec ses requêtes privées |
+| `renderer/routes/dashboard.tsx` | *Partagé* : confirmation si un widget a une requête privée, sinon `setScope` direct ; succès commun `onScopeChanged` |
+| `renderer/routes/query.tsx` | sélecteur *Privée / Partagée* dans l'en-tête ; nouvel id suivi sans recharger l'éditeur (`queryRenamedFrom`), colonne retirée en rétrogradation |
+| `renderer/components/sidebar/ReorderableSidebarSection.tsx` | prop `onToggleScope` : bouton au survol (`scope-toggle`), absent en lecture seule |
+| `renderer/components/sidebar/DashboardPanel.tsx` | bouton de portée sur la section Requêtes, confirmation, URL suivie si la requête est ouverte |
+| `renderer/i18n/locales/{fr,en}.json` | clés `suiviScope.*` |
+| `e2e-web/gh67-scope.spec.ts` (nouveau) | 9 scénarios |
+| `specs/SPEC-DASHBOARDS.md`, `specs/SPEC-INDEX.md`, `docs/tutoriels/07-suivi.md`, `docs/tutorials/07-tracking.md` | mises à jour (ci-dessous) |
+
+## Comportement implémenté
+
+Spec §3.1–§3.11 : confirmations avec aperçu du main ; bloquants sans bouton de confirmation ;
+fermeture impossible pendant l'écriture ; Entrée confirme, Échap annule ; après un échec partiel,
+l'aperçu est relu (ne liste plus que les requêtes restées privées ; bouton « Partager le dashboard »
+s'il n'en reste aucune). Changement de portée d'une requête ouverte dans `/query`, depuis la vue ou
+le panneau : l'URL suit, l'éditeur est conservé.
+
+## Divergences par rapport au design
+
+- Suivi du nouvel id dans `/query` : registre `noteQueryRenamed` / `queryRenamedFrom` (au lieu de
+  `loadedRef` posé par `onScopeChanged`) pour que le changement fait depuis le panneau conserve aussi
+  l'éditeur, et pour retrouver la requête sous son ancien id tant que la liste n'est pas relue
+  (constats de la revue de code).
+- Ligne ajoutée à la confirmation d'une requête : « Seule la version enregistrée change de portée :
+  enregistrez d'abord vos modifications en cours » (revue : l'éditeur conservé pouvait laisser croire
+  que les modifications non enregistrées étaient partagées).
+- `invalidateAfterScopeChange` dans `ScopeChangeParts.tsx` (au lieu de `QueryScopeModal.tsx`).
+
+## Mises à jour SPEC
+
+- `SPEC-DASHBOARDS.md` en-tête : GH67. §7.0b : rétrogradation bloquée par tout widget dépendant
+  (comportement du service, la spec disait « widgets partagés »), colonne retirée, portée invalide
+  refusée, point unique `moveDashboardKeys`, paragraphe « Changement de portée depuis l'app ». §8 :
+  bouton de portée des requêtes. §10 : MCP (partage groupé compris), hors scope GH67.
+- `SPEC-INDEX.md` : lignes §7 et §8–§10, MAJ → GH67.
+- Tutoriels fr / en : partage de *Campagnes* avec ses requêtes, portée d'une requête.
+
+## Vérifications
+
+- `pnpm typecheck` : 4/4 tâches vertes. `pnpm lint` : aucune tâche lint dans le monorepo.
+- Unitaires : `vitest run` desktop 148/148 fichiers verts (les autres paquets verts) ; l'échec de
+  délai `sync.service.gh173 U4` vu au sprint 1 ne s'est pas reproduit.
+- e2e (`pnpm build:web`, ports 8950–8953) : `gh67-scope.spec.ts` 9/9 ; voisines `gh74-editing`,
+  `gh74-suivi`, `gh93-params`, `gh70-query-column`, `gh65-campaigns` : vertes (31/32 au premier
+  passage, l'échec était N7b — Entrée pressée avant le chargement de l'aperçu, test corrigé ;
+  relance 9/9).
+- `/code-review` (medium) sur le diff du worktree : constats corrigés (voir divergences ; Annuler
+  désactivé pendant l'écriture ; focus rendu par les boutons de portée ; libellés pour 0 requête).
+  Non retenu : un widget sur une requête **partagée** supprimée n'est pas signalé au partage (hors
+  du périmètre de la spec, comportement antérieur).
+- Non lancé : suite e2e complète (niveau 3, après le « Validé »), `test:e2e:desktop`.
+
+## Comment tester manuellement
+
+1. Suivi → dashboard privé *Campagnes* → **Partagé** : la confirmation liste 6 requêtes ; Annuler,
+   puis Partager ; l'URL passe sur `DASHBOARD-NNNN`, les 6 widgets s'affichent comme avant.
+2. Suivi → une requête privée → en-tête **Partagée** : confirmation, puis URL `QUERY-NNNN`.
+3. Panneau, survol d'une requête : bouton de portée ; requête partagée utilisée par un widget →
+   **Privée** : bloqué, widgets listés.
+4. En anglais : mêmes écrans (libellés).
+5. Desktop Electron : parcours 1 et 2.

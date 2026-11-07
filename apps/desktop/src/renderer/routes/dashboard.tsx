@@ -20,13 +20,15 @@ import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Lock, Plus, Users2 } from 'lucide-react'
-import type { Widget, QueryResult } from '@polenta/types'
+import type { Dashboard, Widget, QueryResult } from '@polenta/types'
+import { isPrivateScopeId } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { DashboardGrid } from '../components/dashboard/DashboardGrid'
 import { ParamBar } from '../components/dashboard/ParamBar'
 import { useDashboardParams } from '../hooks/useDashboardParams'
 import { WidgetConfigModal, type WidgetConfigResult } from '../components/dashboard/WidgetConfigModal'
+import { DashboardShareModal } from '../components/dashboard/DashboardShareModal'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { ExportButton } from '../components/export/ExportButton'
 import { dashboardExportBaseName } from '../components/export/exportFilenames'
@@ -119,10 +121,13 @@ function DashboardPage() {
   const [showAddWidget, setShowAddWidget] = useState(false)
   const [editingWidget, setEditingWidget] = useState<Widget | null>(null)
   const [scopeError, setScopeError] = useState<string | null>(null)
+  /** GH67 — confirmation du partage avec les requêtes privées des widgets. */
+  const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     setTitleDraft(dashboard?.title ?? '')
     setScopeError(null)
+    setSharing(false)
   }, [dashboard?.id, dashboard?.title])
 
   const invalidateDashboard = () => {
@@ -137,20 +142,30 @@ function DashboardPage() {
 
   const scopeMutation = useMutation({
     mutationFn: (scope: 'private' | 'shared') => api.dashboards.setScope(repoPath, username, dashboardId!, scope),
-    onSuccess: (updated) => {
-      setScopeError(null)
-      qc.invalidateQueries({ queryKey: ['dashboards', repoPath, username] })
-      // L'id change lors d'un passage privé<->partagé (schémas d'id différents) —
-      // on préremplit le cache sous le nouvel id puis on aligne l'URL dessus, sans
-      // quoi la prochaine lecture (repoPath/username/dashboardId) pointerait sur
-      // l'ancien id qui n'existe plus.
-      qc.setQueryData(['dashboard', repoPath, username, updated.id], updated)
-      if (updated.id !== dashboardId) {
-        navigate({ to: '/dashboard', search: { projectId, dashboardId: updated.id }, replace: true })
-      }
-    },
+    onSuccess: (updated) => onScopeChanged(updated),
     onError: (err) => setScopeError(err instanceof Error ? err.message : t('dashboardPage.cannotChangeScope')),
   })
+
+  function onScopeChanged(updated: Dashboard) {
+    setScopeError(null)
+    setSharing(false)
+    qc.invalidateQueries({ queryKey: ['dashboards', repoPath, username] })
+    // L'id change lors d'un passage privé<->partagé (schémas d'id différents) —
+    // on préremplit le cache sous le nouvel id puis on aligne l'URL dessus, sans
+    // quoi la prochaine lecture (repoPath/username/dashboardId) pointerait sur
+    // l'ancien id qui n'existe plus.
+    qc.setQueryData(['dashboard', repoPath, username, updated.id], updated)
+    if (updated.id !== dashboardId) {
+      navigate({ to: '/dashboard', search: { projectId, dashboardId: updated.id }, replace: true })
+    }
+  }
+
+  /** GH67 — passage en partagé : confirmation si un widget utilise une requête privée. */
+  function requestShared() {
+    if (dashboard?.scope === 'shared') return
+    if (dashboard?.widgets.some((w) => isPrivateScopeId(w.queryId))) setSharing(true)
+    else scopeMutation.mutate('shared')
+  }
 
   const addWidgetMutation = useMutation({
     mutationFn: (dto: WidgetConfigResult) =>
@@ -232,7 +247,7 @@ function DashboardPage() {
               </button>
               <button
                 type="button"
-                onClick={() => scopeMutation.mutate('shared')}
+                onClick={(e) => { e.currentTarget.blur(); requestShared() }}
                 disabled={scopeMutation.isPending}
                 className={`px-3 py-1.5 flex items-center gap-1.5 ${dashboard.scope === 'shared' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
               >
@@ -293,6 +308,15 @@ function DashboardPage() {
         <p className="text-xs text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
           {scopeError}
         </p>
+      )}
+      {sharing && (
+        <DashboardShareModal
+          repoPath={repoPath}
+          username={username}
+          dashboardId={dashboard.id}
+          onClose={() => setSharing(false)}
+          onShared={onScopeChanged}
+        />
       )}
 
       <ParamBar

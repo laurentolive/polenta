@@ -22,7 +22,9 @@ Vue **Suivi**, dashboard *Pilotage LL800* :
   généré, modifiable par un utilisateur avancé (le widget est alors « personnalisé », *Revenir au
   modèle* annule).
 - **Privé** / **Partagé** : un dashboard partagé est enregistré dans le dépôt et visible de toute
-  l'équipe ; un dashboard privé reste à son auteur.
+  l'équipe ; un dashboard privé reste à son auteur. Partager un dashboard privé dont des widgets
+  utilisent des requêtes privées (comme *Campagnes*) ouvre une confirmation qui les liste : elles sont
+  partagées avec lui, en une seule action.
 - **Exporter** produit une version Word ou PDF du dashboard.
 
 Le deuxième dashboard, *Composants & traçabilité*, montre les liens par type (camembert), les
@@ -45,7 +47,9 @@ un sélecteur **Validation** : *Validation 1.0*, *Validation 2.0* ou *Validation
 
 ## Les requêtes
 
-Le bas du panneau latéral liste les requêtes partagées. Ouvrir *Exigences — statut de couverture* :
+Le bas du panneau latéral liste les requêtes (icône de portée : privée ou partagée). Le sélecteur
+**Privée** / **Partagée** de l'en-tête d'une requête, ou le bouton de portée qui apparaît au survol
+de sa ligne dans le panneau, change sa portée après confirmation. Ouvrir *Exigences — statut de couverture* :
 
 ![Requête sur les exigences](../img/query.png)
 

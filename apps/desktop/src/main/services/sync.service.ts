@@ -1138,7 +1138,10 @@ export class SyncService {
    * moves HEAD without touching the filesystem.
    */
   async createBranch(repoPath: string, name: string): Promise<void> {
-    await git.branch({ fs, dir: repoPath, ref: name, checkout: false })
+    // GH314 — HEAD left on an annotated tag object (checkout before the fix): branch from its commit.
+    const head = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' }).catch(() => undefined)
+    const object = head && await git.readCommit({ fs, dir: repoPath, oid: head }).then(c => c.oid, () => head)
+    await git.branch({ fs, dir: repoPath, ref: name, object, checkout: false })
     await git.checkout({ fs, dir: repoPath, ref: name, noCheckout: true })
   }
 
@@ -1152,7 +1155,11 @@ export class SyncService {
   async checkoutBranch(repoPath: string, name: string): Promise<CheckoutBranchResult> {
     const tracking = await this.remoteTrackingBranch(repoPath, name)
     if (!tracking) {
-      await git.checkout({ fs, dir: repoPath, ref: name })
+      // GH314 — a tag (no local branch of that name) is checked out by its commit: for an
+      // annotated tag, `git.checkout` would otherwise write the tag object's id into HEAD.
+      const isBranch = await git.resolveRef({ fs, dir: repoPath, ref: `refs/heads/${name}` }).then(() => true, () => false)
+      const tagCommit = isBranch ? null : await this.resolveTag(repoPath, name)
+      await git.checkout({ fs, dir: repoPath, ref: tagCommit ?? name })
       return { branch: name }
     }
     const { remote, branch } = tracking

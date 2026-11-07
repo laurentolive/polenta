@@ -46,7 +46,9 @@ export class IntegrationBranchService {
     if (!currentBranch) status = 'detached'
     else if (currentBranch.startsWith(INT_PREFIX) && currentBranch !== configured) status = 'incoherent'
     else if (!configured.startsWith(INT_PREFIX)) status = 'nonConvention'
-    const headOid = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' }).catch(() => '')
+    // GH314 — a folder positioned on an annotated tag before the fix has the tag object in HEAD.
+    const headOid = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+      .then(oid => git.readCommit({ fs, dir: repoPath, oid }).then(c => c.oid, () => oid), () => '')
     return { currentBranch, headOid, configured, status, candidates: await this.candidates(repoPath) }
   }
 

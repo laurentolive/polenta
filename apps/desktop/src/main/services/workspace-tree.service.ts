@@ -198,7 +198,8 @@ export class WorkspaceTreeService {
           if (node.pin) {
             const isSha = /^[0-9a-f]{7,40}$/i.test(node.pin)
             try {
-              await git.checkout({ fs, dir: node.repoPath, ref: node.pin })
+              // GH314 — un tag annoté se checkout par son commit : sinon HEAD reçoit l'objet tag.
+              await git.checkout({ fs, dir: node.repoPath, ref: await this.pinCheckoutRef(node.repoPath, node.pin) })
             } catch {
               if (isSha) {
                 // Best-effort for a SHA pin — repo still usable at its default branch.
@@ -693,6 +694,17 @@ export class WorkspaceTreeService {
    */
   private async peelToCommit(repoPath: string, oid: string): Promise<string> {
     return (await git.readCommit({ fs, dir: repoPath, oid })).oid
+  }
+
+  /** GH314 — ref to hand to `git.checkout` for `pin`: the commit of a tag (annotated or not) when
+   * no local branch carries that name, else `pin` itself (branch, SHA, remote branch). */
+  private async pinCheckoutRef(repoPath: string, pin: string): Promise<string> {
+    if (await git.resolveRef({ fs, dir: repoPath, ref: `refs/heads/${pin}` }).then(() => true, () => false)) return pin
+    try {
+      return await this.peelToCommit(repoPath, await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${pin}` }))
+    } catch {
+      return pin
+    }
   }
 
   private async repoExistsAtPin(repoPath: string, pin: string): Promise<boolean> {

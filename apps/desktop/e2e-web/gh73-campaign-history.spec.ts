@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { chooseTestedVersion } from './support/campaign'
 
 /**
  * GH73 — faits bruts de l'historique daté des campagnes, par le vrai client web : run rattaché à
@@ -49,6 +50,7 @@ test('1.5 / 1.6 — exécution depuis l\'UI : run rattaché à l\'entrée, retes
 
   for (let i = 0; i < 2; i++) {
     await navigate(p, s.projectUrl(`/campaign/${campaign.id}/execute/${entry.entryId}`, { repoPath: localPath }))
+    await chooseTestedVersion(s)
     await p.getByRole('button', { name: 'Soumettre le résultat' }).click()
     await p.waitForURL(url => !url.pathname.includes('/execute/'))
   }

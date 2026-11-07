@@ -11,7 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Dashboard } from '@polenta/types'
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
-import { BlockerLine, ScopeBlocked, ScopeModalFrame, ScopeWarning, invalidateAfterScopeChange, scopeErrorText, useWidgetRefText } from './ScopeChangeParts'
+import { BlockerLine, ScopeBlocked, ScopeModalFrame, ScopeWarning, invalidateAfterScopeChange, noteQueryRenamed, scopeErrorText, useWidgetRefText } from './ScopeChangeParts'
 
 interface Props {
   repoPath: string
@@ -40,7 +40,13 @@ export function DashboardShareModal({ repoPath, username, dashboardId, onClose, 
   const mutation = useMutation({
     mutationFn: () => api.dashboards.shareWithQueries(repoPath, username, dashboardId),
     onSuccess: (dashboard) => {
-      invalidateAfterScopeChange(qc, repoPath, username)
+      // Requêtes promues : nouvel id lu sur un widget qui l'utilisait (une vue `/query` ouverte sur
+      // l'ancien id le suit).
+      for (const q of preview?.queries ?? []) {
+        const newId = dashboard.widgets.find((w) => w.id === q.widgets[0]?.widgetId)?.queryId
+        if (newId && newId !== q.queryId) noteQueryRenamed(q.queryId, newId)
+      }
+      invalidateAfterScopeChange(qc, repoPath, username, dashboardId)
       onShared(dashboard)
     },
     onError: (err) => {

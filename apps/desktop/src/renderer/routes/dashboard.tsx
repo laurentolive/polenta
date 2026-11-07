@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Lock, Plus, Users2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { Dashboard, Widget, QueryResult } from '@polenta/types'
 import { isPrivateScopeId } from '@polenta/types'
 import { api } from '../api'
@@ -29,6 +29,7 @@ import { ParamBar } from '../components/dashboard/ParamBar'
 import { useDashboardParams } from '../hooks/useDashboardParams'
 import { WidgetConfigModal, type WidgetConfigResult } from '../components/dashboard/WidgetConfigModal'
 import { DashboardShareModal } from '../components/dashboard/DashboardShareModal'
+import { ScopeToggle, scopeErrorText } from '../components/dashboard/ScopeChangeParts'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { ExportButton } from '../components/export/ExportButton'
 import { dashboardExportBaseName } from '../components/export/exportFilenames'
@@ -143,7 +144,7 @@ function DashboardPage() {
   const scopeMutation = useMutation({
     mutationFn: (scope: 'private' | 'shared') => api.dashboards.setScope(repoPath, username, dashboardId!, scope),
     onSuccess: (updated) => onScopeChanged(updated),
-    onError: (err) => setScopeError(err instanceof Error ? err.message : t('dashboardPage.cannotChangeScope')),
+    onError: (err) => setScopeError(scopeErrorText(err, t('dashboardPage.cannotChangeScope'))),
   })
 
   function onScopeChanged(updated: Dashboard) {
@@ -236,24 +237,12 @@ function DashboardPage() {
         actions={
           <>
             {!dashboard.state.readOnly && (<>
-            <div className="flex rounded-lg border border-edge overflow-hidden text-xs">
-              <button
-                type="button"
-                onClick={() => scopeMutation.mutate('private')}
-                disabled={scopeMutation.isPending}
-                className={`px-3 py-1.5 flex items-center gap-1.5 ${dashboard.scope === 'private' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
-              >
-                <Lock size={11} /> {t('sidebar.reorderable.private')}
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.currentTarget.blur(); requestShared() }}
-                disabled={scopeMutation.isPending}
-                className={`px-3 py-1.5 flex items-center gap-1.5 ${dashboard.scope === 'shared' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
-              >
-                <Users2 size={11} /> {t('sidebar.reorderable.shared')}
-              </button>
-            </div>
+            <ScopeToggle
+              value={dashboard.scope}
+              labels={{ private: t('sidebar.reorderable.private'), shared: t('sidebar.reorderable.shared') }}
+              onSelect={(scope) => (scope === 'shared' ? requestShared() : scopeMutation.mutate('private'))}
+              disabled={scopeMutation.isPending}
+            />
             <button type="button" onClick={() => setShowAddWidget(true)} className="btn-primary-sm flex items-center gap-1.5">
               <Plus size={12} />
               {t('dashboard.widgetModal.addTitle')}

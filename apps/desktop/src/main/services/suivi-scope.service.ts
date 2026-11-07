@@ -3,6 +3,7 @@ import { isPrivateScopeId } from '@polenta/types'
 import type { DashboardsService } from './dashboards.service'
 import type { SavedQueriesService } from './saved-queries.service'
 import { readOnlyError } from './suivi-store.util'
+import { normalizeTitle } from './suivi-validation.util'
 import { assertScope } from './id-scope.util'
 
 /**
@@ -94,19 +95,13 @@ export class SuiviScopeService {
     return (await this.queries.list(repoPath, username)).filter((q) => q.scope === 'shared')
   }
 
-  /** Les gardes reprennent celles de `SavedQueriesService.setScope` (lecture seule, paramètres,
-   *  dépendants) : à garder alignées. `shared` n'est lu que pour une promotion. */
+  /** Gardes : `SavedQueriesService.scopeBlockers`, les mêmes que `setScope`. `shared` n'est lu que
+   *  pour une promotion. */
   private async previewOf(repoPath: string, username: string, q: SavedQuery, to: QueryScope, shared: () => Promise<SavedQuery[]>): Promise<QueryScopePreview> {
     const base: QueryScopePreview = { queryId: q.id, title: q.title, from: q.scope, to, blockers: [], remapped: [], titleTakenBy: [], columnRemoved: null }
     if (q.scope === to) return base
-    const blockers: QueryScopeBlocker[] = []
-    if (q.state.readOnly) blockers.push({ kind: 'read-only', reason: q.state.readOnly })
-    if (q.parametersError) blockers.push({ kind: 'params', message: q.parametersError })
-    const dependents = await this.dashboards.findDependentWidgets(repoPath, username, q.id)
-    if (to === 'private') {
-      if (dependents.length > 0) blockers.push({ kind: 'dependents', widgets: dependents })
-      return { ...base, blockers, columnRemoved: q.column?.label ?? null }
-    }
+    const { blockers, dependents } = await this.queries.scopeBlockers(repoPath, username, q, to)
+    if (to === 'private') return { ...base, blockers, columnRemoved: q.column?.label ?? null }
     const key = normalizedTitle(q.title)
     return {
       ...base,
@@ -117,9 +112,8 @@ export class SuiviScopeService {
   }
 }
 
-function normalizedTitle(title: string): string {
-  return title.trim().toLowerCase()
-}
+/** Même règle que les contrôles de titre de la vue Suivi (`suivi-validation.util`). */
+const normalizedTitle = normalizeTitle
 
 function blockerText(b: QueryScopeBlocker): string {
   switch (b.kind) {

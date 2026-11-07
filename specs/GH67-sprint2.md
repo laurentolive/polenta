@@ -34,6 +34,41 @@ le panneau : l'URL suit, l'éditeur est conservé.
   que les modifications non enregistrées étaient partagées).
 - `invalidateAfterScopeChange` dans `ScopeChangeParts.tsx` (au lieu de `QueryScopeModal.tsx`).
 
+### Revue de la PR entière (`/code-review medium 316`, 2026-11-07)
+
+Corrigé :
+- **Gardes en double** (aperçu / écriture) : `SavedQueriesService.scopeBlockers` devient la source
+  unique, utilisée par `setScope` (mêmes erreurs qu'avant : `SUIVI_READ_ONLY`, paramètres, message
+  des dépendants) et par l'aperçu de `SuiviScopeService` ; test ajouté.
+- **Normalisation des titres** : `normalizeTitle` de `suivi-validation.util` réutilisée (au lieu d'une
+  copie en `toLowerCase`).
+- **Partage groupé et `/query` ouverte** : la confirmation du dashboard enregistre l'ancien → nouvel
+  id de chaque requête promue (`noteQueryRenamed`) ; une vue `/query` restée sur l'ancien id suit le
+  nouveau (`queryRenamedTo`).
+- **Relais sous l'ancien id** : le sélecteur de portée de `/query` n'est affiché que pour la requête
+  relue sous l'id de l'URL (plus de réouverture de la confirmation sur un id disparu).
+- **Ancien id du dashboard relu après le partage** : `invalidateAfterScopeChange(…, exceptDashboardId)`
+  ne relit plus le dashboard sous l'id qui vient de disparaître.
+- **Message brut** du `setScope` direct du dashboard : passe par `scopeErrorText` comme les
+  confirmations.
+- **Sélecteur dupliqué** : composant `ScopeToggle` commun (dashboard, `/query`).
+- **Contrat d'erreur** de `shareWithQueries` précisé dans `api-client/types.ts` (erreur d'origine si
+  rien n'a été partagé).
+
+Écarté :
+- Registre `renamedQueries` jamais vidé, réutilisation d'un id partagé : non atteignable, un id
+  partagé n'est jamais réattribué (pierre tombale à la rétrogradation, GH20) et un id privé est
+  aléatoire ; le registre ne vit que le temps de la session de l'onglet.
+- Coût de l'aperçu (relecture du `.pref` et des dashboards privés par requête, aperçu recalculé au
+  partage) : volumes faibles (seed Campagnes : 6 requêtes) ; le recalcul avant écriture est voulu
+  (liste périmée).
+
+Vérifications après ces corrections : `pnpm typecheck` 4/4 ; tests touchés (`suivi-scope`,
+`suivi-store`, `suivi-columns`, `suivi-params`, `channel-policy`) 96/96 ; `pnpm test` complet : desktop
+1610/1610 (148 fichiers), merge-core 79/79, admin-service 119 + 3 ignorés ; `pnpm build:web` puis e2e
+`gh67-scope` + `gh74-editing`, `gh74-suivi`, `gh93-params`, `gh70-query-column`, `gh65-campaigns` :
+32/32 (ports 8950–8953).
+
 ## Mises à jour SPEC
 
 - `SPEC-DASHBOARDS.md` en-tête : GH67. §7.0b : rétrogradation bloquée par tout widget dépendant

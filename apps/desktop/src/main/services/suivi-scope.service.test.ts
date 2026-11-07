@@ -250,6 +250,21 @@ describe('GH67 — portée d\'une requête seule', () => {
     expect((await queries.findOne(repo, U, a.id))!.scope).toBe('private')
   })
 
+  it('setScope applique les gardes de l’aperçu (scopeBlockers) : paramètres, dépendants', async () => {
+    const a = await privateQuery('A')
+    editPref((p) => {
+      p.savedQueries = (p.savedQueries as ({ id: string } & Record<string, unknown>)[]).map((q) => (q.id === a.id ? { ...q, parameters: [{ name: 'x', kind: 'inconnu' }] } : q))
+    })
+    expect((await scope.previewQueryScope(repo, U, a.id, 'shared')).blockers.map((b) => b.kind)).toEqual(['params'])
+    await expect(queries.setScope(repo, U, a.id, 'shared')).rejects.toThrow(/PARAMS_INVALID|param/i)
+
+    const q = await queries.create(repo, U, { title: 'Q', scope: 'shared', createdBy: U, template: LIST })
+    const d = await dashboards.create(repo, U, { title: 'D', scope: 'shared', createdBy: U })
+    await dashboards.addWidget(repo, U, d.id, { title: 'W', queryId: q.id, size: 'md', template: BAR })
+    await expect(queries.setScope(repo, U, q.id, 'private')).rejects.toThrow(/repasser en privé cette requête : utilisée par 1 widget/)
+    expect(exists(`queries/${q.id}/query.yaml`)).toBe(true)
+  })
+
   it('requête introuvable : erreur', async () => {
     await expect(scope.previewQueryScope(repo, U, 'local-x', 'shared')).rejects.toThrow(/introuvable/)
   })

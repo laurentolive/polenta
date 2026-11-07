@@ -1,4 +1,4 @@
-import type { QueryColumnDef, QueryHistoryEntry, QueryParameterDef, QueryScope, ReadQuery, SavedQuery, StoredQuery, TemplateRef } from '@polenta/types'
+import type { QueryColumnDef, QueryHistoryEntry, QueryParameterDef, QueryScope, QueryScopeBlocker, ReadQuery, SavedQuery, ScopeWidgetRef, StoredQuery, TemplateRef } from '@polenta/types'
 import { legacyQueryCodeForHashWithColumn, queryCodeForHash, readQueryRecord, SUIVI_FORMAT_VERSION, validateColumnDecl, validateParameterDecls } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { DashboardsService } from './dashboards.service'
@@ -222,9 +222,13 @@ export class SavedQueriesService {
     const current = await this.findOne(repoPath, username, id)
     if (!current) throw new Error(`Requête introuvable : ${id}`)
     if (current.scope === newScope) return current
-    if (current.state.readOnly) throw readOnlyError(`Requête ${id}`, current.state.readOnly)
-
-    if (current.parametersError) throw paramsError([current.parametersError])
+    // GH67 — mêmes gardes que l'aperçu de la confirmation (`scopeBlockers`).
+    const { blockers } = await this.scopeBlockers(repoPath, username, current, newScope)
+    for (const b of blockers) {
+      if (b.kind === 'read-only') throw readOnlyError(`Requête ${id}`, b.reason)
+      if (b.kind === 'params') throw paramsError([b.message])
+      throw dependentsError(b.widgets, 'repasser en privé')
+    }
     // GH70 — une colonne est réservée aux requêtes partagées : retirée au passage en privé
     // (confirmation côté UI) ; une déclaration lue invalide n'est pas recopiée.
     const column = newScope === 'shared' ? current.column : null
@@ -232,7 +236,6 @@ export class SavedQueriesService {
     const payload = { title: current.title, createdBy: current.createdBy, createdAt: current.createdAt, script: current.script, parameters: current.parameters, column, template }
     let moved: SavedQuery
     if (newScope === 'private') {
-      await this.assertNoDependents(repoPath, username, id, 'repasser en privé')
       await this.removeShared(repoPath, id)
       const newId = generatePrivateId()
       const pref = this.readPref(repoPath, username)
@@ -300,11 +303,23 @@ export class SavedQueriesService {
   private async assertNoDependents(repoPath: string, username: string, id: string, action: string): Promise<void> {
     if (!this.dashboards) return
     const dependents = await this.dashboards.findDependentWidgets(repoPath, username, id)
-    if (dependents.length === 0) return
-    const list = dependents
-      .map((d) => `"${d.widgetTitle}" (dashboard "${d.dashboardTitle}", ${d.dashboardScope === 'shared' ? 'partagé' : 'privé'})`)
-      .join(', ')
-    throw new Error(`Impossible de ${action} cette requête : utilisée par ${dependents.length} widget(s) — ${list}.`)
+    if (dependents.length > 0) throw dependentsError(dependents, action)
+  }
+
+  /**
+   * GH67 — gardes d'un changement de portée de `q` vers `to`, source unique pour `setScope` et pour
+   * l'aperçu de la confirmation (`SuiviScopeService`) : lecture seule, paramètres invalides, widgets
+   * dépendants (rétrogradation). `dependents` : widgets qui référencent la requête (en promotion,
+   * ceux des dashboards privés de l'utilisateur, remappés). Même portée : rien.
+   */
+  async scopeBlockers(repoPath: string, username: string, q: SavedQuery, to: QueryScope): Promise<{ blockers: QueryScopeBlocker[]; dependents: ScopeWidgetRef[] }> {
+    if (q.scope === to) return { blockers: [], dependents: [] }
+    const blockers: QueryScopeBlocker[] = []
+    if (q.state.readOnly) blockers.push({ kind: 'read-only', reason: q.state.readOnly })
+    if (q.parametersError) blockers.push({ kind: 'params', message: q.parametersError })
+    const dependents = this.dashboards ? await this.dashboards.findDependentWidgets(repoPath, username, q.id) : []
+    if (to === 'private' && dependents.length > 0) blockers.push({ kind: 'dependents', widgets: dependents })
+    return { blockers, dependents }
   }
 
   // ─── Historique (toujours privé) ──────────────────────────────────────────────
@@ -371,6 +386,13 @@ function paramsError(errors: string[]): Error {
 }
 
 const COLUMN_PRIVATE_MESSAGE = 'colonne calculée réservée aux requêtes partagées'
+
+function dependentsError(dependents: ScopeWidgetRef[], action: string): Error {
+  const list = dependents
+    .map((d) => `"${d.widgetTitle}" (dashboard "${d.dashboardTitle}", ${d.dashboardScope === 'shared' ? 'partagé' : 'privé'})`)
+    .join(', ')
+  return new Error(`Impossible de ${action} cette requête : utilisée par ${dependents.length} widget(s) — ${list}.`)
+}
 
 /** GH70 sprint 3 — requête qui suit son modèle : empreinte réécrite selon le calcul actuel (sans la
  *  colonne), pour qu'une empreinte d'avant ce calcul (colonne comprise) ne la rende pas personnalisée

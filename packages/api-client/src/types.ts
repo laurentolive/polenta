@@ -974,8 +974,9 @@ export interface ApiClient {
     sharePreview(repoPath: string, username: string, id: string): Promise<DashboardSharePreview>
     /**
      * GH67 — partage le dashboard privé et ses requêtes privées (requêtes d'abord). Refus sans
-     * écriture `SCOPE_BLOCKED` ; échec en route `SCOPE_PARTIAL` (requêtes déjà partagées conservées).
-     * Le retour porte le nouvel id.
+     * écriture `SCOPE_BLOCKED` ; échec après au moins une requête partagée `SCOPE_PARTIAL` (requêtes
+     * déjà partagées conservées) ; tout autre échec (première requête, dashboard sans requête
+     * privée) : erreur d'origine, rien n'a été partagé. Le retour porte le nouvel id.
      */
     shareWithQueries(repoPath: string, username: string, id: string): Promise<Dashboard>
     addWidget(repoPath: string, username: string, dashboardId: string, dto: AddWidgetDto): Promise<Dashboard>

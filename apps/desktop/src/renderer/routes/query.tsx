@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Lock, Play, Save, Search as SearchIcon, Users2 } from 'lucide-react'
+import { AlertTriangle, Play, Save, Search as SearchIcon } from 'lucide-react'
 import type { GraphParamValue, QueryColumnDef, QueryParameterDef, QueryResult, QueryScope, SavedQuery, ScriptRunResult } from '@polenta/types'
 import { dashboardSelectors, isPrivateScopeId, paramsForQuery, validateColumnDecl, validateParameterDecls } from '@polenta/types'
 import { api } from '../api'
@@ -26,7 +26,7 @@ import { ParamBar } from '../components/dashboard/ParamBar'
 import { ParameterDeclEditor } from '../components/dashboard/ParameterDeclEditor'
 import { ColumnDeclEditor } from '../components/dashboard/ColumnDeclEditor'
 import { QueryScopeModal } from '../components/dashboard/QueryScopeModal'
-import { queryRenamedFrom } from '../components/dashboard/ScopeChangeParts'
+import { ScopeToggle, queryRenamedFrom, queryRenamedTo } from '../components/dashboard/ScopeChangeParts'
 import { effectiveValues } from '../lib/suiviParamValues'
 import type { ParamOptions } from '../lib/suiviParamValues'
 import { ViewHeader } from '../components/layout/ViewHeader'
@@ -255,6 +255,13 @@ function QueryPage() {
 
   const invalidateQueries = () => qc.invalidateQueries({ queryKey: ['queries', repoPath, username] })
 
+  // GH67 — requête ouverte sous un id disparu (partagée avec un dashboard ailleurs) : l'URL suit.
+  useEffect(() => {
+    if (!queryId || current) return
+    const newId = queryRenamedTo(queryId)
+    if (newId && savedQueries.some((q) => q.id === newId)) navigate({ to: '/query', search: { projectId, queryId: newId }, replace: true })
+  }, [queryId, current, savedQueries, navigate, projectId])
+
   /** GH67 — portée changée depuis cette vue : l'URL suit le nouvel id (l'éditeur n'est pas
    *  rechargé, voir l'effet de chargement). */
   function onScopeChanged(updated: SavedQuery) {
@@ -337,21 +344,13 @@ function QueryPage() {
         currentProjectId={projectId}
         title={t('sidebar.dashboard.queriesTab')}
         actions={<>
-          {current && !readOnly && (
-            <div className="flex rounded-lg border border-edge overflow-hidden text-xs" data-testid="query-scope-toggle">
-              {(['private', 'shared'] as const).map((scope) => (
-                <button
-                  key={scope}
-                  type="button"
-                  aria-pressed={current.scope === scope}
-                  onClick={(e) => { e.currentTarget.blur(); if (current.scope !== scope) setScopeModal(true) }}
-                  className={`px-3 py-1.5 flex items-center gap-1.5 ${current.scope === scope ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
-                >
-                  {scope === 'private' ? <Lock size={11} /> : <Users2 size={11} />}
-                  {t(scope === 'private' ? 'queryPage.scopePrivate' : 'queryPage.scopeShared')}
-                </button>
-              ))}
-            </div>
+          {current && current.id === queryId && !readOnly && (
+            <ScopeToggle
+              testId="query-scope-toggle"
+              value={current.scope}
+              labels={{ private: t('queryPage.scopePrivate'), shared: t('queryPage.scopeShared') }}
+              onSelect={() => setScopeModal(true)}
+            />
           )}
           {result && (
             <ExportButton

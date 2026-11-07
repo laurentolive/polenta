@@ -5,8 +5,35 @@
 import type { ReactNode } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Ban } from 'lucide-react'
-import type { QueryScopeBlocker, ScopeWidgetRef } from '@polenta/types'
+import { AlertTriangle, Ban, Lock, Users2 } from 'lucide-react'
+import type { QueryScope, QueryScopeBlocker, ScopeWidgetRef } from '@polenta/types'
+
+/** Sélecteur Privé / Partagé (en-têtes du dashboard et de `/query`). `onSelect` n'est appelé que pour
+ *  l'autre portée ; le bouton rend le focus (sinon Entrée dans la confirmation le réactiverait). */
+export function ScopeToggle({ value, labels, onSelect, disabled, testId }: {
+  value: QueryScope
+  labels: Record<QueryScope, string>
+  onSelect: (scope: QueryScope) => void
+  disabled?: boolean
+  testId?: string
+}) {
+  return (
+    <div className="flex rounded-lg border border-edge overflow-hidden text-xs" data-testid={testId}>
+      {(['private', 'shared'] as const).map((scope) => (
+        <button
+          key={scope}
+          type="button"
+          aria-pressed={value === scope}
+          disabled={disabled}
+          onClick={(e) => { e.currentTarget.blur(); if (value !== scope) onSelect(scope) }}
+          className={`px-3 py-1.5 flex items-center gap-1.5 ${value === scope ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
+        >
+          {scope === 'private' ? <Lock size={11} /> : <Users2 size={11} />} {labels[scope]}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 export function ScopeModalFrame({ title, testId, children, footer }: { title: string; testId: string; children: ReactNode; footer: ReactNode }) {
   return (
@@ -63,11 +90,14 @@ export function BlockerLine({ blocker }: { blocker: QueryScopeBlocker }) {
   )
 }
 
-/** Clés à rafraîchir après un changement de portée (ids changés, widgets remappés, colonnes). */
-export function invalidateAfterScopeChange(qc: QueryClient, repoPath: string, username: string): void {
-  for (const key of ['queries', 'queries-order', 'dashboards', 'dashboards-order', 'dashboard']) {
+/** Clés à rafraîchir après un changement de portée (ids changés, widgets remappés, colonnes).
+ *  `exceptDashboardId` : dashboard qui vient de changer d'id, non relu sous son ancien id (il
+ *  n'existe plus ; l'appelant renseigne le nouveau). */
+export function invalidateAfterScopeChange(qc: QueryClient, repoPath: string, username: string, exceptDashboardId?: string): void {
+  for (const key of ['queries', 'queries-order', 'dashboards', 'dashboards-order']) {
     void qc.invalidateQueries({ queryKey: [key, repoPath, username] })
   }
+  void qc.invalidateQueries({ queryKey: ['dashboard', repoPath, username], predicate: (q) => q.queryKey[3] !== exceptDashboardId })
   void qc.invalidateQueries({ queryKey: ['widget-query-result'] })
   void qc.invalidateQueries({ queryKey: ['suivi-updates'] })
 }
@@ -81,6 +111,12 @@ export function noteQueryRenamed(oldId: string, newId: string): void {
 }
 export function queryRenamedFrom(newId: string | undefined): string | undefined {
   return newId ? renamedQueries.get(newId) : undefined
+}
+/** Nouvel id d'une requête dont la portée a changé (requête ouverte sous son ancien id). */
+export function queryRenamedTo(oldId: string | undefined): string | undefined {
+  if (!oldId) return undefined
+  for (const [newId, from] of renamedQueries) if (from === oldId) return newId
+  return undefined
 }
 
 /** Message d'une erreur du main sans le préfixe de code (`SCOPE_PARTIAL: …`). */

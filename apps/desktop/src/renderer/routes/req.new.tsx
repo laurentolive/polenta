@@ -7,6 +7,7 @@ import { api } from '../api'
 import { useProjectSchema, getAllObjectTypes } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
 import { ViewHeader } from '../components/layout/ViewHeader'
+import { typeChoiceLabel } from '../lib/typeLabels'
 
 export const Route = createFileRoute('/req/new')({
   component: NewRequirementPage,
@@ -124,7 +125,7 @@ function NewRequirementPage() {
               disabled={isDisabled}
             >
               {reqTypes.map(t => (
-                <option key={t.name} value={t.name}>{t.label ?? t.name}</option>
+                <option key={t.name} value={t.name}>{typeChoiceLabel(t, reqTypes)}</option>
               ))}
             </select>
           ) : (

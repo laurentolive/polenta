@@ -34,6 +34,7 @@ import type { TypeTreeNode, ObjectTypeDefinition, ObjectCategory, SystemNode, Li
 import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { DEFAULT_OBJECT_TITLE, findSystemNode, flattenSystemNodes } from '@polenta/types'
 import type { FilterOptions } from '../lib/textFilter'
+import { typeChoiceLabel } from '../lib/typeLabels'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -384,17 +385,16 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // Filtered to the active tab's category (T145 — split "Système" into Exigences/Tests/
   // Campagnes) so the combobox only ever lists types relevant to the tab the user is on, instead
   // of every category merged together.
-  const componentTypeOptions: ComponentTypeOption[] = componentOptions.flatMap(opt =>
-    opt.objectTypes
-      .filter(t => t.category === urlCategory)
-      .map(t => ({
-        repoName: opt.repoName,
-        nodeId: opt.nodeId,
-        typeId: t.name,
-        label: `${opt.label} / ${t.label || t.name}`,
-        groupLabel: opt.groupLabel,
-      })),
-  )
+  const componentTypeOptions: ComponentTypeOption[] = componentOptions.flatMap(opt => {
+    const types = opt.objectTypes.filter(t => t.category === urlCategory)
+    return types.map(t => ({
+      repoName: opt.repoName,
+      nodeId: opt.nodeId,
+      typeId: t.name,
+      label: `${opt.label} / ${typeChoiceLabel(t, types)}`,
+      groupLabel: opt.groupLabel,
+    }))
+  })
 
   const selectedRepoName = urlRepo ?? componentOptions[0]?.repoName ?? ''
   const selectedRepoOption = flatNodes.find(n => n.name === selectedRepoName) ?? flatNodes[0]

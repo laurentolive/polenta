@@ -31,13 +31,14 @@ function shortPin(pin: string): string {
 export function DiamondConflictModal({ conflicts, onResolve, onCancel }: Props) {
   const { t } = useTranslation()
   // Build a flat list of (url, pin) pairs that need names — one per pair, even when it appears
-  // in several conflicts (an override is keyed by (url, pin)).
+  // in several conflicts (an override is keyed by (url, pin)). Prefilled with the name the
+  // declarations currently resolve to (GH324): the user renames only the version(s) to move.
   const initialDrafts: PinDraft[] = []
   for (const c of conflicts) {
     for (const p of c.pins) {
       const url = p.url ?? c.url
       if (!initialDrafts.some(d => d.url === url && d.pin === p.pin)) {
-        initialDrafts.push({ url, pin: p.pin, mountAs: '' })
+        initialDrafts.push({ url, pin: p.pin, mountAs: c.mountName ?? '' })
       }
     }
   }
@@ -94,10 +95,14 @@ export function DiamondConflictModal({ conflicts, onResolve, onCancel }: Props) 
 
         {/* Conflicts */}
         <div className="px-5 py-4 space-y-5 max-h-[60vh] overflow-y-auto">
-          {conflicts.map(conflict => (
+          {conflicts.map(conflict => {
+            // GH324 — one url shared by every version: shown once in the header; otherwise
+            // (same name declared for different repos) each version shows its own.
+            const sharedUrl = conflict.pins.every(p => (p.url ?? conflict.url) === conflict.url)
+            return (
             <div key={conflict.mountName ?? conflict.url} className="space-y-3">
               <p className="text-xs font-mono text-ink-2 bg-surface-2 rounded px-2 py-1 break-all">
-                {conflict.mountName ? `${conflict.mountName} — ` : ''}{conflict.url}
+                {[conflict.mountName, sharedUrl ? conflict.url : null].filter(Boolean).join(' — ')}
               </p>
               {conflict.pins.map(pinEntry => {
                 const pinUrl = pinEntry.url ?? conflict.url
@@ -107,7 +112,7 @@ export function DiamondConflictModal({ conflicts, onResolve, onCancel }: Props) 
                 const draft = drafts[draftIdx]
                 return (
                   <div key={`${pinUrl} ${pinEntry.pin}`} className="pl-3 border-l-2 border-edge space-y-1.5">
-                    {pinUrl !== conflict.url && (
+                    {!sharedUrl && (
                       <p className="text-xs font-mono text-ink-2 break-all">{pinUrl}</p>
                     )}
                     <div className="flex items-center justify-between gap-2">
@@ -137,7 +142,8 @@ export function DiamondConflictModal({ conflicts, onResolve, onCancel }: Props) 
                 )
               })}
             </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Actions */}

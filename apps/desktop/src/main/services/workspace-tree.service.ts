@@ -493,7 +493,10 @@ export class WorkspaceTreeService {
         })
       }
       // Already in graph: shared (same url+pin) or conflict — recorded here, detected in pass 2.
-      graph.get(mountName)!.declarations.push({ url: dep.url, pin: dep.pin, requiredBy: name })
+      const declarations = graph.get(mountName)!.declarations
+      if (!declarations.some(d => d.url === dep.url && d.pin === dep.pin && d.requiredBy === name)) {
+        declarations.push({ url: dep.url, pin: dep.pin, requiredBy: name })
+      }
 
       // Recurse into dependency (only if repo exists on disk; otherwise skip recursion)
       const depExists = await fsP.stat(depRepoPath).then(() => true).catch(() => false)
@@ -524,13 +527,19 @@ export class WorkspaceTreeService {
    * A conflict is several declarations resolving to the same mount name (same directory) with a
    * different (url, pin). Two mounts of the same url under distinct names (after a mount-override
    * chosen in DiamondConflictModal) are two separate repos, not a conflict; the same (url, pin)
-   * declared by several repos is a shared mount.
+   * declared by several repos is a shared mount. Names differing only by case are the same
+   * directory on Windows/macOS: grouped together.
    */
   private detectDiamondConflicts(graph: Map<string, GraphNode>): DiamondConflict[] {
-    const conflicts: DiamondConflict[] = []
+    const byDir = new Map<string, GraphNode[]>()
     for (const node of graph.values()) {
+      const key = node.name.toLowerCase()
+      byDir.set(key, [...(byDir.get(key) ?? []), node])
+    }
+    const conflicts: DiamondConflict[] = []
+    for (const nodes of byDir.values()) {
       const variants = new Map<string, { url: string; pin: string; requiredBy: string[] }>()
-      for (const d of node.declarations) {
+      for (const d of nodes.flatMap(n => n.declarations)) {
         const key = JSON.stringify([d.url, d.pin])
         let variant = variants.get(key)
         if (!variant) {
@@ -543,7 +552,7 @@ export class WorkspaceTreeService {
       const list = [...variants.values()]
       conflicts.push({
         url: list[0].url,
-        mountName: node.name,
+        mountName: nodes[0].name,
         pins: list.map(v => ({ pin: v.pin, url: v.url, requiredBy: v.requiredBy })),
       })
     }

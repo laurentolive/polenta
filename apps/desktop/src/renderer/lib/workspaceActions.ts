@@ -336,23 +336,19 @@ export interface PinPropagationOutcome {
 
 /**
  * Finds every repo in `flatNodes` whose polenta-repo.yaml declares `target` (by name+url)
- * as a dependency, and rewrites its pin to `newPin` via addDependency() — reusing its
- * "correct an existing entry" path, its tree rebuild, and its diamond-conflict rollback
- * (T82). Never touches `target`'s own repo. Best-effort per dependent, same reasoning as
- * renameDependency's cascade: one repo's write failing must not stop the others.
+ * as a dependency, and rewrites its pin to `newPin` (T82). Never touches `target`'s own repo.
+ * A dependent whose manifest can't be read or written is reported in `failed` without stopping
+ * the others.
  *
- * Deliberately calls addDependency() once per matched dependent (one manifest write + one
- * full workspace.rebuildTree() each) instead of batching writes and rebuilding once — unlike
- * renameDependency's cascade, each write here can independently roll back on a diamond-conflict,
- * and addDependency already owns that read/write/rebuild/rollback sequence atomically; splitting
- * it apart to batch would duplicate that logic. Workspaces are capped at a handful of repos
- * (see CLAUDE.md), so the extra rebuilds are cheap local file I/O, not a real scaling concern.
+ * GH324 — every manifest is written first, then the tree is rebuilt ONCE. A repo shared by
+ * several parents (diamond) is one mount declared by each of them: updating them one rebuild at
+ * a time would leave, in between, two declarations of the same mount name with different pins —
+ * a diamond conflict since GH324 — and every write would roll back. If the single rebuild is not
+ * 'ok', every written manifest is rolled back (all-or-nothing, as addDependency): a
+ * diamond-conflict reports all of them in `conflicted`, any other status in `failed`.
  *
- * The loop is sequential (not Promise.all) on purpose, not just for simplicity: every
- * addDependency() call ends in api.workspace.rebuildTree(), which deletes and rewrites the
- * single shared `.polenta/tree.cache.yaml` for the whole workspace — concurrent rebuilds would
- * race on that file. Do not parallelize this without first making rebuildTree safe to run
- * concurrently.
+ * Sequential manifest I/O and a single `api.workspace.rebuildTree()`: rebuildTree deletes and
+ * rewrites the single shared `.polenta/tree.cache.yaml`, concurrent rebuilds would race on it.
  */
 export async function propagatePinToDependents(
   workspaceDir: string,
@@ -361,19 +357,48 @@ export async function propagatePinToDependents(
   newPin: string,
 ): Promise<PinPropagationOutcome> {
   const outcome: PinPropagationOutcome = { updated: [], conflicted: [], failed: [] }
+  const written: Array<{ name: string; repoPath: string; manifest: PolentaRepoManifest }> = []
   for (const node of flatNodes) {
     if (node.name === target.name) continue
     try {
       const manifest = await api.polentaRepo.get(node.repoPath).then((m): PolentaRepoManifest => m ?? {})
-      const dep = (manifest.dependencies ?? []).find(d => d.name === target.name && d.url === target.url)
-      if (!dep || dep.pin === newPin) continue
-      const result = await addDependency(workspaceDir, node.repoPath, { ...dep, pin: newPin })
-      if (result.status === 'diamond-conflict') outcome.conflicted.push(node.name)
-      else if (result.status === 'ok') outcome.updated.push(node.name)
-      else outcome.failed.push({ name: node.name, error: `Statut inattendu lors du rebuild : ${result.status}` })
+      const dependencies = manifest.dependencies ?? []
+      const index = dependencies.findIndex(d => d.name === target.name && d.url === target.url)
+      if (index < 0 || dependencies[index].pin === newPin) continue
+      const nextDependencies = dependencies.map((d, i) => i === index ? { ...d, pin: newPin } : d)
+      await api.polentaRepo.save(node.repoPath, { ...manifest, dependencies: nextDependencies })
+      written.push({ name: node.name, repoPath: node.repoPath, manifest })
     } catch (err) {
       outcome.failed.push({ name: node.name, error: err instanceof Error ? err.message : String(err) })
     }
+  }
+  if (written.length === 0) return outcome
+
+  let result: WorkspaceOpenResult | null = null
+  let rebuildError: unknown = null
+  try {
+    result = await api.workspace.rebuildTree(workspaceDir)
+  } catch (err) {
+    rebuildError = err
+  }
+  if (result?.status === 'ok') {
+    outcome.updated.push(...written.map(w => w.name))
+    return outcome
+  }
+  for (const w of written) {
+    try {
+      await api.polentaRepo.save(w.repoPath, w.manifest) // roll back — all-or-nothing
+    } catch (err) {
+      console.error(`[propagatePinToDependents] Could not roll back ${w.name}:`, err)
+    }
+  }
+  if (result?.status === 'diamond-conflict') {
+    outcome.conflicted.push(...written.map(w => w.name))
+  } else {
+    const error = rebuildError
+      ? (rebuildError instanceof Error ? rebuildError.message : String(rebuildError))
+      : `Statut inattendu lors du rebuild : ${result?.status}`
+    outcome.failed.push(...written.map(w => ({ name: w.name, error })))
   }
   return outcome
 }

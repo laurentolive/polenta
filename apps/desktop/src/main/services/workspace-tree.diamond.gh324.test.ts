@@ -100,6 +100,16 @@ describe('WorkspaceTreeService — conflits en diamant (GH324)', () => {
     ])
   })
 
+  it('noms ne différant que par la casse (même dossier sous Windows/macOS) : conflit signalé', async () => {
+    await diamond({ name: 'Comp', url: URL_COMP, pin: 'int-A' }, { name: 'comp', url: URL_COMP, pin: 'int-B' })
+    await initRepo('comp', 'int-A')
+    const result = await build()
+    expect(result.status).toBe('diamond-conflict')
+    if (result.status !== 'diamond-conflict') return
+    expect(result.conflicts).toHaveLength(1)
+    expect(result.conflicts[0].pins.map(p => p.pin)).toEqual(['int-A', 'int-B'])
+  })
+
   it('résolution par la modale (un nom par version) : le workspace s\'ouvre avec les deux montages', async () => {
     await diamond({ name: 'comp', url: URL_COMP, pin: 'int-A' }, { name: 'comp', url: URL_COMP, pin: 'int-B' })
     await initRepo('comp-a', 'int-A')

@@ -97,13 +97,16 @@ describe('GH326 — réécriture à taille égale dans la seconde du commit', ()
   })
 
   it('une réécriture à l\'identique dans la seconde reste inchangée', async () => {
-    for (let attempt = 0; attempt < 5; attempt++) {
+    let sameSecond = false
+    for (let attempt = 0; attempt < 5 && !sameSecond; attempt++) {
       await waitStartOfSecond()
+      const start = Math.floor(Date.now() / 1000)
       await write(FILE, BEFORE)
       await commitBefore()
       await write(FILE, BEFORE)
-      if (Math.floor(Date.now() / 1000) === Math.floor((await fsP.stat(abs(FILE))).mtimeMs / 1000)) break
+      sameSecond = Math.floor((await fsP.stat(abs(FILE))).mtimeMs / 1000) === start
     }
+    expect(sameSecond).toBe(true)
     expect((await row(FILE))!.slice(1)).toEqual([1, 1, 1])
     expect(await sync.status(repo)).toMatchObject({ staged: [], unstaged: [] })
   })

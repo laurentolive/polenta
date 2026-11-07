@@ -5,7 +5,7 @@ import git from 'isomorphic-git'
 import type { ReadmeState, ReadmeSyncOutcome } from '@polenta/types'
 
 import type { GitService } from '../git.service'
-import { racySafeStatusMatrix } from '../racy-status.util'
+import { eolAwareStatusMatrix } from '../eol-status.util'
 import type { SyncService } from '../sync.service'
 
 const README = 'README.md'
@@ -34,7 +34,9 @@ export class RepoSettingsService {
     const current = await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined)
     if (current !== integration) return { status: 'not-on-integration', branch: integration }
     // GH326 — pas `git.status`, aveugle à une réécriture à taille égale dans la seconde de l'indexation.
-    const row = (await racySafeStatusMatrix(repoPath, [README])).find(([filepath]) => filepath === README)
+    // Un README ignoré reste « en attente », comme le renvoyait `git.status` ('ignored').
+    if (await git.isIgnored({ fs, dir: repoPath, filepath: README })) return { status: 'pending-changes' }
+    const row = (await eolAwareStatusMatrix(repoPath, [README])).find(([filepath]) => filepath === README)
     if (row && !(row[1] === 1 && row[2] === 1 && row[3] === 1)) return { status: 'pending-changes' }
 
     const head = await this.sync.readFileAtHead(repoPath, README)

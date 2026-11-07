@@ -31,8 +31,10 @@ import type { BrandInfo } from '../../shared/brand-types'
  * GH243 (v8) : changeset retiré (fichier et outils).
  *
  * GH203 (v9) : `.polenta/views/` maintenu par l'application.
+ *
+ * GH129 (v11) : outil `import_test_results` (import JUnit, champ `automationId`).
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 10
+export const AGENTS_MD_TEMPLATE_VERSION = 11
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -192,6 +194,11 @@ Tools disponibles :
 - \`bulk_import_requirements\` / \`bulk_import_tests\` / \`bulk_import_campaigns\` — import
   massif avec \`dryRun\` obligatoire par défaut (aperçu des IDs prévisionnels et des
   erreurs, sans rien écrire) ; \`dryRun: false\` écrit réellement, en série, best-effort.
+- \`import_test_results\` — importe des rapports JUnit XML comme exécutions des cas de test
+  (correspondance par le champ \`automationId\` du test, \`classname.name\` puis \`name\` ; secours par
+  la propriété JUnit \`requirement\`). \`dryRun\` par défaut : relire les non mappés et ambigus, puis
+  \`dryRun: false\`. Avec \`campaignId\`, les runs sont rattachés aux entrées de la campagne. La même
+  commande existe sans agent : \`polenta-cli.cjs import-results\`.
 - \`update_requirements\` / \`update_tests\` — modifie des objets existants par ID (titre,
   statut, \`fields\` en fusion partielle, une clé à \`null\` retire le champ ; pour un test,
   \`preconditions\`, \`postconditions\`, \`steps\`, \`equipment\`). \`dryRun\` par défaut (avant/après

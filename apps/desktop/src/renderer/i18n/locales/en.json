@@ -980,6 +980,7 @@
     "createTestCase": "Create test case"
   },
   "campaignPage": {
+    "junitImportedBadge": "Imported from JUnit",
     "paramsIncomplete": "Fill in the value of every parameter for the selected tests.",
     "newTitle": "New Test Campaign",
     "titlePlaceholder": "Ex: Sprint 11 validation campaign",
@@ -2342,6 +2343,7 @@
     "campaignMissing": "campaign not found",
     "originApp": "entered",
     "originExcel": "Excel import",
+    "originJunit": "JUnit import",
     "group": {
       "execution": "Execution",
       "campaign": "Campaign",

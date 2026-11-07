@@ -12,6 +12,7 @@
     "package": "electron-vite build && pnpm run build:mcp-server && pnpm run build:notices && tsx scripts/package.ts",
     "build:notices": "tsx scripts/generate-third-party-notices.ts",
     "mcp-server": "tsx src/mcp-server/dev-entry.ts",
+    "cli": "tsx src/cli/dev-entry.ts",
     "build:mcp-server": "tsx scripts/build-mcp-server.ts",
     "dev:web": "concurrently -k -n server,client -c blue,magenta \"pnpm dev:web:server\" \"pnpm dev:web:client\"",
     "dev:web:server": "tsx watch --import ./scripts/register-brand.ts src/web-server/index.ts",

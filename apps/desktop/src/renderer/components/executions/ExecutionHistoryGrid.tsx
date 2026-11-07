@@ -12,6 +12,12 @@ import {
   availableColumns, defaultExecutionColumns, isSortable, sortValue, unionRunFields, type ExecutionColumn, type ExecutionColumnGroup,
 } from './executionColumns'
 
+/** Libellé de l'origine d'un run (GH36 classeur, GH129 JUnit) ; absente : saisie dans l'outil. */
+const ORIGIN_LABEL_KEY: Record<string, string> = {
+  'excel-import': 'executionHistory.originExcel',
+  'junit-import': 'executionHistory.originJunit',
+}
+
 // GH197 — grille d'historique des exécutions (specs/GH197.md §1–§3) : une ligne par run (ou entrée en
 // attente), colonnes au choix (préférence `executions` du type), tri par en-tête, étapes dépliables.
 // Réutilisée par la vue Validation (GH204, `ValidationRuns`).
@@ -118,7 +124,7 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
       case 'date': return run ? new Date(run.executedAt).toLocaleString(i18n.language === 'en' ? 'en-GB' : 'fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : ''
       case 'tester': return run?.executedBy ?? ''
       case 'duration': return run?.duration ? `${run.duration} s` : ''
-      case 'origin': return run ? t(run.origin === 'excel-import' ? 'executionHistory.originExcel' : 'executionHistory.originApp') : ''
+      case 'origin': return run ? t(ORIGIN_LABEL_KEY[run.origin ?? ''] ?? 'executionHistory.originApp') : ''
       case 'notes': return run?.notes ? <RichTextViewer value={run.notes} repoPath={repoPath} /> : ''
       case 'equipment': return (run?.equipmentUsed ?? []).map(e => `${e.role} : ${(e as { identification?: string }).identification ?? ''}`).join('\n')
       case 'campaign': {

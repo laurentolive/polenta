@@ -21,7 +21,7 @@ import { repoKey } from './schema-refs.util'
 import { TestedVersionError } from './tested-config.service'
 import { findObjectTypeDef, isRefInReadonlyNode } from './schema-lookup.util'
 import { matchCoverageLink } from './traceability.service'
-import { plainTextToMarkdown } from './export/campaign-execution-import'
+import { plainTextToMarkdown } from './plain-text-markdown.util'
 import { junitKey, parseJunit, type JunitResult } from './junit-report.util'
 
 /** Champ de correspondance d'un type de test (spec §2.1, Q4). */
@@ -32,6 +32,8 @@ export interface ResultsImportOptions {
   workspaceDir?: string
   /** Chemins de fichiers déjà développés (les motifs sont l'affaire de l'appelant). */
   files: string[]
+  /** Dossier depuis lequel les fichiers sont affichés dans le rapport (relatifs s'ils y sont). */
+  displayBase?: string
   campaignId?: string
   /** GH202 — ID, label ou texte libre (écart non documenté). */
   testedVersion?: string
@@ -118,6 +120,11 @@ export class ResultsImportService {
 
     // 1. Lecture de tous les fichiers avant toute écriture.
     const results: JunitResult[] = []
+    const label = (file: string) => {
+      if (!o.displayBase) return file
+      const rel = path.relative(o.displayBase, file)
+      return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).join('/') : file
+    }
     for (const file of o.files) {
       let xml: string
       try {
@@ -125,7 +132,7 @@ export class ResultsImportService {
       } catch (err) {
         throw new ResultsImportError('file_unreadable', `${file}: ${err instanceof Error ? err.message : String(err)}`)
       }
-      const parsed = parseJunit(xml, file)
+      const parsed = parseJunit(xml, label(file))
       if ('fatal' in parsed) throw new ResultsImportError('invalid_xml', `${file}: ${parsed.fatal}`)
       results.push(...parsed)
     }
@@ -311,7 +318,7 @@ export class ResultsImportService {
       const unmapped = notImported.filter(n => n.reason === 'unmapped').length
       return {
         dryRun: o.dryRun,
-        files: o.files,
+        files: o.files.map(label),
         counts: {
           results: results.length, imported: imported.length, alreadyImported: alreadyImported.length, skipped,
           unmapped, ambiguous, rejected: notImported.length - unmapped - ambiguous,

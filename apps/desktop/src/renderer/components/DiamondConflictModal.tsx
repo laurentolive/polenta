@@ -30,14 +30,17 @@ function shortPin(pin: string): string {
 
 export function DiamondConflictModal({ conflicts, onResolve, onCancel }: Props) {
   const { t } = useTranslation()
-  // Build a flat list of (url, pin) pairs that need names
-  const initialDrafts: PinDraft[] = conflicts.flatMap(c =>
-    c.pins.map(p => ({
-      url: c.url,
-      pin: p.pin,
-      mountAs: '',
-    })),
-  )
+  // Build a flat list of (url, pin) pairs that need names — one per pair, even when it appears
+  // in several conflicts (an override is keyed by (url, pin)).
+  const initialDrafts: PinDraft[] = []
+  for (const c of conflicts) {
+    for (const p of c.pins) {
+      const url = p.url ?? c.url
+      if (!initialDrafts.some(d => d.url === url && d.pin === p.pin)) {
+        initialDrafts.push({ url, pin: p.pin, mountAs: '' })
+      }
+    }
+  }
 
   const [drafts, setDrafts] = useState<PinDraft[]>(initialDrafts)
 
@@ -92,17 +95,21 @@ export function DiamondConflictModal({ conflicts, onResolve, onCancel }: Props) 
         {/* Conflicts */}
         <div className="px-5 py-4 space-y-5 max-h-[60vh] overflow-y-auto">
           {conflicts.map(conflict => (
-            <div key={conflict.url} className="space-y-3">
+            <div key={conflict.mountName ?? conflict.url} className="space-y-3">
               <p className="text-xs font-mono text-ink-2 bg-surface-2 rounded px-2 py-1 break-all">
-                {conflict.url}
+                {conflict.mountName ? `${conflict.mountName} — ` : ''}{conflict.url}
               </p>
               {conflict.pins.map(pinEntry => {
+                const pinUrl = pinEntry.url ?? conflict.url
                 const draftIdx = drafts.findIndex(
-                  d => d.url === conflict.url && d.pin === pinEntry.pin,
+                  d => d.url === pinUrl && d.pin === pinEntry.pin,
                 )
                 const draft = drafts[draftIdx]
                 return (
-                  <div key={pinEntry.pin} className="pl-3 border-l-2 border-edge space-y-1.5">
+                  <div key={`${pinUrl} ${pinEntry.pin}`} className="pl-3 border-l-2 border-edge space-y-1.5">
+                    {pinUrl !== conflict.url && (
+                      <p className="text-xs font-mono text-ink-2 break-all">{pinUrl}</p>
+                    )}
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <span className="text-xs font-medium text-ink">{t('diamondConflict.pinLabel')}</span>{' '}

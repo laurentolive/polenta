@@ -270,7 +270,8 @@ export class TestsService {
       // GH196 — testeur fourni par l'appelant (identité git dans l'application, saisie libre du classeur) ;
       // inconnu : vide (plus de marqueur `TODO:current-user`).
       executedBy: dto.executedBy || '',
-      duration: 0,
+      // GH129 — durée du rapport importé, arrondie à la seconde.
+      duration: dto.duration !== undefined && Number.isFinite(dto.duration) && dto.duration > 0 ? Math.round(dto.duration) : 0,
       equipmentUsed: dto.equipmentUsed ?? [],
       stepResults: stepResults.map(({ fields: _raw, ...s }, i) => {
         const fields = prepared.stepFields[i]

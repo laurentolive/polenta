@@ -11,6 +11,7 @@ import type { StepDraft } from '../components/StepsTable'
 import { RichTextProvider } from '../contexts/RichTextContext'
 import { RichTextToolbar } from '../components/system/RichTextToolbar'
 import { ViewHeader } from '../components/layout/ViewHeader'
+import { typeChoiceLabel } from '../lib/typeLabels'
 
 export const Route = createFileRoute('/test/new')({
   component: NewTestCasePage,
@@ -145,7 +146,7 @@ function NewTestCasePage() {
               <select value={type} onChange={e => handleTypeChange(e.target.value)}
                 className="input-field w-full" disabled={isDisabled}>
                 {testTypes.map(t => (
-                  <option key={t.name} value={t.name}>{t.label ?? t.name}</option>
+                  <option key={t.name} value={t.name}>{typeChoiceLabel(t, testTypes)}</option>
                 ))}
               </select>
             ) : (

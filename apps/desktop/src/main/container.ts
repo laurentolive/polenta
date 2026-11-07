@@ -31,6 +31,7 @@ import { PolentaRepoService } from './services/polenta-repo.service'
 import { WorkspaceTreeService } from './services/workspace-tree.service'
 import { InterfaceComplianceService } from './services/interface-compliance.service'
 import { SavedQueriesService } from './services/saved-queries.service'
+import { SuiviScopeService } from './services/suivi-scope.service'
 import { DashboardsService } from './services/dashboards.service'
 import { DashboardSeedService } from './services/dashboard-seed.service'
 import { ExportService } from './services/export.service'
@@ -183,6 +184,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // never needs to look up a SavedQuery, so this ordering avoids a circular dependency.
   const savedQueries = new SavedQueriesService(git, dashboards)
   const suivi = new SuiviService(scriptEngine, graph, savedQueries, dashboards, schema, workspaceTree)
+  // GH67 — aperçus de changement de portée, partage d'un dashboard avec ses requêtes privées.
+  const suiviScope = new SuiviScopeService(savedQueries, dashboards)
   const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries, undefined, dashboardLibrary)
   // GH74 §6.3 — bandeau des mises à jour (bibliothèque, widgets du seed, versions de modèle).
   const suiviUpdates = new SuiviUpdatesService(git, dashboardLibrary, dashboardSeed, savedQueries, dashboards)
@@ -244,6 +247,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     suivi,
     suiviUpdates,
     savedQueries,
+    suiviScope,
     savedViews,
     dashboards,
     dashboardSeed,

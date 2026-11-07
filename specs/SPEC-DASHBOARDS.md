@@ -3,7 +3,8 @@
 > Référence parent : [SPEC.md](../SPEC.md) §2.7
 > Dépend de : [SPEC-TECH-stack.md](SPEC-TECH-stack.md) §1.1/§2, [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md), [SPEC-REQ-requirements.md](SPEC-REQ-requirements.md)
 > Introduit par T77 (sprints 1–3) ; réécrit par GH74 (graphe de données JSON, scripts JS isolés, rendu Vega-Lite) ;
-> paramètres choisis à l'affichage : GH93 (§5.1) ; colonnes calculées de la Vue Système : GH70 (§5.2)
+> paramètres choisis à l'affichage : GH93 (§5.1) ; colonnes calculées de la Vue Système : GH70 (§5.2) ;
+> changement de portée depuis l'app, partage d'un dashboard avec ses requêtes : GH67 (§7.0b)
 
 ---
 
@@ -362,11 +363,33 @@ jamais réécrit. Écriture d'un objet en lecture seule → refus `SUIVI_READ_ON
 
 - Un widget ne peut être partagé que si sa requête l'est — UI (filtre du sélecteur) et service
   (`DashboardsService.setScope` / `addWidget` / `updateWidget`).
-- Rétrogradation (partagé → privé) d'une requête bloquée si des widgets partagés en dépendent ;
-  suppression d'une requête utilisée par un widget bloquée (dépendants affichés).
+- Rétrogradation (partagé → privé) d'une requête bloquée si un widget en dépend (dashboard partagé
+  ou dashboard privé de l'utilisateur, `assertNoDependents`) ; sa colonne calculée (GH70) est
+  retirée ; suppression d'une requête utilisée par un widget bloquée (dépendants affichés).
 - Promotion (privé → partagé) libre ; l'id change, les widgets privés de l'utilisateur sont
   remappés ; la copie partagée est écrite avant le retrait de la privée.
+- Portée autre que `private` / `shared` refusée (`Portée invalide`, GH67).
+- Données du `.pref` indexées par id de dashboard (ordre du panneau, `suiviWidgetParamValues` GH125) : suivent le
+  nouvel id au changement de portée, en un point unique (`moveDashboardKeys`, GH67).
 - Limite connue : les dashboards privés d'un autre utilisateur ne sont pas visibles.
+
+**Changement de portée depuis l'app (GH67).** Toujours après une confirmation qui montre un aperçu
+calculé dans le main (`SuiviScopeService`, canaux `queries:scope-preview`, `dashboards:share-preview`) :
+- **Requête seule** : sélecteur *Privée / Partagée* de l'en-tête de `/query` (requête enregistrée,
+  non en lecture seule) ou bouton de portée au survol de sa ligne dans le panneau (§8). Aperçu :
+  effet, autres dashboards privés remappés, titre déjà pris par une requête partagée (non bloquant,
+  casse et espaces de bord ignorés), colonne retirée ; bloquants : lecture seule, paramètres
+  invalides, widgets dépendants (rétrogradation). Après : l'URL suit le nouvel id, l'éditeur de
+  `/query` est conservé (modifications non enregistrées comprises ; seule la version enregistrée
+  change de portée).
+- **Dashboard privé avec requêtes privées** (`dashboards:share-with-queries`) : *Partagé* ouvre une
+  confirmation listant ses requêtes privées (widgets de ce dashboard, autres dashboards privés
+  remappés, titre déjà pris, y compris entre requêtes du lot) ; sans requête privée, partage
+  immédiat. Bloquants vérifiés avant toute écriture (lecture seule, paramètres invalides, requête
+  introuvable → `SCOPE_BLOCKED`). Écriture : chaque requête promue, puis le dashboard. Échec après au
+  moins une promotion → `SCOPE_PARTIAL` (« k requête(s) sur N partagée(s) »), pas d'annulation :
+  relancer reprend sur les requêtes restées privées. Repasser le dashboard en privé ne rétrograde pas
+  ses requêtes.
 
 ### 7.1 Seeds
 
@@ -421,7 +444,8 @@ Sections « Dashboards » et « Requêtes » réorganisables par glisser-dépose
 empilées, repliables (`localStorage['polenta:suiviCollapsed']`), séparateur déplaçable
 (`localStorage['polenta:suiviSplit']`), section dépliée automatiquement quand elle contient l'élément
 actif. Badge « SQL » / « Lecture seule » sur un objet en lecture seule. Suppression d'une requête
-depuis le panneau uniquement.
+depuis le panneau uniquement. Section Requêtes : bouton de portée au survol (« Passer en partagée /
+privée », absent en lecture seule), qui ouvre la confirmation de §7.0b (GH67).
 
 ### 8.1 Bandeau des mises à jour
 
@@ -466,8 +490,10 @@ bibliothèque). Budgets (contexte préparé) : avancement des campagnes < 200 ms
 
 ## 10. Hors scope
 
-- Via MCP : changement de scope privé ↔ partagé, ordre du panneau latéral, historique, seeds,
-  bandeau — réservés à l'app.
+- Via MCP : changement de scope privé ↔ partagé (y compris le partage d'un dashboard avec ses
+  requêtes, GH67), ordre du panneau latéral, historique, seeds, bandeau — réservés à l'app.
+- Rétrogradation groupée (dashboard partagé → privé avec ses requêtes), dédoublonnage de requêtes
+  identiques au partage, bouton de portée d'un dashboard dans le panneau (GH67).
 - Redimensionnement libre des widgets ; partage d'un widget entre dashboards.
 - Alertes / notifications sur seuils, requêtes planifiées.
 - Colonnes calculées (GH70) : tri des colonnes de la Vue Excel, vue Édition et autres vues (Recherche,

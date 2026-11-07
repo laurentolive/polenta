@@ -15,8 +15,8 @@ import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Play, Save, Search as SearchIcon } from 'lucide-react'
-import type { GraphParamValue, QueryColumnDef, QueryParameterDef, QueryResult, QueryScope, ScriptRunResult } from '@polenta/types'
-import { dashboardSelectors, paramsForQuery, validateColumnDecl, validateParameterDecls } from '@polenta/types'
+import type { GraphParamValue, QueryColumnDef, QueryParameterDef, QueryResult, QueryScope, SavedQuery, ScriptRunResult } from '@polenta/types'
+import { dashboardSelectors, isPrivateScopeId, paramsForQuery, validateColumnDecl, validateParameterDecls } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { ResultTable } from '../components/dashboard/ResultTable'
@@ -25,6 +25,8 @@ import { TemplateForm } from '../components/dashboard/TemplateForm'
 import { ParamBar } from '../components/dashboard/ParamBar'
 import { ParameterDeclEditor } from '../components/dashboard/ParameterDeclEditor'
 import { ColumnDeclEditor } from '../components/dashboard/ColumnDeclEditor'
+import { QueryScopeModal } from '../components/dashboard/QueryScopeModal'
+import { ScopeToggle, queryRenamedFrom, queryRenamedTo } from '../components/dashboard/ScopeChangeParts'
 import { effectiveValues } from '../lib/suiviParamValues'
 import type { ParamOptions } from '../lib/suiviParamValues'
 import { ViewHeader } from '../components/layout/ViewHeader'
@@ -83,7 +85,9 @@ function QueryPage() {
     queryFn: () => api.queries.list(repoPath, username),
     enabled: !!repoPath && !!username,
   })
-  const current = queryId ? savedQueries.find((q) => q.id === queryId) : undefined
+  // GH67 — portée changée (nouvel id) : tant que la liste n'est pas relue, la requête est trouvée
+  // sous son ancien id.
+  const current = queryId ? savedQueries.find((q) => q.id === queryId) ?? savedQueries.find((q) => q.id === queryRenamedFrom(queryId)) : undefined
   useSetTabTitle(current?.title)
 
   const { data: history = [] } = useQuery({
@@ -106,6 +110,8 @@ function QueryPage() {
   const [run, setRun] = useState<ScriptRunResult | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const [saveModal, setSaveModal] = useState<{ title: string; scope: QueryScope } | null>(null)
+  /** GH67 — confirmation du changement de portée de la requête ouverte. */
+  const [scopeModal, setScopeModal] = useState(false)
   const [historyFilter, setHistoryFilter] = useState('')
   /** GH93 — déclaration des paramètres (mode Script) et valeurs de la barre (non mémorisées). */
   const [declaration, setDeclaration] = useState<QueryParameterDef[]>([])
@@ -213,6 +219,13 @@ function QueryPage() {
   // Requête enregistrée ou entrée d'historique désignée par l'URL : chargée puis exécutée.
   useEffect(() => {
     if (!queryId || loadedRef.current === queryId) return
+    // GH67 — même requête sous un nouvel id (changement de portée, depuis cette vue ou le panneau
+    // latéral) : éditeur conservé ; une rétrogradation retire la colonne (réservée au partagé).
+    if (loadedRef.current && queryRenamedFrom(queryId) === loadedRef.current) {
+      loadedRef.current = queryId
+      if (isPrivateScopeId(queryId)) setColumnDecl(null)
+      return
+    }
     const saved = savedQueries.find((q) => q.id === queryId)
     const hist = history.find((h) => h.id === queryId)
     if (!saved && !hist) return
@@ -241,6 +254,20 @@ function QueryPage() {
   }, [queryId, savedQueries, history])
 
   const invalidateQueries = () => qc.invalidateQueries({ queryKey: ['queries', repoPath, username] })
+
+  // GH67 — requête ouverte sous un id disparu (partagée avec un dashboard ailleurs) : l'URL suit.
+  useEffect(() => {
+    if (!queryId || current) return
+    const newId = queryRenamedTo(queryId)
+    if (newId && savedQueries.some((q) => q.id === newId)) navigate({ to: '/query', search: { projectId, queryId: newId }, replace: true })
+  }, [queryId, current, savedQueries, navigate, projectId])
+
+  /** GH67 — portée changée depuis cette vue : l'URL suit le nouvel id (l'éditeur n'est pas
+   *  rechargé, voir l'effet de chargement). */
+  function onScopeChanged(updated: SavedQuery) {
+    setScopeModal(false)
+    navigate({ to: '/query', search: { projectId, queryId: updated.id }, replace: true })
+  }
 
   const createMutation = useMutation({
     mutationFn: async (dto: { title: string; scope: QueryScope }) =>
@@ -316,8 +343,16 @@ function QueryPage() {
       <ViewHeader
         currentProjectId={projectId}
         title={t('sidebar.dashboard.queriesTab')}
-        actions={
-          result && (
+        actions={<>
+          {current && current.id === queryId && !readOnly && (
+            <ScopeToggle
+              testId="query-scope-toggle"
+              value={current.scope}
+              labels={{ private: t('queryPage.scopePrivate'), shared: t('queryPage.scopeShared') }}
+              onSelect={() => setScopeModal(true)}
+            />
+          )}
+          {result && (
             <ExportButton
               kind="query-result"
               formats={['xlsx', 'pdf']}
@@ -332,9 +367,12 @@ function QueryPage() {
                 return { queryName: currentQueryName, resultJson }
               }}
             />
-          )
-        }
+          )}
+        </>}
       />
+      {scopeModal && current && (
+        <QueryScopeModal repoPath={repoPath} username={username} query={current} onClose={() => setScopeModal(false)} onChanged={onScopeChanged} />
+      )}
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-5xl p-6 pb-16 space-y-6">

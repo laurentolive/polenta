@@ -1,8 +1,8 @@
-import type { Dashboard, GraphParamValue, QueryParameterKind, QueryScope, ReadDashboard, ReadWidget, StoredDashboard, StoredWidget, TemplateRef, Widget, WidgetCode, WidgetParamValues, WidgetSize } from '@polenta/types'
+import type { Dashboard, GraphParamValue, QueryParameterKind, QueryScope, ReadDashboard, ReadWidget, ScopeWidgetRef, StoredDashboard, StoredWidget, TemplateRef, Widget, WidgetCode, WidgetParamValues, WidgetSize } from '@polenta/types'
 import { normalizeParamValue, QUERY_PARAMETER_KINDS, readDashboardRecord, SUIVI_FORMAT_VERSION, widgetCodeForHash } from '@polenta/types'
 import type { GitService } from './git.service'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
-import { generatePrivateId, isPrivateScopeId } from './id-scope.util'
+import { assertScope, generatePrivateId, isPrivateScopeId } from './id-scope.util'
 import { nextCounterId } from './id-counter.util'
 import {
   applyWidgetTemplate, computeState, dropLegacyFile, removeSharedObject, listObjectEntries, readOnlyError, readText, readYamlFile, toYaml, withHash,
@@ -44,13 +44,8 @@ export interface UpdateWidgetDto {
   template?: TemplateInput | null
 }
 
-export interface DependentWidget {
-  dashboardId: string
-  dashboardTitle: string
-  dashboardScope: QueryScope
-  widgetId: string
-  widgetTitle: string
-}
+/** Widget qui référence une requête (GH67 : type partagé avec le renderer). */
+export type DependentWidget = ScopeWidgetRef
 
 const DIR = 'dashboards'
 const PREFIX = 'DASHBOARD'
@@ -231,6 +226,7 @@ export class DashboardsService {
    * L'id change ; l'ordre du panneau latéral suit.
    */
   async setScope(repoPath: string, username: string, id: string, newScope: QueryScope): Promise<Dashboard> {
+    assertScope(newScope)
     const current = await this.get(repoPath, username, id)
     if (!current) throw new Error(`Dashboard introuvable : ${id}`)
     if (current.scope === newScope) return current
@@ -251,7 +247,7 @@ export class DashboardsService {
       pref.dashboards = [...(pref.dashboards ?? []), this.toPrivate({ ...draft, id: newId })]
       this.writePref(repoPath, username, pref)
     }
-    this.renameInOrder(repoPath, username, id, newId)
+    this.moveDashboardUserState(repoPath, username, id, newId)
     return (await this.get(repoPath, username, newId))!
   }
 
@@ -433,19 +429,10 @@ export class DashboardsService {
     await removeSharedObject(this.git, repoPath, DIR, id)
   }
 
-  /** Ordre du panneau latéral et valeurs des paramètres des widgets (GH125 : les ids des widgets
-   *  sont conservés au changement de portée) suivent le nouvel id. */
-  private renameInOrder(repoPath: string, username: string, oldId: string, newId: string): void {
+  /** Changement de portée (nouvel id) : les données personnelles du dashboard le suivent. */
+  private moveDashboardUserState(repoPath: string, username: string, oldId: string, newId: string): void {
     const pref = this.readPref(repoPath, username)
-    const order = pref.dashboardsOrder
-    const values = pref.suiviWidgetParamValues?.[oldId]
-    if ((!order || !order.includes(oldId)) && !values) return
-    if (order) pref.dashboardsOrder = order.map((entryId) => (entryId === oldId ? newId : entryId))
-    if (values && pref.suiviWidgetParamValues) {
-      delete pref.suiviWidgetParamValues[oldId]
-      pref.suiviWidgetParamValues[newId] = values
-    }
-    this.writePref(repoPath, username, pref)
+    if (moveDashboardKeys(pref, oldId, newId)) this.writePref(repoPath, username, pref)
   }
 
   // ─── Valeurs des paramètres des widgets (GH125, toujours privées) ─────────────
@@ -533,6 +520,30 @@ export class DashboardsService {
   private writePref(repoPath: string, username: string, data: PrefStore): void {
     writePrefStore(repoPath, username, data)
   }
+}
+
+/**
+ * GH67 — point UNIQUE du déplacement des données du `.pref` indexées par id de dashboard, au
+ * changement de portée (l'id change, les ids de widget non) : ordre du panneau latéral, valeurs des
+ * sélecteurs des widgets (GH125). Toute nouvelle donnée par dashboard s'ajoute ici. Renvoie `true`
+ * si `pref` a été modifié.
+ */
+function moveDashboardKeys(pref: PrefStore, oldId: string, newId: string): boolean {
+  let changed = false
+  if (pref.dashboardsOrder?.includes(oldId)) {
+    pref.dashboardsOrder = pref.dashboardsOrder.map((entryId) => (entryId === oldId ? newId : entryId))
+    changed = true
+  }
+  // GH125 — valeurs des sélecteurs des widgets (`dashboard → widget → name:kind`) : les ids de widget
+  // sont conservés, seul le niveau dashboard est renommé. L'ancienne clé GH93 `suiviParamValues`
+  // n'est plus lue (abandonnée par GH125) : non déplacée.
+  const values = pref.suiviWidgetParamValues?.[oldId]
+  if (values && pref.suiviWidgetParamValues) {
+    delete pref.suiviWidgetParamValues[oldId]
+    pref.suiviWidgetParamValues[newId] = values
+    changed = true
+  }
+  return changed
 }
 
 /** Valeurs au format de leur type (porté par la clé `name:kind`) ; les autres sont ignorées. Une

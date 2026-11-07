@@ -12,6 +12,62 @@ import type { QueryColumnDef } from './suivi-columns'
 
 export type QueryScope = 'private' | 'shared'
 
+/** Préfixe des ids des objets privés (`.{user}.pref`) ; un objet partagé a un id à compteur
+ *  (`QUERY-0001`, `DASHBOARD-0001`). La portée se lit donc sur l'id seul. */
+export const PRIVATE_SCOPE_ID_PREFIX = 'local-'
+
+export function isPrivateScopeId(id: string): boolean {
+  return id.startsWith(PRIVATE_SCOPE_ID_PREFIX)
+}
+
+// ─── Changement de portée (GH67) ─────────────────────────────────────────────
+
+/** Widget qui référence une requête. */
+export interface ScopeWidgetRef {
+  dashboardId: string
+  dashboardTitle: string
+  dashboardScope: QueryScope
+  widgetId: string
+  widgetTitle: string
+}
+
+/** Ce qui empêche un changement de portée de requête. */
+export type QueryScopeBlocker =
+  | { kind: 'read-only'; reason: 'legacy-sql' | 'newer-format' }
+  | { kind: 'params'; message: string }
+  /** Rétrogradation : requête encore utilisée par des widgets. */
+  | { kind: 'dependents'; widgets: ScopeWidgetRef[] }
+
+/** Aperçu d'un changement de portée de requête (rien n'est écrit). */
+export interface QueryScopePreview {
+  queryId: string
+  title: string
+  from: QueryScope
+  to: QueryScope
+  blockers: QueryScopeBlocker[]
+  /** Promotion : widgets des dashboards privés de l'utilisateur qui suivront le nouvel id. */
+  remapped: ScopeWidgetRef[]
+  /** Promotion : ids des requêtes partagées au même titre (casse et espaces de bord ignorés). */
+  titleTakenBy: string[]
+  /** Rétrogradation : libellé de la colonne calculée retirée (GH70), sinon `null`. */
+  columnRemoved: QueryColumnDef['label'] | null
+}
+
+/** Requête privée d'un dashboard à partager : `widgets` = ceux de ce dashboard, `remapped` = ceux
+ *  des autres dashboards privés. */
+export interface DashboardShareQuery extends QueryScopePreview {
+  widgets: { widgetId: string; widgetTitle: string }[]
+}
+
+/** Aperçu du partage d'un dashboard privé avec ses requêtes privées. */
+export interface DashboardSharePreview {
+  dashboardId: string
+  /** Une entrée par requête privée, dans l'ordre des widgets. */
+  queries: DashboardShareQuery[]
+  /** Widgets dont la requête privée n'existe plus. */
+  missing: { widgetId: string; widgetTitle: string; queryId: string }[]
+}
+
 /** Version du format des fichiers `queries/` et `dashboards/` (et des entrées du `.pref`). */
 export const SUIVI_FORMAT_VERSION = 1
 

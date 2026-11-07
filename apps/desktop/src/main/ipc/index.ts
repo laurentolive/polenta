@@ -44,6 +44,7 @@ import type { GraphService } from '../services/graph.service'
 import type { DashboardLibraryService } from '../services/dashboard-library.service'
 import type { ScriptEngineService } from '../services/script-engine.service'
 import type { SavedQueriesService, CreateSavedQueryDto, UpdateSavedQueryDto, AddHistoryEntryDto } from '../services/saved-queries.service'
+import type { SuiviScopeService } from '../services/suivi-scope.service'
 import type {
   DashboardsService,
   CreateDashboardDto,
@@ -141,6 +142,7 @@ export interface Container {
   suivi: SuiviService
   suiviUpdates: SuiviUpdatesService
   savedQueries: SavedQueriesService
+  suiviScope: SuiviScopeService
   savedViews: SavedViewsService
   dashboards: DashboardsService
   dashboardSeed: DashboardSeedService
@@ -932,6 +934,9 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.savedQueries.setQueriesOrder(repoPath, username, order))
   r.handle('queries:set-scope', (_e, repoPath: string, username: string, id: string, scope: unknown) =>
     c.savedQueries.setScope(repoPath, username, id, scope as QueryScope))
+  // GH67 — aperçu d'un changement de portée (rien n'est écrit).
+  r.handle('queries:scope-preview', (_e, repoPath: string, username: string, id: string, scope: unknown) =>
+    c.suiviScope.previewQueryScope(repoPath, username, id, scope as QueryScope))
 
   // ── Dashboards & widgets (T77 sprint 2, seed sprint 3) ───────────────────────
   r.handle('dashboards:list', async (_e, repoPath: string, username: string, locale?: string) => {
@@ -953,6 +958,11 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.dashboards.delete(repoPath, username, id))
   r.handle('dashboards:set-scope', (_e, repoPath: string, username: string, id: string, scope: unknown) =>
     c.dashboards.setScope(repoPath, username, id, scope as QueryScope))
+  // GH67 — partage d'un dashboard privé avec ses requêtes privées : aperçu, puis écriture.
+  r.handle('dashboards:share-preview', (_e, repoPath: string, username: string, id: string) =>
+    c.suiviScope.previewDashboardShare(repoPath, username, id))
+  r.handle('dashboards:share-with-queries', (_e, repoPath: string, username: string, id: string) =>
+    c.suiviScope.shareDashboardWithQueries(repoPath, username, id))
   r.handle('dashboards:add-widget', (_e, repoPath: string, username: string, dashboardId: string, dto: unknown) =>
     c.dashboards.addWidget(repoPath, username, dashboardId, dto as AddWidgetDto))
   r.handle(

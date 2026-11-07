@@ -179,6 +179,7 @@ export class WorkspaceTreeService {
       if (name === rootName) continue
       if (!node.url) continue
       const exists = await this.repoExistsAtPin(node.repoPath, node.pin)
+      if (exists) await this.peelDetachedHead(node.repoPath)
       if (!exists) {
         // A repo can fail repoExistsAtPin for two very different reasons: the directory
         // doesn't exist yet (brand-new dependency — safe to clone), or it already holds a
@@ -694,6 +695,19 @@ export class WorkspaceTreeService {
    */
   private async peelToCommit(repoPath: string, oid: string): Promise<string> {
     return (await git.readCommit({ fs, dir: repoPath, oid })).oid
+  }
+
+  /** GH314 — a HEAD detached on an annotated tag object (pin checked out before the fix) is moved
+   * onto that tag's commit, the same tree: no file is rewritten. Best effort. */
+  private async peelDetachedHead(repoPath: string): Promise<void> {
+    try {
+      if (await git.currentBranch({ fs, dir: repoPath })) return
+      const head = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+      const commit = await this.peelToCommit(repoPath, head)
+      if (commit !== head) await git.writeRef({ fs, dir: repoPath, ref: 'HEAD', value: commit, force: true })
+    } catch {
+      // Unreadable HEAD: left as is, the next checkout settles it.
+    }
   }
 
   /** GH314 — ref to hand to `git.checkout` for `pin`: the commit of a tag (annotated or not) when

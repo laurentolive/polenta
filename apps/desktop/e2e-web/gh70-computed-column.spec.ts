@@ -48,6 +48,9 @@ const computedCell = () => row().locator(`[data-computed-cell="query::${queryId}
  * « Dernier résultat » (QUERY-0010), même libellé que celle du test (GH314). */
 const computedBox = (scope: Page | Locator, qid: string, label: string) =>
   scope.getByTestId('field-config-computed').locator(`label[title^="${qid} — "]`).filter({ hasText: label }).getByRole('checkbox')
+/** Repère d'une colonne calculée (titre « <requête> — <titre> ») dans un en-tête ou une carte. */
+const ofQuery = (qid: string) => s.page.locator(`[title^="${qid} — "]`)
+const headerOf = (qid: string) => s.page.locator('th').filter({ has: ofQuery(qid) })
 
 async function openTests(mode: 'Vue tableau' | 'Vue document') {
   await s.openView('Tests')
@@ -76,7 +79,7 @@ test('N4 / N5 / N6 / N7 — proposée dans ⚙️, décochée ; cochée : valeur
   await s.page.locator('.fixed.inset-0.z-50').click({ position: { x: 5, y: 5 } })
 
   await toggleColumn('Tableau', queryId, 'Dernier résultat')
-  await expect(s.page.locator('th').filter({ hasText: 'Dernier résultat' })).toBeVisible()
+  await expect(headerOf(queryId)).toContainText('Dernier résultat')
   await expect(computedCell()).toHaveText('FAIL', { timeout: 15_000 })
   await expect(computedCell()).toHaveAttribute('title', new RegExp(`${campaign.id} — ${CAMPAIGN_TITLE}`))
   const pref = JSON.parse(fs.readFileSync(path.join(s.project.localPath, `.${username}.pref`), 'utf8')) as { fieldVisibility: Record<string, { excel?: string[] }> }
@@ -93,7 +96,7 @@ test('C14 — cellule calculée en lecture seule (F2 sans éditeur)', async () =
 
 test('N10 — filtre de colonne (T51) sur la valeur affichée', async () => {
   await openTests('Vue tableau')
-  const header = s.page.locator('th').filter({ hasText: 'Dernier résultat' })
+  const header = headerOf(queryId)
   await header.getByTitle('Filtrer cette colonne').click()
   const input = s.page.locator('[data-column-filter-popover]').getByPlaceholder('Filtrer…')
   await expect(input).toBeVisible()
@@ -128,9 +131,9 @@ test('N8 — double-clic : ouverture de la campagne de l\'entrée', async () => 
 test('N11 — Vue Document : valeur dans la carte si cochée dans l\'onglet Document', async () => {
   await openTests('Vue document')
   await toggleColumn('Document', queryId, 'Dernier résultat')
-  const field = s.page.locator('[data-computed-field]').filter({ hasText: 'Dernier résultat' }).first()
-  await expect(field).toBeVisible()
-  await expect(s.page.locator('[data-computed-field]').filter({ hasText: 'PASS' }).first()).toBeVisible({ timeout: 15_000 })
+  const fields = s.page.locator('[data-computed-field]').filter({ has: ofQuery(queryId) })
+  await expect(fields.first()).toContainText('Dernier résultat')
+  await expect(fields.filter({ hasText: 'PASS' }).first()).toBeVisible({ timeout: 15_000 })
   await s.shot('gh70-word-column')
 })
 
@@ -141,7 +144,7 @@ test('15 — colonne sur une requête « Entrées de campagne » (testCaseId →
   })
   await openTests('Vue tableau')
   await toggleColumn('Tableau', entries.id, 'Statut en campagne')
-  const cell = row().locator('[data-computed-cell]').last()
+  const cell = row().locator(`[data-computed-cell="query::${entries.id}"]`)
   await expect(cell).toHaveText(/PASS|FAIL/, { timeout: 15_000 })
   await expect(cell).toHaveAttribute('title', /GH70/)
 })

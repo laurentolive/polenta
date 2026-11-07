@@ -69,6 +69,21 @@ describe('WorkspaceTreeService — checkout d\'un pin sur un tag annoté (GH314)
     expect(await fsP.readFile(path.join(comp, 'README.md'), 'utf8')).toBe('x')
   })
 
+  it('HEAD laissé sur l\'objet tag par un checkout antérieur : reposé sur le commit, sans réseau', async () => {
+    await git.checkout({ fs, dir: comp, ref: 'v2.0' })
+    expect(await readHeadFile(comp)).toBe(tagObject)
+    await fsP.writeFile(path.join(root, 'polenta-repo.yaml'),
+      'dependencies:\n  - name: comp\n    url: https://forge.test/comp.git\n    pin: v2.0\n')
+    const fetch = vi.fn(async () => undefined)
+    const service = new WorkspaceTreeService({ fetch } as unknown as SyncService, new PolentaRepoService(), undefined, 1)
+
+    const result = await service.buildTree(ws, root, [])
+
+    expect(result.status).toBe('ok')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(await readHeadFile(comp)).toBe(tagCommit)
+  })
+
   it('pin sur une branche : HEAD reste attaché à la branche', async () => {
     await git.branch({ fs, dir: comp, ref: 'release', object: tagCommit })
     await fsP.writeFile(path.join(root, 'polenta-repo.yaml'),

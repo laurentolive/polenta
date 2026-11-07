@@ -1,4 +1,4 @@
-import type { Dashboard, GraphParamValue, QueryParameterKind, QueryScope, ReadDashboard, ReadWidget, StoredDashboard, StoredWidget, TemplateRef, Widget, WidgetCode, WidgetSize } from '@polenta/types'
+import type { Dashboard, GraphParamValue, QueryParameterKind, QueryScope, ReadDashboard, ReadWidget, StoredDashboard, StoredWidget, TemplateRef, Widget, WidgetCode, WidgetParamValues, WidgetSize } from '@polenta/types'
 import { normalizeParamValue, QUERY_PARAMETER_KINDS, readDashboardRecord, SUIVI_FORMAT_VERSION, widgetCodeForHash } from '@polenta/types'
 import type { GitService } from './git.service'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
@@ -59,9 +59,13 @@ interface PrefStore {
   dashboards?: Record<string, unknown>[]
   /** Ordre d'affichage de la section "Dashboards" du panneau latéral (préférence personnelle). */
   dashboardsOrder?: string[]
-  /** GH93 — valeurs choisies dans la barre de paramètres : dashboard → sélecteur (`name:kind`) →
-   *  valeur (`null` = « Tous / Toutes » choisi). Absente : défaut de la déclaration. */
-  suiviParamValues?: Record<string, Record<string, GraphParamValue>>
+  /** GH93 — valeurs de l'ancienne barre de paramètres du dashboard : abandonnées (GH125), jamais
+   *  lues, retirées à la première écriture de `suiviWidgetParamValues`. */
+  suiviParamValues?: unknown
+  /** GH125 — valeurs choisies dans les sélecteurs des widgets : dashboard → widget → sélecteur
+   *  (`name:kind`) → valeur (`null` = « Tous / Toutes » choisi). Absente : défaut de la déclaration.
+   *  Jamais indexée par requête : un remappage de `queryId` (promotion) ne les touche pas. */
+  suiviWidgetParamValues?: Record<string, WidgetParamValues>
   [key: string]: unknown
 }
 
@@ -219,7 +223,7 @@ export class DashboardsService {
     }
     // Après la suppression seulement (un échec garde les choix) ; ceux des autres utilisateurs
     // restent dans leur .pref, ignorés (aucun dashboard ne porte plus cet id).
-    this.writeParamValues(repoPath, username, id, null)
+    this.removeParamValues(repoPath, username, id)
   }
 
   /**
@@ -295,11 +299,14 @@ export class DashboardsService {
   }
 
   async deleteWidget(repoPath: string, username: string, dashboardId: string, widgetId: string): Promise<Dashboard> {
-    return this.mutate(repoPath, username, dashboardId, (d) => ({
+    const out = await this.mutate(repoPath, username, dashboardId, (d) => ({
       ...d,
       widgets: d.widgets.filter((w) => w.id !== widgetId),
       widgetOrder: d.widgetOrder.filter((id) => id !== widgetId),
     }))
+    // GH125 — après l'écriture du dashboard seulement : un échec garde les choix.
+    this.writeParamValues(repoPath, username, dashboardId, widgetId, null)
+    return out
   }
 
   async setWidgetOrder(repoPath: string, username: string, dashboardId: string, order: string[]): Promise<Dashboard> {
@@ -421,43 +428,75 @@ export class DashboardsService {
     await removeSharedObject(this.git, repoPath, DIR, id)
   }
 
-  /** Ordre du panneau latéral et valeurs des paramètres (GH93) suivent le nouvel id. */
+  /** Ordre du panneau latéral et valeurs des paramètres des widgets (GH125 : les ids des widgets
+   *  sont conservés au changement de portée) suivent le nouvel id. */
   private renameInOrder(repoPath: string, username: string, oldId: string, newId: string): void {
     const pref = this.readPref(repoPath, username)
     const order = pref.dashboardsOrder
-    const values = pref.suiviParamValues?.[oldId]
+    const values = pref.suiviWidgetParamValues?.[oldId]
     if ((!order || !order.includes(oldId)) && !values) return
     if (order) pref.dashboardsOrder = order.map((entryId) => (entryId === oldId ? newId : entryId))
-    if (values && pref.suiviParamValues) {
-      delete pref.suiviParamValues[oldId]
-      pref.suiviParamValues[newId] = values
+    if (values && pref.suiviWidgetParamValues) {
+      delete pref.suiviWidgetParamValues[oldId]
+      pref.suiviWidgetParamValues[newId] = values
     }
     this.writePref(repoPath, username, pref)
   }
 
-  // ─── Valeurs des paramètres (GH93, toujours privées) ──────────────────────────
+  // ─── Valeurs des paramètres des widgets (GH125, toujours privées) ─────────────
 
-  /** Valeurs choisies par l'utilisateur dans la barre du dashboard (clé `name:kind`). */
-  async getParamValues(repoPath: string, username: string, dashboardId: string): Promise<Record<string, GraphParamValue>> {
-    return cleanParamValues(this.readPref(repoPath, username).suiviParamValues?.[dashboardId])
+  /** Valeurs choisies par l'utilisateur dans les sélecteurs des widgets du dashboard
+   *  (`widgetId → name:kind → valeur`). L'ancienne clé `suiviParamValues` (GH93) n'est pas lue. */
+  async getParamValues(repoPath: string, username: string, dashboardId: string): Promise<WidgetParamValues> {
+    const out: WidgetParamValues = {}
+    const all = this.readPref(repoPath, username).suiviWidgetParamValues?.[dashboardId]
+    if (!all || typeof all !== 'object') return out
+    for (const [widgetId, values] of Object.entries(all)) {
+      if (!values || typeof values !== 'object' || Array.isArray(values)) continue
+      const clean = cleanParamValues(values)
+      if (Object.keys(clean).length) out[widgetId] = clean
+    }
+    return out
   }
 
-  /** Remplace les valeurs choisies ; `null` = Réinitialiser. Jamais d'écriture dans le dashboard :
-   *  autorisé sur une branche en lecture seule et pour un dashboard en lecture seule. */
-  async setParamValues(repoPath: string, username: string, dashboardId: string, values: Record<string, unknown> | null): Promise<void> {
-    this.writeParamValues(repoPath, username, dashboardId, values)
+  /** Remplace les valeurs choisies d'un widget ; `null` = Réinitialiser. Jamais d'écriture dans le
+   *  dashboard : autorisé sur une branche en lecture seule et pour un dashboard en lecture seule. */
+  async setParamValues(repoPath: string, username: string, dashboardId: string, widgetId: string, values: Record<string, unknown> | null): Promise<void> {
+    if (typeof widgetId !== 'string' || !widgetId || widgetId === '__proto__') throw new Error('Widget attendu')
+    this.writeParamValues(repoPath, username, dashboardId, widgetId, values)
   }
 
-  private writeParamValues(repoPath: string, username: string, dashboardId: string, values: Record<string, unknown> | null): void {
+  private writeParamValues(repoPath: string, username: string, dashboardId: string, widgetId: string, values: Record<string, unknown> | null): void {
     const pref = this.readPref(repoPath, username)
-    const all = { ...(pref.suiviParamValues ?? {}) }
+    const legacy = 'suiviParamValues' in pref
+    const all = { ...(pref.suiviWidgetParamValues ?? {}) }
+    const widgets = { ...(all[dashboardId] ?? {}) }
     const clean = values ? cleanParamValues(values) : {}
-    if (Object.keys(clean).length) all[dashboardId] = clean
-    else if (dashboardId in all) delete all[dashboardId]
-    else if (!values) return
-    if (Object.keys(all).length) pref.suiviParamValues = all
-    else delete pref.suiviParamValues
+    const had = widgetId in widgets
+    if (Object.keys(clean).length) widgets[widgetId] = clean
+    else delete widgets[widgetId]
+    if (!had && !Object.keys(clean).length && !legacy) return
+    if (Object.keys(widgets).length) all[dashboardId] = widgets
+    else delete all[dashboardId]
+    this.storeParamValues(pref, all)
     this.writePref(repoPath, username, pref)
+  }
+
+  /** Suppression d'un dashboard : toutes les valeurs de ses widgets. */
+  private removeParamValues(repoPath: string, username: string, dashboardId: string): void {
+    const pref = this.readPref(repoPath, username)
+    if (!pref.suiviWidgetParamValues?.[dashboardId] && !('suiviParamValues' in pref)) return
+    const all = { ...(pref.suiviWidgetParamValues ?? {}) }
+    delete all[dashboardId]
+    this.storeParamValues(pref, all)
+    this.writePref(repoPath, username, pref)
+  }
+
+  /** Clé omise si vide ; l'ancienne clé GH93 est retirée à toute écriture (GH125, D2). */
+  private storeParamValues(pref: PrefStore, all: Record<string, WidgetParamValues>): void {
+    delete pref.suiviParamValues
+    if (Object.keys(all).length) pref.suiviWidgetParamValues = all
+    else delete pref.suiviWidgetParamValues
   }
 
   /** Lecture, modification et écriture d'un dashboard (privé ou partagé) au format v1. */

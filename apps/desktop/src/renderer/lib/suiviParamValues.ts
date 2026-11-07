@@ -57,13 +57,24 @@ export function missingRequired(decls: readonly QueryParameterDef[] | undefined,
   return (decls ?? []).filter((d) => d.required && (values[selectorKey(d)] ?? null) === null).map((d) => labelText(d.label, locale))
 }
 
-/** Choix à mémoriser : seulement les sélecteurs encore présents (les autres sont nettoyés). */
-export function storedChoices(selectors: readonly DashboardSelector[], stored: Readonly<Record<string, GraphParamValue>>, key: string, value: GraphParamValue): Record<string, GraphParamValue> {
-  const keep = new Set(selectors.map((s) => s.key))
-  const out: Record<string, GraphParamValue> = {}
-  for (const [k, v] of Object.entries(stored)) if (keep.has(k)) out[k] = v
-  out[key] = value
-  return out
+/** Choix à mémoriser pour un widget (GH125) : les autres valeurs du widget sont gardées, même celles
+ *  qu'une requête ne déclare plus (ignorées à l'exécution, elles reprennent effet si la déclaration
+ *  revient). */
+export function storedChoices(stored: Readonly<Record<string, GraphParamValue>>, key: string, value: GraphParamValue): Record<string, GraphParamValue> {
+  return { ...stored, [key]: value }
+}
+
+const sameValue = (a: GraphParamValue, b: GraphParamValue): boolean =>
+  a === b || (!!a && !!b && typeof a === 'object' && typeof b === 'object' && (a.from ?? null) === (b.from ?? null) && (a.to ?? null) === (b.to ?? null))
+
+/** GH125 (D1) — « Réinitialiser » proposé : une valeur appliquée diffère du défaut de sa déclaration,
+ *  ou une valeur choisie est introuvable (le retour au défaut efface l'avertissement). */
+export function differsFromDefault(selectors: readonly DashboardSelector[], eff: EffectiveValues, options: ParamOptions): boolean {
+  if (Object.keys(eff.invalid).length) return true
+  return selectors.some((s) => {
+    const fallback = isKnownValue(s, s.default, options) ? s.default : null
+    return !sameValue(eff.values[s.key] ?? null, fallback)
+  })
 }
 
 /** Libellé d'une campagne / d'un composant / d'un type pour l'affichage d'une valeur. */

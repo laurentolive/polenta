@@ -1,7 +1,7 @@
 /**
- * ParamBar — barre de paramètres choisis à l'affichage (GH93) : un sélecteur par couple
- * (`name`, `kind`) déclaré par les requêtes des widgets (dashboard) ou par la requête ouverte (vue
- * `/query`). En impression : texte « Libellé : valeur », sans contrôle.
+ * ParamBar — barre de paramètres choisis à l'affichage (GH93) de la requête ouverte (vue `/query`).
+ * GH125 : sur un dashboard, plus de barre — chaque widget porte ses sélecteurs dans son en-tête
+ * (`WidgetParamSelectors`, mêmes contrôles). En impression : texte « Libellé : valeur ».
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -46,7 +46,7 @@ export function ParamBar({ selectors, values, invalid = {}, options, onChange, o
       {selectors.map((s) => (
         <div key={s.key} className="flex flex-col gap-0.5 min-w-0">
           <label className="text-[11px] text-ink-3" htmlFor={`param-${s.key}`}>{labelText(s.label, lang)}</label>
-          <ParamInput selector={s} value={values[s.key] ?? null} options={options} lang={lang} onChange={(v) => onChange(s.key, v)} />
+          <ParamInput selector={s} idPrefix="param" value={values[s.key] ?? null} options={options} lang={lang} onChange={(v) => onChange(s.key, v)} />
           {invalid[s.key] !== undefined && (
             <span className="flex items-center gap-1 text-[11px] text-status-warning" data-testid="param-not-found">
               <AlertTriangle size={11} className="shrink-0" /> {t('suiviParams.notFound', { value: invalid[s.key] })}
@@ -63,15 +63,72 @@ export function ParamBar({ selectors, values, invalid = {}, options, onChange, o
   )
 }
 
-function ParamInput({ selector: s, value, options, lang, onChange }: {
+/**
+ * GH125 — sélecteurs d'un widget, dans l'en-tête de sa carte : « Libellé [contrôle] » par paramètre
+ * déclaré par sa requête, avertissement « Valeur introuvable » par sélecteur, icône Réinitialiser
+ * (D1) seulement hors défaut. En impression : lignes « Libellé : valeur » sous le titre.
+ */
+export function WidgetParamSelectors({ widgetId, selectors, values, invalid = {}, options, onChange, onReset, printMode = false, onPointerInside }: Props & {
+  widgetId: string
+  /** Pointeur sur les sélecteurs : la carte ne doit pas démarrer de glisser (réordonner). */
+  onPointerInside?: (inside: boolean) => void
+}) {
+  const { t, i18n } = useTranslation()
+  const lang = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'fr'
+  if (selectors.length === 0) return null
+
+  if (printMode) {
+    return (
+      <div className="px-3 pt-1 text-[11px] text-ink-2 space-y-0.5" data-testid="widget-params-print">
+        {selectors.map((s) => (
+          <p key={s.key}>
+            <span className="font-semibold">{labelText(s.label, lang)} : </span>
+            {paramValueText(s, values[s.key] ?? null, lang, (kind, v) => optionTitle(options, kind, v))}
+          </p>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-1.5"
+      data-testid="widget-params"
+      onPointerEnter={() => onPointerInside?.(true)}
+      onPointerLeave={() => onPointerInside?.(false)}
+    >
+      {selectors.map((s) => (
+        <div key={s.key} className="flex items-center gap-1 min-w-0">
+          <label className="text-[11px] text-ink-3 shrink-0" htmlFor={`wparam-${widgetId}-${s.key}`}>{labelText(s.label, lang)} :</label>
+          <ParamInput selector={s} idPrefix={`wparam-${widgetId}`} value={values[s.key] ?? null} options={options} lang={lang} onChange={(v) => onChange(s.key, v)} compact />
+          {invalid[s.key] !== undefined && (
+            <span className="flex items-center gap-1 text-[11px] text-status-warning" data-testid="param-not-found">
+              <AlertTriangle size={11} className="shrink-0" /> {t('suiviParams.notFound', { value: invalid[s.key] })}
+            </span>
+          )}
+        </div>
+      ))}
+      {onReset && (
+        <button type="button" onClick={onReset} title={t('suiviParams.reset')} aria-label={t('suiviParams.reset')} className="text-ink-3 hover:text-ink transition-colors" data-testid="widget-param-reset">
+          <RotateCcw size={11} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function ParamInput({ selector: s, idPrefix, value, options, lang, onChange, compact = false }: {
   selector: DashboardSelector
+  /** Préfixe de l'id du contrôle (unique dans la page : un widget = un préfixe). */
+  idPrefix: string
+  compact?: boolean
   value: GraphParamValue
   options: ParamOptions
   lang: 'fr' | 'en'
   onChange: (v: GraphParamValue) => void
 }) {
   const { t } = useTranslation()
-  const id = `param-${s.key}`
+  const id = `${idPrefix}-${s.key}`
   const testId = `param-${s.name}`
 
   if (s.kind === 'text') return <TextInput id={id} testId={testId} value={typeof value === 'string' ? value : ''} onChange={onChange} />
@@ -101,7 +158,7 @@ function ParamInput({ selector: s, value, options, lang, onChange }: {
       data-testid={testId}
       value={current}
       onChange={(e) => onChange(e.target.value || null)}
-      className="input-field text-xs py-1 max-w-[22rem]"
+      className={compact ? 'input-field text-[11px] py-0.5 max-w-[14rem]' : 'input-field text-xs py-1 max-w-[22rem]'}
     >
       {(!s.required || !current) && <option value="">{s.required ? t('suiviParams.choose', { label: labelText(s.label, lang) }) : noneText(s.kind, lang)}</option>}
       {choices.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}

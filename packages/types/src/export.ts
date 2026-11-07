@@ -120,7 +120,7 @@ export interface QueryResultExportPayload {
 export interface DashboardExportPayload {
   dashboard: Dashboard
   widgetResults: Record<string, QueryResult>
-  /** GH93 — valeurs de la barre de paramètres au moment de l'export (libellé, valeur lisible),
-   *  rappelées en tête du document. */
-  parameters?: { label: string; value: string }[]
+  /** GH125 — valeurs des paramètres de chaque widget au moment de l'export (libellé, valeur
+   *  lisible), rappelées sous le titre du widget. Widget sans paramètre : absent. */
+  widgetParameters?: Record<string, { label: string; value: string }[]>
 }

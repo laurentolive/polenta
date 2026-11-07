@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import type { ProjectSchema, ObjectCategory, ObjectTypeDefinition, TestCase } from '@polenta/types'
 import { findSystemNode, flattenSystemNodes, isApprovalStatus } from '@polenta/types'
+import { typeChoiceLabel } from '../lib/typeLabels'
 
 export function useProjectSchema(repoPath: string) {
   return useQuery<ProjectSchema>({
@@ -89,13 +90,14 @@ export function getTestTypeRefs(schema: ProjectSchema | undefined): TestTypeRef[
 export function getObjectTypeRefs(schema: ProjectSchema | undefined, category: ObjectCategory): TestTypeRef[] {
   if (!schema) return []
   const flat = flattenSystemNodes(schema.nodes)
-  return flat.flatMap(({ node, ancestors }) => (node.objectTypes ?? [])
-    .filter(t => t.category === category)
-    .map(t => ({
+  return flat.flatMap(({ node, ancestors }) => {
+    const types = (node.objectTypes ?? []).filter(t => t.category === category)
+    return types.map(t => ({
       ref: `${node.name}::${t.name}`,
       label: flat.length > 1
-        ? [...ancestors, node].map(n => n.label || n.name).concat(t.label || t.name).join(' › ')
-        : t.label || t.name,
+        ? [...ancestors, node].map(n => n.label || n.name).concat(typeChoiceLabel(t, types)).join(' › ')
+        : typeChoiceLabel(t, types),
       typeDef: t,
-    })))
+    }))
+  })
 }

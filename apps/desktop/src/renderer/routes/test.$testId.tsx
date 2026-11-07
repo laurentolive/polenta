@@ -21,6 +21,7 @@ import { decodeProjectId } from '../lib/projectId'
 import { TransitionScopeContext, transitionPreviewKey } from '../hooks/useTransitionPreview'
 import { notifyTransitionResult } from '../lib/transitionNotices'
 import { TransitionStatusOptions } from '../components/transitions/TransitionStatusOptions'
+import { typeChoiceLabel } from '../lib/typeLabels'
 
 export const Route = createFileRoute('/test/$testId')({
   component: TestCaseDetailPage,
@@ -209,7 +210,7 @@ function TestCaseDetailPage() {
             <label className="block text-sm font-medium text-ink mb-1">{t('system.editView.colType')}</label>
             <select value={type} onChange={e => setType(e.target.value)} disabled={locked} className="input-field w-full">
               {testTypes.map(t => (
-                <option key={t.name} value={t.name}>{t.label ?? t.name}</option>
+                <option key={t.name} value={t.name}>{typeChoiceLabel(t, testTypes)}</option>
               ))}
             </select>
           </div>

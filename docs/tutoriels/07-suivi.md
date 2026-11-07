@@ -34,14 +34,17 @@ les décisions d'une validation. Au premier accès, Polenta crée aussi le dashb
 un dashboard privé *Campagnes* : avancement de chaque campagne (de la préparation des tests au
 résultat), % exécuté, % PASS, exécutions par jour, entrées en échec, avancement dans le temps.
 
-**Paramètres choisis à l'affichage.** Le dashboard *Campagnes* affiche en tête un sélecteur
-**Campagne** : sur *Toutes*, il montre les campagnes en cours ; une campagne choisie (même terminée)
-recentre tous ses widgets sur elle seule — par exemple l'avancement dans le temps d'une campagne
-précise. Le choix est mémorisé pour vous seul (rien à publier) ; *Réinitialiser* revient à *Toutes*.
-Toute requête peut déclarer de tels paramètres (campagne, composant, type d'objet, liste de valeurs,
-texte, période) : par les cases « … choisi(e) à l'affichage » de son modèle, ou dans la section
-*Paramètres choisis à l'affichage* de la vue Requêtes en mode Script, où le script lit les valeurs
-dans `polenta.params`. Les widgets qui partagent un même paramètre partagent le même sélecteur.
+**Paramètres choisis à l'affichage.** Dans le dashboard *Campagnes*, chaque widget affiche dans
+son en-tête un sélecteur **Campagne** : sur *Toutes*, le widget montre les campagnes en cours ; une
+campagne choisie (même terminée) recentre ce widget seul sur elle — par exemple l'avancement dans le
+temps d'une campagne précise, à côté de l'avancement de toutes les campagnes. Le choix est propre à
+chaque widget et mémorisé pour vous seul (rien à publier) ; l'icône *Réinitialiser* de l'en-tête,
+visible dès qu'une valeur diffère du défaut, revient à *Toutes*. Pour recentrer tout le dashboard,
+changez la campagne de chaque widget. Toute requête peut déclarer de tels paramètres (campagne,
+composant, type d'objet, liste de valeurs, texte, période) : par les cases « … choisi(e) à
+l'affichage » de son modèle, ou dans la section *Paramètres choisis à l'affichage* de la vue
+Requêtes en mode Script, où le script lit les valeurs dans `polenta.params`. Deux widgets d'une même
+requête ont chacun leur sélecteur et leur valeur.
 Dans le dashboard partagé *Versions & validation*, le widget *Décisions de la validation* a ainsi
 un sélecteur **Validation** : *Validation 1.0*, *Validation 2.0* ou *Validation 1.2.4* (moteur).
 
@@ -126,9 +129,10 @@ Exemple : `\{[a-z_]+\}` en expression régulière trouve toutes les références
 
 Résultat : le nouveau widget s'affiche à côté des six autres et suit la modification.
 
-**Changer un paramètre de dashboard.**
-1. Dashboard *Versions & validation*, sélecteur **Validation** : *Validation 1.0*.
-2. Choisir *Validation 1.2.4*, puis *Réinitialiser*.
+**Changer un paramètre d'un widget.**
+1. Dashboard *Versions & validation*, widget *Décisions de la validation*, sélecteur **Validation**
+   de son en-tête : *Validation 1.0*.
+2. Choisir *Validation 1.2.4*, puis l'icône *Réinitialiser* de l'en-tête.
 
 Résultat : le camembert se recalcule. La 1.0 montre surtout des décisions *conforme*, deux *hors
 scope* (PRD-0010, SYS-0013) et une *dérogation* (SYS-0004) ; la 1.2.4 porte sur les exigences du

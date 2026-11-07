@@ -117,7 +117,7 @@ export const parametersSchema = z.array(z.object({
   values: z.array(z.object({ value: z.string(), label: labelSchema.optional() })).optional().describe('enum seulement'),
   default: paramValueSchema.optional(),
   required: z.boolean().optional().describe('vrai : pas de choix « Tous / Toutes »'),
-})).describe('paramètres choisis à l\'affichage (barre du dashboard) : valeurs reçues dans polenta.params')
+})).describe('paramètres choisis à l\'affichage (un sélecteur dans chaque widget qui utilise la requête, valeur propre au widget) : valeurs reçues dans polenta.params')
 
 /** GH70 — déclaration de colonne calculée de la Vue Système (requête partagée). */
 export const columnSchema = z.object({

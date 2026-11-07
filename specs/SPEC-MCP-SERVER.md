@@ -441,7 +441,7 @@ opération privée → `PRIVATE_SCOPE_UNAVAILABLE`. Un id partagé hors format `
 | `create_dashboard` / `update_dashboard` / `delete_dashboard` | — | créé vide ; renommage seul ; requêtes conservées à la suppression |
 | `add_widget` | `{ dashboardId, title, queryId, template? \| (transform?, spec), size='md', position?, dryRun? }` | règles widget ci-dessous ; `position` = index dans `widgetOrder` |
 | `update_widget` | `{ dashboardId, widgetId, title?, queryId?, template? \| transform? / spec?, size?, dryRun? }` | code fourni → widget personnalisé |
-| `delete_widget` / `reorder_widgets` | — | `reorder_widgets` : permutation exacte |
+| `delete_widget` / `reorder_widgets` | — | `reorder_widgets` : permutation exacte ; `delete_widget` retire aussi les valeurs de paramètres choisies pour ce widget dans le `.pref` de l'utilisateur (GH125) ; aucun tool ne lit ni n'écrit ces valeurs |
 
 **Règles widget** (dans l'ordre) : `DASHBOARD_NOT_FOUND` / `SUIVI_READ_ONLY` → `INVALID_INPUT`
 (`template` exclusif avec `transform` / `spec` ; `spec` requise sans modèle) → `INVALID_TEMPLATE` →

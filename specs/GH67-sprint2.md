@@ -102,3 +102,26 @@ Vérifications après ces corrections : `pnpm typecheck` 4/4 ; tests touchés (`
    **Privée** : bloqué, widgets listés.
 4. En anglais : mêmes écrans (libellés).
 5. Desktop Electron : parcours 1 et 2.
+
+## Merge de `main` (GH125, merge 72ac5e5) — 2026-11-07
+
+Conflits :
+- `apps/desktop/src/main/services/dashboards.service.ts` : import (`ScopeWidgetRef` de GH67 +
+  `WidgetParamValues` de GH125) ; `renameInOrder` (GH125, déplaçait `suiviWidgetParamValues`) contre
+  `moveDashboardUserState` (GH67) → gardé `moveDashboardUserState`, et `moveDashboardKeys` déplace
+  désormais `suiviWidgetParamValues` (dashboard → widget → `name:kind`) au lieu de `suiviParamValues`
+  (clé GH93 abandonnée par GH125, plus lue : non déplacée).
+- `specs/SPEC-INDEX.md` : lignes SPEC-DASHBOARDS de GH125 reprises, ajouts GH67 réappliqués aux
+  lignes §7 et §8–§10 (MAJ → GH67).
+
+Ajustements : test N9 réécrit (valeurs de deux widgets conservées sous le nouvel id, valeurs d'un
+autre dashboard intactes) ; `SPEC-DASHBOARDS.md` §7.0b et `specs/GH67.md` §3.9 mentionnent
+`suiviWidgetParamValues`. Les confirmations ne parlent pas de barre de paramètres (vérifié dans les
+libellés `suiviScope.*`).
+
+Vérifications après le merge : `pnpm typecheck` 4/4 ; tests touchés (`suivi-scope`, `suivi-params`,
+`suivi-store`) 71/71 ; `pnpm test` complet : desktop 1617/1621 — 4 échecs par dépassement de délai
+(20–25 s) dans `sync.service.gh173`, `forge/repo-adoption.gh107`, `forge/repo-settings.gh108`
+(fichiers non touchés par GH67 ni GH125), verts relancés seuls (63/63) ; `pnpm build:web` puis e2e
+`gh67-scope`, `gh125-widget-params`, `gh93-params`, `gh74-editing`, `gh74-suivi`,
+`gh70-query-column`, `gh65-campaigns` : 36/36 (ports 8950–8953).

@@ -20,7 +20,7 @@ const exists = (rel: string) => fs.existsSync(path.join(repo, rel))
 const prefPath = () => path.join(repo, `.${U}.pref`)
 const pref = () => JSON.parse(fs.readFileSync(prefPath(), 'utf8')) as Record<string, unknown> & {
   savedQueries?: { id: string }[]; dashboards?: { id: string }[]; dashboardsOrder?: string[]; queriesOrder?: string[]
-  suiviParamValues?: Record<string, unknown>
+  suiviWidgetParamValues?: Record<string, unknown>
 }
 const editPref = (fn: (p: ReturnType<typeof pref>) => void) => {
   const p = pref()
@@ -93,19 +93,25 @@ describe('GH67 — partage d\'un dashboard avec ses requêtes', () => {
     expect(after.widgets[0].queryId).toBe(result.widgets[0].queryId)
   })
 
-  it('N9 — ordre du panneau et valeurs de paramètres suivent le nouvel id', async () => {
+  it('N9 — ordre du panneau et valeurs des sélecteurs des widgets (GH125) suivent le nouvel id', async () => {
     const a = await privateQuery('A')
-    const d = await privateDashboard('D', [a.id])
+    const d = await privateDashboard('D', [a.id, a.id])
     const before = await dashboards.create(repo, U, { title: 'Avant', scope: 'private', createdBy: U })
     await dashboards.setDashboardsOrder(repo, U, [before.id, d.id])
     await queries.setQueriesOrder(repo, U, [a.id])
-    await dashboards.setParamValues(repo, U, d.id, { 'campaign:campaign': 'CAMP-0002' })
+    const [w1, w2] = d.widgets.map((w) => w.id)
+    await dashboards.setParamValues(repo, U, d.id, w1, { 'campaign:campaign': 'CAMP-0002' })
+    await dashboards.setParamValues(repo, U, d.id, w2, { 'campaign:campaign': null })
+    await dashboards.setParamValues(repo, U, before.id, before.id, { 'campaign:campaign': 'CAMP-0001' })
 
     const result = await scope.shareDashboardWithQueries(repo, U, d.id)
     expect(pref().dashboardsOrder).toEqual([before.id, result.id])
     expect(pref().queriesOrder).toEqual([result.widgets[0].queryId])
-    expect(await dashboards.getParamValues(repo, U, result.id)).toEqual({ 'campaign:campaign': 'CAMP-0002' })
-    expect(pref().suiviParamValues?.[d.id]).toBeUndefined()
+    // Ids de widget conservés : valeurs propres à chaque widget, sous le nouvel id du dashboard.
+    expect(result.widgets.map((w) => w.id)).toEqual([w1, w2])
+    expect(await dashboards.getParamValues(repo, U, result.id)).toEqual({ [w1]: { 'campaign:campaign': 'CAMP-0002' }, [w2]: { 'campaign:campaign': null } })
+    expect(pref().suiviWidgetParamValues?.[d.id]).toBeUndefined()
+    expect(await dashboards.getParamValues(repo, U, before.id)).toEqual({ [before.id]: { 'campaign:campaign': 'CAMP-0001' } })
   })
 
   it('N10 — requête partagée seule d\'abord : le partage du dashboard ne la liste plus', async () => {

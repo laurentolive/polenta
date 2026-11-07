@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { chooseTestedVersion } from './support/campaign'
 
 /**
  * GH68 — tests non approuvés dans une campagne : ajout par le sélecteur, badge et bandeau,
@@ -93,6 +94,7 @@ test('E1–E3 — exécution : version actuelle affichée, avertissement, confir
 
   // E2 — bandeau ; la confirmation annulée n'enregistre rien.
   await expect(p.getByText(/Ce test n'est pas approuvé/)).toBeVisible()
+  await chooseTestedVersion(s)
   await p.getByRole('button', { name: 'Soumettre le résultat' }).click()
   await expect(p.getByText('Exécuter un test non approuvé ?')).toBeVisible()
   await s.shot('gh68-e2-confirmation')

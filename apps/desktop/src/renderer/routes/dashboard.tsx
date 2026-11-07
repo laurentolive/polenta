@@ -25,7 +25,6 @@ import { isPrivateScopeId } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { DashboardGrid } from '../components/dashboard/DashboardGrid'
-import { ParamBar } from '../components/dashboard/ParamBar'
 import { useDashboardParams } from '../hooks/useDashboardParams'
 import { WidgetConfigModal, type WidgetConfigResult } from '../components/dashboard/WidgetConfigModal'
 import { DashboardShareModal } from '../components/dashboard/DashboardShareModal'
@@ -278,7 +277,7 @@ function DashboardPage() {
                     // payload plutôt que de faire échouer tout l'export.
                   }
                 }))
-                return { dashboard, widgetResults, parameters: params.describe() }
+                return { dashboard, widgetResults, widgetParameters: params.describeAll() }
               }}
               getPrintParams={() => ({ repoPath, workspaceDir, username, dashboardId: dashboardId! })}
             />
@@ -308,23 +307,14 @@ function DashboardPage() {
         />
       )}
 
-      <ParamBar
-        selectors={params.selectors}
-        values={params.values}
-        invalid={params.invalid}
-        options={params.options}
-        onChange={params.setValue}
-        onReset={params.reset}
-      />
-
       <DashboardGrid
         dashboard={dashboard}
         savedQueries={savedQueries}
         repoPath={repoPath}
         workspaceDir={workspaceDir}
         username={username}
-        paramsFor={params.paramsFor}
-        missingFor={params.missingFor}
+        paramsOf={params.forWidget}
+        paramOptions={params.options}
         paramsReady={params.ready}
         onReorder={(order) => reorderMutation.mutate(order)}
         onDeleteWidget={(widgetId) => deleteWidgetMutation.mutate(widgetId)}
@@ -338,7 +328,7 @@ function DashboardPage() {
           repoPath={repoPath}
           workspaceDir={workspaceDir}
           username={username}
-          paramsForQuery={(queryId) => params.paramsFor({ queryId })}
+          paramsForQuery={(queryId) => params.paramsForEdit(undefined, queryId)}
           onSave={(dto) => addWidgetMutation.mutate(dto)}
           onClose={() => setShowAddWidget(false)}
           saving={addWidgetMutation.isPending}
@@ -354,7 +344,7 @@ function DashboardPage() {
           workspaceDir={workspaceDir}
           username={username}
           initialWidget={editingWidget}
-          paramsForQuery={(queryId) => params.paramsFor({ queryId })}
+          paramsForQuery={(queryId) => params.paramsForEdit(editingWidget.id, queryId)}
           onSave={(dto) => updateWidgetMutation.mutate(dto)}
           onClose={() => setEditingWidget(null)}
           saving={updateWidgetMutation.isPending}

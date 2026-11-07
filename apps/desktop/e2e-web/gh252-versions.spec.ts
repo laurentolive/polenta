@@ -89,8 +89,19 @@ test('U3 — analyse d\'impact : statut et commentaire libre enregistrés', asyn
 test('U4, U5 — passage released : tag en attente, poussé avec le repo', async () => {
   const p = s.page
   await openVersion()
+  // GH307 — tag proposé retenu : la saisie attend qu'il soit affiché. Avant, un `fill` commencé sur le
+  // champ vide pouvait recevoir le tag proposé au milieu de la saisie, d'où un tag `<proposé>gh252-9.9`.
+  let deliver = () => {}
+  const held = new Promise<void>(resolve => { deliver = resolve })
+  await p.route(/\/rpc\/versions(?:%3A|:)release-preview$/, async route => { await held; await route.continue() }, { times: 1 })
   await p.getByTestId('version-release').click()
-  await p.getByTestId('release-tag').fill('gh252-9.9')
+  const tagInput = p.getByTestId('release-tag')
+  await expect(tagInput).toBeVisible()
+  await expect(tagInput).not.toBeEditable()
+  deliver()
+  await expect(tagInput).toBeEditable()
+  await expect(tagInput).not.toHaveValue('')
+  await tagInput.fill('gh252-9.9')
   await p.getByTestId('release-confirm').click()
   await expect(p.getByTestId('version-tag-pending')).toBeVisible()
   expect(git('tag', '--list', 'gh252-9.9').trim()).toBe('gh252-9.9')

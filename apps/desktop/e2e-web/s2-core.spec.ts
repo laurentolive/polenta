@@ -185,6 +185,9 @@ test('S2-8 — coupure réseau : reconnexion des événements', async () => {
   await s.page.waitForLoadState('networkidle')
   await expect.poll(() => pageSockets.length).toBeGreaterThan(0)
   await recordEvents(s.page, 'web:events-reconnected', 'reconnected')
+  // GH330 — la socket doit être ouverte côté page avant la coupure : sinon la reconnexion passe pour
+  // une première connexion et `web:events-reconnected` n'est jamais émis.
+  await expectEventsFlow('beforeCut', 'E2E — avant coupure')
 
   await s.context.setOffline(true)
   await pageSockets[pageSockets.length - 1].close({ code: 1001, reason: 'coupure simulée' })
@@ -193,11 +196,25 @@ test('S2-8 — coupure réseau : reconnexion des événements', async () => {
   await expect.poll(async () => (await recordedEvents(s.page, 'reconnected')).length, { timeout: 30_000 }).toBeGreaterThan(0)
 
   // Les événements circulent de nouveau après la reconnexion.
-  await recordEvents(s.page, 'repo:file-changed', 'afterReconnect')
-  await s.invoke('requirements:update', project.localPath, createdReqId, { title: 'E2E — après reconnexion' }, project.workspaceDir)
-  await expect.poll(async () => (await recordedEvents(s.page, 'afterReconnect')).length, { timeout: 15_000 }).toBeGreaterThan(0)
+  await expectEventsFlow('afterReconnect', 'E2E — après reconnexion')
   await s.page.unrouteAll()
 })
+
+/**
+ * GH330 — une écriture côté serveur parvient à la page par le flux d'événements. L'écriture est
+ * renouvelée tant que rien n'est reçu : la socket s'ouvre côté page (`onopen`, donc
+ * `web:events-reconnected`) avant que le proxy de `routeWebSocket` ait atteint le serveur et que
+ * celui-ci l'ait inscrite (`pool.get`) ; un événement émis dans cet intervalle n'a pas de destinataire.
+ */
+async function expectEventsFlow(name: string, title: string): Promise<void> {
+  await recordEvents(s.page, 'repo:file-changed', name)
+  let attempt = 0
+  await expect.poll(async () => {
+    if ((await recordedEvents(s.page, name)).length > 0) return true
+    await s.invoke('requirements:update', project.localPath, createdReqId, { title: `${title} (${++attempt})` }, project.workspaceDir)
+    return false
+  }, { timeout: 30_000, intervals: [2_000] }).toBe(true)
+}
 
 test('S2-9 — Publier : commit à l\'identité de l\'utilisateur, poussé vers la forge', async () => {
   const before = remoteLog('%H')

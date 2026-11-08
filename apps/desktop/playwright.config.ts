@@ -43,7 +43,7 @@ export default defineConfig({
       env: { POLENTA_E2E_ADMIN_PORT: String(E2E.adminPort), POLENTA_E2E_ADMIN_TOKEN: E2E.adminToken },
     },
     {
-      command: 'node out/web-server/index.cjs',
+      command: 'node e2e-web/support/run-server.mjs out/web-server/index.cjs',
       url: `${E2E.baseUrl}/healthz`,
       reuseExistingServer: false,
       timeout: 60_000,
@@ -53,7 +53,7 @@ export default defineConfig({
     },
     // GH44 S3 — serveur en mode oidc, branché sur la forge de test (POLENTA_E2E_SSH).
     ...(OIDC.enabled ? [{
-      command: 'node out/web-server/index.cjs',
+      command: 'node e2e-web/support/run-server.mjs out/web-server/index.cjs',
       url: `${OIDC.baseUrl}/healthz`,
       reuseExistingServer: false,
       timeout: 60_000,

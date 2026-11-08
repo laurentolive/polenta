@@ -219,7 +219,9 @@ describe('designate', () => {
     expect(await git.resolveRef({ fs, dir: repo, ref: 'HEAD' })).toBe(head)
   })
 
-  describe('avec origin (repo nu local, push par la CLI git)', () => {
+  // GH330 — git en ligne de commande (clone, push, fetch) : T-12 prend ~10 s sur un poste chargé et
+  // dépassait les 20 s par défaut sous `pnpm test` (turbo lance les paquets en parallèle).
+  describe('avec origin (repo nu local, push par la CLI git)', { timeout: 60_000 }, () => {
     let bare: string
     beforeEach(async () => {
       // Barres obliques : un `C:\…` écrit tel quel dans .git/config est illisible pour la CLI git.

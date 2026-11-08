@@ -38,7 +38,7 @@ lues sur github.com. Pour travailler hors ligne, passez un clone local dans
 Playwright (runner)
  ├─ global-setup.ts ── clone --bare de la démo ─▶ <run>/remotes/demo-ll800-produit.git
  │                  └─ git-http-server.ts (127.0.0.1:8798) ── git http-backend ── « la forge »
- ├─ webServer : node out/web-server/index.cjs (127.0.0.1:8797, mode dev, utilisateur « e2e »)
+ ├─ webServer : node out/web-server/index.cjs (127.0.0.1:8797, mode dev, utilisateur « e2e »), via support/run-server.mjs
  │      données : <run>/data/users/e2e/{workspaces,userData}
  └─ Chromium ── http://127.0.0.1:8797 ── renderer web + bridge window.polenta
 ```
@@ -52,6 +52,11 @@ Playwright (runner)
 - **Administration du serveur** (GH63) : un faux service d'administration (`support/fake-admin-service.mjs`,
   127.0.0.1:8799, état en mémoire) remplace `polenta-admin` ; le serveur web l'utilise en mode dev
   (`POLENTA_WEB_ADMIN_DEV=1`). Le test fixe le rôle de l'utilisateur par `POST /__role {"level": "instance"|"host"|null}`.
+- **Arrêt du serveur en cours de suite** (GH330) : le serveur est lancé par `support/run-server.mjs`,
+  qui précharge `support/server-watch.cjs`. Un serveur qui s'arrête avant la fin de la suite laisse
+  dans la sortie des lignes `[WebServer] [e2e] serveur web … arrêté après … s : code … | signal … ;
+  mémoire : …` (et `signal SIGINT reçu` s'il a été arrêté par un signal) : c'est la cause à chercher
+  quand tous les tests suivants échouent sur `ERR_CONNECTION_REFUSED`.
 
 ## Tests contre la forge réelle (connexion OIDC)
 

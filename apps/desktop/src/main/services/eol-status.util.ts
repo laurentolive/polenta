@@ -3,6 +3,8 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import git from 'isomorphic-git'
 
+import { racySafeStatusMatrix } from './racy-status.util'
+
 /**
  * GH296 — isomorphic-git ne lit que `.git/config`, alors que `core.autocrlf=true` est le plus souvent
  * dans la config système de Git (défaut de Git for Windows). Après un checkout natif, un fichier suivi
@@ -34,9 +36,11 @@ async function readHeadBlob(repoPath: string, filepath: string, cache: object): 
 /**
  * `git.statusMatrix` où un fichier qui ne diffère de HEAD que par ses fins de ligne, et n'est pas
  * stagé, compte comme inchangé. Tout code qui décide « ce fichier est-il modifié ? » passe par ici.
+ * GH326 — repose sur `racySafeStatusMatrix` : un fichier réécrit à taille égale dans la seconde de son
+ * ajout à l'index est bien vu modifié.
  */
 export async function eolAwareStatusMatrix(repoPath: string, filepaths?: string[]) {
-  const matrix = await git.statusMatrix({ fs, dir: repoPath, ...(filepaths ? { filepaths } : {}) })
+  const matrix = await racySafeStatusMatrix(repoPath, filepaths)
   const cache = {}
   return Promise.all(matrix.map(async row => {
     const [filepath, head, workdir, stage] = row

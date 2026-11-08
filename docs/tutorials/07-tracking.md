@@ -21,7 +21,9 @@ not tested, how the campaigns are progressing. It relies on **queries** over the
   (*Template* tab: chart type, columns, measure); the *Code* tab shows the generated code, which an
   advanced user can edit (the widget is then "customized", *Back to template* undoes it).
 - **Private** / **Shared**: a shared dashboard is saved in the repository and visible to the whole
-  team; a private dashboard stays with its author.
+  team; a private dashboard stays with its author. Sharing a private dashboard whose widgets use
+  private queries (such as *Campagnes*) opens a confirmation that lists them: they are shared with it,
+  in a single action.
 - **Export** produces a Word or PDF version of the dashboard.
 
 The second dashboard, *Composants & traçabilité*, shows links by type (pie), the motor's
@@ -47,7 +49,9 @@ In the shared *Versions & validation* dashboard, the *Décisions de la validatio
 
 ## Queries
 
-The bottom of the side panel lists the shared queries. Open *Exigences — statut de couverture*:
+The bottom of the side panel lists the queries (scope icon: private or shared). The **Private** /
+**Shared** selector in a query's header, or the scope button shown when hovering its row in the
+panel, changes its scope after confirmation. Open *Exigences — statut de couverture*:
 
 ![Query on requirements](../img/query.en.png)
 

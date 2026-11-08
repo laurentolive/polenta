@@ -59,8 +59,11 @@ test.beforeAll(async () => {
   C = await editable(compReqs)
 
   const schema = await s.invoke<Schema>('schema:get', P())
+  // GH314 — la démo déclare `defaultVisible` sur ses propres types de lien (GH139) : la vue document
+  // n'affiche alors par défaut que ceux-là. Le type du test doit l'être aussi pour y apparaître.
   schema.linkTypes = [...(schema.linkTypes ?? []).filter((t) => t['name'] !== LT), {
     name: LT, labelSourceToTarget: OUT, labelTargetToSource: IN, sourceRefs: [R.objectTypeRef], targetRefs: [C.objectTypeRef],
+    defaultVisible: true,
   }]
   await s.invoke('schema:save', P(), schema)
   rTypeLabel = typeLabel(schema, R.objectTypeRef)

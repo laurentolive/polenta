@@ -63,7 +63,8 @@ test.beforeAll(async () => {
 const row = (id = testId) => s.page.locator('tr').filter({ hasText: id }).first()
 const header = (label: string) => s.page.locator('th').filter({ hasText: label })
 const modal = () => s.page.locator('.fixed.inset-0.z-50')
-const group = () => modal().getByTestId('field-config-computed-group')
+// GH314 — la démo a sa propre colonne éclatée (QUERY-0011 « Résultat par campagne ») : on cible celle du test.
+const group = () => modal().locator(`[data-testid="field-config-computed-group"][data-query-id="${queryId}"]`)
 
 async function openTests(mode: 'Vue tableau' | 'Vue document') {
   await s.openView('Tests')

@@ -530,6 +530,16 @@ passent par `create_links`, type `issue-impact` (`NOT_OWN_ELEMENT` hors du compo
 Une proposition (`proposed`, `proposedBy` = `--user`) n'écrit que sur une exigence sans décision confirmée d'une
 validation en cours, et bloque la signature. Le MCP ne confirme, ne rejette et ne signe pas (SPEC-REQ §13).
 
+### 4.11 Import de résultats JUnit (GH129, `tools/results-import.tools.ts`)
+
+`import_test_results` : `files` (chemins ou motifs glob, absolus ou relatifs au repo), `campaignId?`,
+`testedVersion?`, `executedBy?` (défaut : `--user`, sinon `git config user.name`), **`dryRun` (défaut
+`true`)**. Même service et même rapport (`ResultsImportReport`, `@polenta/types`) que la commande
+`polenta-cli.cjs import-results --json` (§9) ; règles d'import : SPEC-TESTS §3.5. Résultats non
+importés : succès, détaillés dans le rapport ; erreur globale (`no_files`, `invalid_xml`,
+`campaign_closed`, `tested_version_required`…) : `isError`. Le container construit désormais
+`TestedConfigService` (version testée d'un run de campagne, GH202) et `ResultsImportService`.
+
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
 
 ### 5.1 À la création d'un nouveau projet
@@ -665,6 +675,9 @@ Deux catégories (cf. §4) :
 | `apps/desktop/src/mcp-server/tools/bulk-import.tools.ts` | `bulk_import_requirements`, `bulk_import_tests`, `bulk_import_campaigns` |
 | `apps/desktop/src/mcp-server/tools/schema-mutation.tools.ts` | `add_component`, `add_object_type`, `add_field`, `add_status`, `add_link_type` |
 | `apps/desktop/src/mcp-server/tools/links.tools.ts` | `list_links`, `create_links`, `delete_links` (GH16) |
+| `apps/desktop/src/mcp-server/tools/results-import.tools.ts` | `import_test_results` (GH129) |
+| `apps/desktop/src/cli/index.ts`, `cli/import-results.ts` | CLI `import-results` (GH129, §9) |
+| `apps/desktop/src/main/services/results-import.service.ts`, `junit-report.util.ts`, `results-import-files.util.ts` | Import JUnit : correspondance, écriture ; lecture XML ; motifs de fichiers (GH129) |
 | `apps/desktop/src/mcp-server/tools/suivi-common.ts` | Helpers vue Suivi : `NO_USER`, `resolveUser`, `assertWritableBranch`, `freshenIndexes`, `runDefinition`, `findVisibleQuery`/`findVisibleDashboard`, `peekSharedId` (GH18) |
 | `apps/desktop/src/mcp-server/tools/queries.tools.ts` | `list_queries`, `run_query`, `create_query`, `update_query`, `delete_query` (GH18) |
 | `apps/desktop/src/mcp-server/tools/dashboards.tools.ts` | `list_dashboards`, `create/update/delete_dashboard`, `add/update/delete_widget`, `reorder_widgets` (GH18) |
@@ -680,3 +693,15 @@ Deux catégories (cf. §4) :
 | `apps/desktop/src/main/services/workspace.service.ts` | `createNewProject` (écriture initiale), `ensureAgentFiles`/`ensureVersionedFile` (contrôle/régénération à l'ouverture) |
 | `apps/desktop/electron-builder.yml` | `extraResources` (bundle mcp-server + `keytar`) |
 | `apps/desktop/package.json` | Scripts `mcp-server` (dev), `build:mcp-server` (bundle esbuild), dépendance `@modelcontextprotocol/sdk` |
+
+## 9. Ligne de commande (GH129)
+
+`src/cli/index.ts` → bundle `out/mcp-server/polenta-cli.cjs` (produit par `build:mcp-server`, même
+dossier que le serveur, donc copié dans l'application installée ; publié seul en asset de chaque
+release GitHub). Node.js 20+ seul : ni Electron, ni `keytar` (jamais chargé : seul `electron-host.ts`
+l'importe), ni réseau. Réutilise `createMcpContainer`. Garde stdout comme le serveur (les services
+journalisent sur stderr). Commande unique `import-results` (`--repo`, `--junit` répétable, motifs
+développés par Polenta, `--campaign`, `--tested-version`, `--executed-by`, `--workspace`, `--dry-run`,
+`--json`) ; sortie en anglais ; codes 0 / 1 / 2 (SPEC-TESTS §3.5). Dev : `pnpm --filter @polenta/desktop
+cli import-results …` (`src/cli/dev-entry.ts`, marque comme §2.1). Les dépendances ESM qui lisent
+`import.meta.url` (fdir, via tinyglobby) reçoivent une valeur par bannière esbuild, dans les deux bundles.

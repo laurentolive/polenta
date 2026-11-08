@@ -56,6 +56,8 @@ import type { Issue, RequirementReflectionsList, TransitionCheck, Validation, Va
   RowTarget,
   DescribedObject,
   QueryScope,
+  QueryScopePreview,
+  DashboardSharePreview,
   SavedQuery,
   QueryHistoryEntry,
   Dashboard,
@@ -951,6 +953,8 @@ export interface ApiClient {
      * porte le nouvel id, à utiliser pour toute navigation/rafraîchissement ultérieur.
      */
     setScope(repoPath: string, username: string, id: string, scope: QueryScope): Promise<SavedQuery>
+    /** GH67 — aperçu d'un changement de portée (effet, bloquants) ; rien n'est écrit. */
+    scopePreview(repoPath: string, username: string, id: string, scope: QueryScope): Promise<QueryScopePreview>
   }
   /** Dashboards personnalisables + widgets embarqués (T77 sprint 2) */
   dashboards: {
@@ -966,6 +970,15 @@ export interface ApiClient {
      * requête privée. Change l'`id` du dashboard — le retour porte le nouvel id.
      */
     setScope(repoPath: string, username: string, id: string, scope: QueryScope): Promise<Dashboard>
+    /** GH67 — aperçu du partage d'un dashboard privé avec ses requêtes privées. */
+    sharePreview(repoPath: string, username: string, id: string): Promise<DashboardSharePreview>
+    /**
+     * GH67 — partage le dashboard privé et ses requêtes privées (requêtes d'abord). Refus sans
+     * écriture `SCOPE_BLOCKED` ; échec après au moins une requête partagée `SCOPE_PARTIAL` (requêtes
+     * déjà partagées conservées) ; tout autre échec (première requête, dashboard sans requête
+     * privée) : erreur d'origine, rien n'a été partagé. Le retour porte le nouvel id.
+     */
+    shareWithQueries(repoPath: string, username: string, id: string): Promise<Dashboard>
     addWidget(repoPath: string, username: string, dashboardId: string, dto: AddWidgetDto): Promise<Dashboard>
     updateWidget(repoPath: string, username: string, dashboardId: string, widgetId: string, dto: UpdateWidgetDto): Promise<Dashboard>
     deleteWidget(repoPath: string, username: string, dashboardId: string, widgetId: string): Promise<Dashboard>

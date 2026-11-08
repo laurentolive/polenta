@@ -25,6 +25,7 @@ import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { ReorderableSidebarSection } from './ReorderableSidebarSection'
 import { SuiviUpdatesBanner } from './SuiviUpdatesBanner'
+import { QueryScopeModal } from '../dashboard/QueryScopeModal'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type { Dashboard, SavedQuery } from '@polenta/types'
 
@@ -84,12 +85,14 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { searchStr } = useRouterState({ select: (s) => ({ searchStr: s.location.searchStr }) })
+  const { searchStr, pathname } = useRouterState({ select: (s) => ({ searchStr: s.location.searchStr, pathname: s.location.pathname }) })
   const params = new URLSearchParams(searchStr ?? '')
   const activeQueryId = params.get('queryId') ?? undefined
   const activeDashboardId = params.get('dashboardId') ?? undefined
 
   const [newDashboardTitle, setNewDashboardTitle] = useState<string | null>(null)
+  /** GH67 — requête dont la portée est en cours de changement (confirmation ouverte). */
+  const [scopeQuery, setScopeQuery] = useState<SavedQuery | null>(null)
   const [queryDeleteError, setQueryDeleteError] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<Collapsed>(readCollapsed)
 
@@ -308,6 +311,7 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
           onReorder={(order) => queriesOrderMutation.mutate(order)}
           onSelect={(q) => openQuery(q.id)}
           onDelete={(q) => deleteQueryMutation.mutate(q.id)}
+          onToggleScope={(q) => setScopeQuery(q)}
           onAdd={() => openQuery(undefined)}
           emptyMessage={t('sidebar.dashboard.noQueries')}
           addTitle={t('sidebar.dashboard.addQuery')}
@@ -319,6 +323,21 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
           flexGrow={bothExpanded ? 1 - split : 1}
         />
       </div>
+
+      {scopeQuery && (
+        <QueryScopeModal
+          repoPath={repoPath}
+          username={username}
+          query={scopeQuery}
+          onClose={() => setScopeQuery(null)}
+          onChanged={(updated) => {
+            const wasOpen = pathname === '/query' && activeQueryId === scopeQuery.id
+            setScopeQuery(null)
+            // Requête ouverte dans /query : l'URL suit le nouvel id.
+            if (wasOpen) navigate({ to: '/query', search: { projectId, queryId: updated.id }, replace: true })
+          }}
+        />
+      )}
 
       {newDashboardTitle !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40">

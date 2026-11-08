@@ -1,3 +1,4 @@
+import { plainTextToMarkdown } from '../plain-text-markdown.util'
 import * as path from 'path'
 import ExcelJS from 'exceljs'
 import {
@@ -496,19 +497,5 @@ function localIso(y: number, mo: number, d: number, h: number, mi: number, noon:
   return valid ? date.toISOString() : null
 }
 
-/**
- * Commentaire saisi en texte brut → Markdown du richtext : une ligne non vide = un paragraphe,
- * caractères Markdown échappés (y compris les marqueurs de liste en début de ligne) pour que la
- * relecture affiche exactement le texte saisi.
- */
-export function plainTextToMarkdown(text: string): string {
-  return text
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map(line => line
-      .replace(/([\\`*_[\]#<>|~])/g, '\\$1')
-      .replace(/^([-+])(\s)/, '\\$1$2')
-      .replace(/^(\d+)\.(\s)/, '$1\\.$2'))
-    .join('\n\n')
-}
+// GH129 — déplacé dans un module sans ExcelJS (repris par l'import JUnit) ; réexporté ici.
+export { plainTextToMarkdown }

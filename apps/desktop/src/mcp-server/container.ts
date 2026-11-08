@@ -27,6 +27,8 @@ import { ScriptEngineService } from '../main/services/script-engine.service'
 import { SuiviService } from '../main/services/suivi.service'
 import { WorkspaceLinksService } from '../main/services/workspace-links.service'
 import { ParametersService } from '../main/services/parameters.service'
+import { TestedConfigService } from '../main/services/tested-config.service'
+import { ResultsImportService } from '../main/services/results-import.service'
 
 export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
@@ -69,6 +71,8 @@ export interface McpContainer {
   workspaceLinks: WorkspaceLinksService
   /** GH150 — base de paramètres (`list_parameters` / `set_parameters` / `delete_parameter`). */
   parameters: ParametersService
+  /** GH129 — import JUnit sans interface (outil `import_test_results`, CLI `import-results`). */
+  resultsImport: ResultsImportService
 }
 
 /**
@@ -141,6 +145,9 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   )
   const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns, { cache: false })
   graph.setVersions(versions)
+  // GH129 — version testée des runs rattachés à une campagne (GH202), comme dans l'app.
+  const testedConfig = new TestedConfigService(versions, sync, tests, campaigns)
+  tests.setTestedConfig(testedConfig)
   const issues = new IssuesService(git, schema, history, (r, wsDir) => versions.isReadonly(r, wsDir))
   graph.setIssues(issues)
   // GH206 — contraintes de transition, contrôlées dans le `persist` des trois services.
@@ -156,9 +163,10 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   // GH150 — sans ReqRefsService : les références `{req.<champ>}` restent littérales (lecture seule,
   // sans effet sur les écritures de paramètres).
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
+  const resultsImport = new ResultsImportService({ git, tests, testsIndex, reqIndex, campaigns, workspaceLinks, workspaceTree, testedConfig })
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, issues, validations, transitionGuard, workspaceTree, reqIndex, testsIndex,
-    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters,
+    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters, resultsImport,
   }
 }

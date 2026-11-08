@@ -39,6 +39,7 @@ import { registerParameterTools } from './tools/parameters.tools'
 import { registerQueryTools } from './tools/queries.tools'
 import { registerDashboardTools } from './tools/dashboards.tools'
 import { registerSuiviScriptTools } from './tools/suivi-script.tools'
+import { registerResultsImportTools } from './tools/results-import.tools'
 
 interface ParsedArgs {
   repo?: string
@@ -119,6 +120,7 @@ async function main(): Promise<void> {
   registerQueryTools(server, container)
   registerDashboardTools(server, container)
   registerSuiviScriptTools(server, container)
+  registerResultsImportTools(server, container)
 
   const transport = new StdioServerTransport()
   await server.connect(transport)

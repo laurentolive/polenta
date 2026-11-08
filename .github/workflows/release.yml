@@ -160,8 +160,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           # GH26 — latest.yml + blockmap : requis par electron-updater (mise à jour auto).
+          # GH129 — polenta-cli.cjs : CLI sans interface (`node polenta-cli.cjs import-results …`), Node.js 20+ seul.
           files: |
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.exe.blockmap
             apps/desktop/dist/latest.yml
+            apps/desktop/out/mcp-server/polenta-cli.cjs
           body_path: ${{ runner.temp }}/release-notes.md

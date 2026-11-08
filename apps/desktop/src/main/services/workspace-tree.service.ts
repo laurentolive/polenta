@@ -4,7 +4,7 @@
  * Responsible for:
  * - Two-pass recursive parsing of polenta-repo.yaml (DFS)
  * - Cycle detection (via URL set)
- * - Diamond conflict detection (same URL, different pins)
+ * - Diamond conflict detection (same mount name, different url/pin — GH324)
  * - Cloning missing dependencies via SyncService
  * - Reading / writing the tree cache at <workspace>/.polenta/tree.cache.yaml
  */
@@ -59,6 +59,9 @@ interface GraphNode {
    *  DFS — same "first declaration wins" simplification already applied to `pin`/`url` when a
    *  mount name is later re-encountered as a shared (diamond) dependency. */
   localParent?: string
+  /** GH324 — every declaration that resolved to this mount name (url, pin, declaring repo).
+   *  More than one distinct (url, pin) among them = diamond conflict (pass 2). */
+  declarations: Array<{ url: string; pin: string; requiredBy: string }>
 }
 
 export interface WorkspaceTreeResult {
@@ -150,6 +153,7 @@ export class WorkspaceTreeService {
       pin: '',
       repoPath: rootRepoPath,
       children: [],
+      declarations: [],
     })
 
     // ── Pass 1: DFS collection ────────────────────────────────────────────────
@@ -179,6 +183,7 @@ export class WorkspaceTreeService {
       if (name === rootName) continue
       if (!node.url) continue
       const exists = await this.repoExistsAtPin(node.repoPath, node.pin)
+      if (exists) await this.peelDetachedHead(node.repoPath)
       if (!exists) {
         // A repo can fail repoExistsAtPin for two very different reasons: the directory
         // doesn't exist yet (brand-new dependency — safe to clone), or it already holds a
@@ -198,7 +203,8 @@ export class WorkspaceTreeService {
           if (node.pin) {
             const isSha = /^[0-9a-f]{7,40}$/i.test(node.pin)
             try {
-              await git.checkout({ fs, dir: node.repoPath, ref: node.pin })
+              // GH314 — un tag annoté se checkout par son commit : sinon HEAD reçoit l'objet tag.
+              await git.checkout({ fs, dir: node.repoPath, ref: await this.pinCheckoutRef(node.repoPath, node.pin) })
             } catch {
               if (isSha) {
                 // Best-effort for a SHA pin — repo still usable at its default branch.
@@ -485,10 +491,13 @@ export class WorkspaceTreeService {
           repoPath: depRepoPath,
           children: [],
           localParent: dep.localParent,
+          declarations: [],
         })
-      } else {
-        // Already in graph — could be shared (same url+pin) or conflict
-        // Conflict detection is done in pass-2; nothing to do here
+      }
+      // Already in graph: shared (same url+pin) or conflict — recorded here, detected in pass 2.
+      const declarations = graph.get(mountName)!.declarations
+      if (!declarations.some(d => d.url === dep.url && d.pin === dep.pin && d.requiredBy === name)) {
+        declarations.push({ url: dep.url, pin: dep.pin, requiredBy: name })
       }
 
       // Recurse into dependency (only if repo exists on disk; otherwise skip recursion)
@@ -516,68 +525,39 @@ export class WorkspaceTreeService {
   }
 
   /**
-   * Pass-2: detect diamond conflicts.
-   * A conflict is: same url, different pins, for nodes that have no mount-override
-   * (i.e., they share the same `name` in the graph but different pins, which is
-   * impossible since the graph key is the mount name).
-   *
-   * More precisely: check if two different graph nodes share the same URL but different pins.
+   * Pass-2: detect diamond conflicts (GH324).
+   * A conflict is several declarations resolving to the same mount name (same directory) with a
+   * different (url, pin). Two mounts of the same url under distinct names (after a mount-override
+   * chosen in DiamondConflictModal) are two separate repos, not a conflict; the same (url, pin)
+   * declared by several repos is a shared mount. Names differing only by case are the same
+   * directory on Windows/macOS: grouped together.
    */
   private detectDiamondConflicts(graph: Map<string, GraphNode>): DiamondConflict[] {
-    // Group by url
-    const byUrl = new Map<string, Array<{ name: string; pin: string; requiredBy: string[] }>>()
-
-    for (const [, node] of graph) {
-      if (!node.url) continue
-      if (!byUrl.has(node.url)) {
-        byUrl.set(node.url, [])
-      }
-      byUrl.get(node.url)!.push({ name: node.name, pin: node.pin, requiredBy: [] })
+    const byDir = new Map<string, GraphNode[]>()
+    for (const node of graph.values()) {
+      const key = node.name.toLowerCase()
+      byDir.set(key, [...(byDir.get(key) ?? []), node])
     }
-
-    // Find parents for each node
-    for (const [parentName, parentNode] of graph) {
-      for (const childName of parentNode.children) {
-        const childNode = graph.get(childName)
-        if (!childNode) continue
-        const entries = byUrl.get(childNode.url)
-        if (!entries) continue
-        const entry = entries.find(e => e.name === childName)
-        if (entry && !entry.requiredBy.includes(parentName)) {
-          entry.requiredBy.push(parentName)
-        }
-      }
-    }
-
     const conflicts: DiamondConflict[] = []
-
-    for (const [url, entries] of byUrl) {
-      // Group entries by pin
-      const pinGroups = new Map<string, string[]>()
-      for (const entry of entries) {
-        if (!pinGroups.has(entry.pin)) {
-          pinGroups.set(entry.pin, [])
+    for (const nodes of byDir.values()) {
+      const variants = new Map<string, { url: string; pin: string; requiredBy: string[] }>()
+      for (const d of nodes.flatMap(n => n.declarations)) {
+        const key = JSON.stringify([d.url, d.pin])
+        let variant = variants.get(key)
+        if (!variant) {
+          variant = { url: d.url, pin: d.pin, requiredBy: [] }
+          variants.set(key, variant)
         }
-        const requiredBy = entry.requiredBy.length > 0 ? entry.requiredBy : [entry.name]
-        for (const r of requiredBy) {
-          if (!pinGroups.get(entry.pin)!.includes(r)) {
-            pinGroups.get(entry.pin)!.push(r)
-          }
-        }
+        if (!variant.requiredBy.includes(d.requiredBy)) variant.requiredBy.push(d.requiredBy)
       }
-
-      if (pinGroups.size > 1) {
-        // Multiple pins for the same URL → conflict
-        conflicts.push({
-          url,
-          pins: Array.from(pinGroups.entries()).map(([pin, requiredBy]) => ({
-            pin,
-            requiredBy,
-          })),
-        })
-      }
+      if (variants.size < 2) continue
+      const list = [...variants.values()]
+      conflicts.push({
+        url: list[0].url,
+        mountName: nodes[0].name,
+        pins: list.map(v => ({ pin: v.pin, url: v.url, requiredBy: v.requiredBy })),
+      })
     }
-
     return conflicts
   }
 
@@ -693,6 +673,30 @@ export class WorkspaceTreeService {
    */
   private async peelToCommit(repoPath: string, oid: string): Promise<string> {
     return (await git.readCommit({ fs, dir: repoPath, oid })).oid
+  }
+
+  /** GH314 — a HEAD detached on an annotated tag object (pin checked out before the fix) is moved
+   * onto that tag's commit, the same tree: no file is rewritten. Best effort. */
+  private async peelDetachedHead(repoPath: string): Promise<void> {
+    try {
+      if (await git.currentBranch({ fs, dir: repoPath })) return
+      const head = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+      const commit = await this.peelToCommit(repoPath, head)
+      if (commit !== head) await git.writeRef({ fs, dir: repoPath, ref: 'HEAD', value: commit, force: true })
+    } catch {
+      // Unreadable HEAD: left as is, the next checkout settles it.
+    }
+  }
+
+  /** GH314 — ref to hand to `git.checkout` for `pin`: the commit of a tag (annotated or not) when
+   * no local branch carries that name, else `pin` itself (branch, SHA, remote branch). */
+  private async pinCheckoutRef(repoPath: string, pin: string): Promise<string> {
+    if (await git.resolveRef({ fs, dir: repoPath, ref: `refs/heads/${pin}` }).then(() => true, () => false)) return pin
+    try {
+      return await this.peelToCommit(repoPath, await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${pin}` }))
+    } catch {
+      return pin
+    }
   }
 
   private async repoExistsAtPin(repoPath: string, pin: string): Promise<boolean> {

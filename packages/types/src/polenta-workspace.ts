@@ -74,12 +74,17 @@ export interface WorkspaceTree {
   logicalTree: WorkspaceTreeNode
 }
 
-/** Describes a diamond dependency conflict (same URL, different pins). */
+/** Describes a diamond dependency conflict: several declarations of the same mount name
+ *  (same directory) with a different (url, pin) — GH324. */
 export interface DiamondConflict {
-  /** Git remote URL of the conflicting repo. */
+  /** Git remote URL of the conflicting repo (first variant's url). */
   url: string
-  /** Each pin variant with the list of parent repos that require it. */
-  pins: { pin: string; requiredBy: string[] }[]
+  /** GH324 — mount name the conflicting declarations resolve to. */
+  mountName?: string
+  /** Each (url, pin) variant with the list of parent repos that require it. `url` (GH324) is the
+   *  variant's own url — it differs from the conflict's `url` when the same name is declared with
+   *  two different repos; absent = the conflict's `url`. */
+  pins: { pin: string; url?: string; requiredBy: string[] }[]
 }
 
 /**

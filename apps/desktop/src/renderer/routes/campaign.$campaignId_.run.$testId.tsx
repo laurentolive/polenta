@@ -134,9 +134,10 @@ function TestRunViewPage() {
               · {run.executedBy}
             </span>
             {/* GH36 — résultat saisi hors outil puis réimporté depuis le classeur d'exécution. */}
-            {run.origin === 'excel-import' && (
-              <span className="text-xs px-1.5 py-0.5 rounded-full bg-surface/60 border border-current/20">
-                {t('campaignPage.executionSheet.importedBadge')}
+            {/* GH129 — résultat importé d'un rapport JUnit (CLI ou outil MCP). */}
+            {(run.origin === 'excel-import' || run.origin === 'junit-import') && (
+              <span data-testid="run-origin-badge" className="text-xs px-1.5 py-0.5 rounded-full bg-surface/60 border border-current/20">
+                {t(run.origin === 'junit-import' ? 'campaignPage.junitImportedBadge' : 'campaignPage.executionSheet.importedBadge')}
               </span>
             )}
           </div>

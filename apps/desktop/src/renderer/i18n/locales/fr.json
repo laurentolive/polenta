@@ -980,6 +980,7 @@
     "createTestCase": "Créer le cas de test"
   },
   "campaignPage": {
+    "junitImportedBadge": "Importé depuis JUnit",
     "paramsIncomplete": "Renseignez la valeur de chaque paramètre des tests sélectionnés.",
     "newTitle": "Nouvelle Campagne de test",
     "titlePlaceholder": "Ex : Campagne validation sprint 11",
@@ -1320,6 +1321,42 @@
       "splitHint": "Une sous-colonne par valeur distincte de cette colonne du résultat (ex. une par campagne), à cocher séparément dans ⚙️. 50 au maximum.",
       "splitLabelColumn": "Libellé des colonnes",
       "splitLabelDefault": "(la valeur)"
+    }
+  },
+  "suiviScope": {
+    "widgetRef": "{{widget}} — dashboard {{dashboard}} ({{scope}})",
+    "alsoUsedBy": "Aussi utilisée par : {{list}} — ces widgets suivront la requête partagée.",
+    "titleTaken_one": "Une autre requête porte déjà ce titre : renommez-la si besoin.",
+    "titleTaken_other": "{{count}} autres requêtes portent déjà ce titre : renommez-la si besoin.",
+    "toShared": "Passer en partagée",
+    "toPrivate": "Passer en privée",
+    "blocker": {
+      "readOnly": "Requête en lecture seule ({{reason}}) : à réécrire ou à retirer du dashboard.",
+      "params": "Paramètres invalides ({{message}}) : à corriger dans la vue Requêtes.",
+      "dependents_one": "Utilisée par {{count}} widget :",
+      "dependents_other": "Utilisée par {{count}} widgets :",
+      "missing": "Widget « {{title}} » : requête introuvable, à reconfigurer ou à supprimer."
+    },
+    "query": {
+      "toSharedTitle": "Passer la requête en partagée",
+      "toPrivateTitle": "Passer la requête en privée",
+      "sharedEffect": "« {{title}} » devient visible de toute l'équipe : elle est écrite dans le dépôt (modification à publier) et quitte vos éléments privés.",
+      "privateEffect": "« {{title}} » est retirée du dépôt (modification à publier ; les autres membres ne la voient plus après publication) et rejoint vos éléments privés.",
+      "columnRemoved": "La colonne « {{label}} » sera retirée : elle est réservée aux requêtes partagées et disparaît des vues tableau.",
+      "confirmShared": "Partager",
+      "confirmPrivate": "Passer en privée",
+      "savedOnly": "Seule la version enregistrée change de portée : enregistrez d'abord vos modifications en cours."
+    },
+    "dashboard": {
+      "title": "Partager le dashboard et ses requêtes privées",
+      "intro_one": "Ce dashboard utilise {{count}} requête privée : elle sera partagée avec lui.",
+      "intro_other": "Ce dashboard utilise {{count}} requêtes privées : elles seront partagées avec lui.",
+      "widgets": "Widgets : {{list}}",
+      "effect": "Les requêtes et le dashboard deviennent visibles de toute l'équipe et sont écrits dans le dépôt (modifications à publier).",
+      "stayShared": "Si le dashboard repasse en privé, ses requêtes restent partagées.",
+      "confirm_one": "Partager (1 requête + le dashboard)",
+      "confirm_other": "Partager ({{count}} requêtes + le dashboard)",
+      "confirmNone": "Partager le dashboard"
     }
   },
   "dashboardPage": {
@@ -2342,6 +2379,7 @@
     "campaignMissing": "campagne introuvable",
     "originApp": "saisie",
     "originExcel": "import Excel",
+    "originJunit": "import JUnit",
     "group": {
       "execution": "Exécution",
       "campaign": "Campagne",

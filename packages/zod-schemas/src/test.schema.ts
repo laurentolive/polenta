@@ -67,7 +67,10 @@ export const ExecuteTestCaseSchema = z.object({
    *  Absents : exécution dans l'outil (date = maintenant). */
   executedBy: z.string().optional(),
   executedAt: z.string().datetime({ offset: true }).optional(),
-  origin: z.literal('excel-import').optional(),
+  /** GH129 — `junit-import` : import JUnit sans interface (CLI, outil MCP). */
+  origin: z.enum(['excel-import', 'junit-import']).optional(),
+  /** GH129 — durée lue dans le rapport importé (secondes) ; absente : 0. */
+  duration: z.number().nonnegative().optional(),
   /** GH73 — entrée de campagne exécutée : le run lui est rattaché. Absent : exécution isolée. */
   campaignEntry: z.object({ campaignId: z.string().min(1), entryId: z.string().min(1) }).optional(),
   /** GH196 — valeurs des `runFields` (chaînes ou valeurs typées, converties par le main). */

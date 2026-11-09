@@ -26,3 +26,7 @@ Format :
 ## 2026-11-09 — Architecture déduite de la doc, pas du code
 - Erreur : GH332, l'agent a avancé « pin de submodule modifié des deux côtés » comme cause probable parce que `CLAUDE.md` décrit les composants comme des submodules git ; ils sont gérés à la main par Polenta, et les postes clients n'ont pas de git CLI (le repli proposé était donc inapplicable).
 - Règle : avant de bâtir un diagnostic ou un correctif sur un point d'architecture (submodules, outils présents chez le client), le vérifier dans le code ; ne pas proposer de dépendance à un outil externe (git CLI) sans confirmer qu'il est disponible chez les clients.
+
+## 2026-11-09 — Saturation traitée à une seule de ses sources
+- Erreur : GH335, « Too many pending tasks in queue packed-refs » corrigé en supprimant une source de demandes (statut), testé sur ce seul chemin ; l'humain a revu l'erreur au checkout suivant, le verrou étant global au processus et alimenté par d'autres appels (index, historique, autres repos).
+- Règle : pour une erreur de limite de ressource partagée, identifier la limite elle-même et tous ses consommateurs avant de corriger ; tester la limite (charge au-delà du seuil), pas seulement le chemin qui l'a révélée.

@@ -413,12 +413,9 @@ export class WorkspaceService {
       return { status: 'ok', tree }
     }
 
-    // T122 sprint 4, point 7 (absorbe T121) — contrôle/régénère AGENTS.md/.mcp.json à
-    // CHAQUE ouverture d'un projet existant, avant tout autre traitement (y compris le
-    // court-circuit "cache valide" ci-dessous) : couvre aussi bien les projets créés
-    // avant T106/T122 (jamais générés) que ceux dont le gabarit a évolué depuis leur
-    // création. Best-effort — ne bloque jamais l'ouverture du projet en cas d'échec.
-    await this.ensureAgentFiles(rootRepoPath)
+    // GH336 — AGENTS.md/.mcp.json ne sont plus régénérés à l'ouverture (ex-T122 sprint 4) :
+    // absents ou périmés, ils sont proposés par la mise en conformité du repo racine
+    // (`RepoConformityService`, `pendingAgentFiles`), écrits puis commités et poussés sur validation.
 
     // Get HEAD SHA of root repo (for cache invalidation)
     let headSha = ''
@@ -521,6 +518,21 @@ export class WorkspaceService {
       }),
     ])
     return { agentsMdRegenerated, mcpJsonRegenerated }
+  }
+
+  /** GH336 — AGENTS.md / .mcp.json absents ou périmés, avec le contenu à écrire ; n'écrit rien. */
+  async pendingAgentFiles(rootRepoPath: string): Promise<{ path: string; content: string }[]> {
+    const pending: { path: string; content: string }[] = []
+    const stale = async (rel: string, extract: (c: string) => number | undefined, target: number) =>
+      (await fsPromises.readFile(path.join(rootRepoPath, rel), 'utf-8').then(extract).catch(() => undefined)) !== target
+    if (await stale('AGENTS.md', extractAgentsMdVersion, AGENTS_MD_TEMPLATE_VERSION)) {
+      pending.push({ path: 'AGENTS.md', content: buildAgentsMdTemplate(BRAND) })
+    }
+    const mcpServerLaunch = this.host.mcpServerLaunch
+    if (mcpServerLaunch && await stale('.mcp.json', extractMcpJsonVersion, MCP_JSON_TEMPLATE_VERSION)) {
+      pending.push({ path: '.mcp.json', content: buildMcpJsonContent(mcpServerLaunch()) })
+    }
+    return pending
   }
 
   private async ensureAgentsMd(rootRepoPath: string): Promise<boolean> {

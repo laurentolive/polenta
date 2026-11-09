@@ -236,20 +236,23 @@ export class DashboardSeedService {
     private readonly library?: DashboardLibraryService,
   ) {}
 
+  /**
+   * À chaque `dashboards:list` : seulement le contenu **local** (seed « Campagnes » privé, marqueur
+   * dans le `.pref` ; mise à niveau des requêtes privées d'avant GH74). GH336 §6 : le contenu
+   * **partagé** (dashboard Status, `dashboards/lib`, marqueur `.seeded.yaml`, mise à niveau des
+   * requêtes partagées) est versionné — il n'est plus écrit ici, mais proposé par la mise en
+   * conformité (`sharedSeedPending` / `applySharedSeed`), puis commité et poussé sur validation.
+   */
   async ensureSeeded(repoPath: string, username: string, locale?: string): Promise<void> {
     const existing = this.inFlightSeeds.get(repoPath)
     if (existing) return existing
     const attempt = (async () => {
-      await this.doEnsureSeeded(repoPath, username)
-      await this.ensureLibrarySeeded(repoPath).catch((err) => {
-        console.warn(`[dashboard-seed] copie de la bibliothèque non terminée (${repoPath}) :`, err instanceof Error ? err.message : String(err))
-      })
       // Seed facultatif : un échec ne doit pas empêcher de lister les dashboards. Retenté au prochain
       // `dashboards:list` (marqueur à reprise).
       await this.ensureCampaignsSeeded(repoPath, username, seedLocale(locale)).catch((err) => {
         console.warn(`[dashboard-seed] seed « Campagnes » non terminé (${repoPath}) :`, err instanceof Error ? err.message : String(err))
       })
-      await this.upgradeLegacySeeds(repoPath, username).catch((err) => {
+      await this.upgradeLegacySeeds(repoPath, username, 'private').catch((err) => {
         console.warn(`[dashboard-seed] mise à niveau des seeds d'avant GH74 non terminée (${repoPath}) :`, err instanceof Error ? err.message : String(err))
       })
     })().finally(() => {
@@ -257,6 +260,23 @@ export class DashboardSeedService {
     })
     this.inFlightSeeds.set(repoPath, attempt)
     return attempt
+  }
+
+  /** GH336 — contenu partagé encore à écrire (rien n'est écrit) : Status, bibliothèque, mise à niveau. */
+  async sharedSeedPending(repoPath: string, username: string): Promise<boolean> {
+    const marker = await this.readStatusMarker(repoPath)
+    if (!marker?.seededAt && (await listObjectEntries(repoPath, 'dashboards', 'DASHBOARD')).length === 0) return true
+    if (this.library && !(marker?.library?.length) && (await this.git.listFiles(repoPath, 'dashboards/lib')).length === 0) return true
+    const legacy = (await this.savedQueries.list(repoPath, username))
+      .filter((q) => q.scope === 'shared' && q.state.readOnly === 'legacy-sql' && q.legacySql && STATUS_LEGACY_SQL[q.legacySql])
+    return legacy.length > 0
+  }
+
+  /** GH336 — écrit le contenu partagé (validé par l'utilisateur ; commité par la mise en conformité). */
+  async applySharedSeed(repoPath: string, username: string): Promise<void> {
+    await this.doEnsureSeeded(repoPath, username)
+    await this.ensureLibrarySeeded(repoPath)
+    await this.upgradeLegacySeeds(repoPath, username, 'shared')
   }
 
   private async doEnsureSeeded(repoPath: string, username: string): Promise<void> {
@@ -396,10 +416,12 @@ export class DashboardSeedService {
    * reconnue à son SQL d'origine exact est remplacée par sa définition actuelle (même id), et chacun
    * de ses widgets resté au mapping d'origine passe au widget actuel. Requête ou widget modifiés :
    * rien n'est touché. Requêtes partagées (Status) : jamais sur une branche en lecture seule.
-   * Idempotent (une requête remplacée n'est plus en SQL) : relancé à chaque `dashboards:list`.
+   * Idempotent (une requête remplacée n'est plus en SQL). GH336 : privées à chaque `dashboards:list`,
+   * partagées seulement par la mise en conformité validée (`applySharedSeed`).
    */
-  private async upgradeLegacySeeds(repoPath: string, username: string): Promise<void> {
-    const legacy = (await this.savedQueries.list(repoPath, username)).filter((q) => q.state.readOnly === 'legacy-sql' && q.legacySql)
+  private async upgradeLegacySeeds(repoPath: string, username: string, scope: 'shared' | 'private'): Promise<void> {
+    const legacy = (await this.savedQueries.list(repoPath, username))
+      .filter((q) => q.scope === scope && q.state.readOnly === 'legacy-sql' && q.legacySql)
     if (legacy.length === 0) return
     const branch = await this.git.currentBranch(repoPath).catch(() => '')
     const sharedWritable = !isReadonlyBranch(branch)

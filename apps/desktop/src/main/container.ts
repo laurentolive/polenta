@@ -58,6 +58,7 @@ import { resolveWorkspaceRepoPaths } from './services/workspace-repos.util'
 import { HistoryBackfillService } from './services/history-backfill.service'
 import { WorkspaceLinksService } from './services/workspace-links.service'
 import type { Container } from './ipc/index'
+import { RepoConformityService } from './services/repo-conformity.service'
 import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
 
@@ -211,8 +212,11 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     print,
   )
 
+  const conformity = new RepoConformityService(git, sync, workspace, dashboardSeed, (repoPath) => auth.projectUsername(repoPath))
+
   return {
     transitionGuard,
+    conformity,
     reflections,
     auth,
     git,

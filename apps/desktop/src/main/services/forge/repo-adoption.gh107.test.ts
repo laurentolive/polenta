@@ -210,8 +210,9 @@ describe('adopt', () => {
     expect(forge.updateRepo).toHaveBeenCalledWith('k', OWNER, NAME, { description: 'Le projet' })
     expect(forge.alignDefaultBranch).toHaveBeenCalled()
     expect(result.steps.every(s => s.status === 'done')).toBe(true)
-    // Rien en attente après l'adoption, sauf AGENTS.md que toute ouverture régénère s'il manque.
-    expect(run(repoDir(), 'status', '--porcelain')).toBe('?? AGENTS.md')
+    // Rien en attente après l'adoption. GH336 : AGENTS.md manquant n'est plus régénéré à l'ouverture
+    // (proposé par la mise en conformité, commité et poussé sur validation).
+    expect(run(repoDir(), 'status', '--porcelain')).toBe('')
   })
 
   it('A-04 — int-* désignée par project.yaml : checkout, pas de nouvelle branche, défaut aligné si admin', async () => {

@@ -290,6 +290,9 @@ describe('GH74 — seeds d\'avant GH74 réécrits', () => {
     }))
     const { seed, d, q } = await seedService('main')
     await seed.ensureSeeded(repo, U)
+    // GH336 — partagé : proposé, réécrit seulement sur validation.
+    expect(await seed.sharedSeedPending(repo, U)).toBe(true)
+    await seed.applySharedSeed(repo, U)
     expect(await q.findOne(repo, U, 'QUERY-0001')).toMatchObject({ template: { id: 'filtered-list' }, state: { customized: false } })
     expect((await q.findOne(repo, U, 'QUERY-0001'))!.state.readOnly).toBeUndefined()
     expect(exists('queries/QUERY-0001.yaml')).toBe(false)
@@ -303,6 +306,7 @@ describe('GH74 — seeds d\'avant GH74 réécrits', () => {
     write('queries/QUERY-0002.yaml', yaml.dump({ id: 'QUERY-0002', title: 'y', mode: 'sql', sqlText: STATUS_SQL, scope: 'shared', createdBy: 'x', createdAt: '2026-01-02' }))
     const { seed, q } = await seedService('prj-v1')
     await seed.ensureSeeded(repo, U)
+    await seed.applySharedSeed(repo, U)
     expect((await q.findOne(repo, U, 'QUERY-0001'))!.state.readOnly).toBe('legacy-sql')
     expect((await q.findOne(repo, U, 'QUERY-0002'))!.state.readOnly).toBe('legacy-sql')
   })

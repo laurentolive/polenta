@@ -69,7 +69,11 @@ afterEach(() => {
 describe('GH74 — copie de la bibliothèque de départ (§6.2)', () => {
   it('B1 — premier accès : copiée et notée dans le marqueur ; un fichier supprimé n\'est pas recréé', async () => {
     const { seed, updates } = setup()
+    // GH336 — rien de partagé à l'ouverture du panneau ; écrit sur validation (mise en conformité).
     await seed.ensureSeeded(repo, U)
+    expect(exists('dashboards/lib')).toBe(false)
+    expect(await seed.sharedSeedPending(repo, U)).toBe(true)
+    await seed.applySharedSeed(repo, U)
     expect(read('dashboards/lib/campaign.js')).toBe(NEW)
     expect(read('dashboards/lib/time.js')).toBe(TIME)
     expect(yaml.load(read('dashboards/.seeded.yaml'))).toMatchObject({
@@ -78,6 +82,7 @@ describe('GH74 — copie de la bibliothèque de départ (§6.2)', () => {
 
     fs.rmSync(path.join(repo, 'dashboards/lib/time.js'))
     await seed.ensureSeeded(repo, U)
+    expect(await seed.sharedSeedPending(repo, U)).toBe(false)
     expect(exists('dashboards/lib/time.js')).toBe(false)
     expect((await updates.list(repo, U)).updates.filter((u) => u.kind === 'library')).toEqual([])
   })

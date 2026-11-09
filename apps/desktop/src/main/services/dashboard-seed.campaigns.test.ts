@@ -37,6 +37,7 @@ function fixture(opts: { branch?: string; failOnQuery?: number; legacySeeded?: b
       return q
     },
     findOne: async (_r: string, _u: string, id: string) => queries.get(id) ?? null,
+    list: async () => [], // pas de requête d'avant GH74 dans ces cas
   } as unknown as SavedQueriesService
 
   const dashboardsSvc = {
@@ -78,10 +79,13 @@ describe('GH65 — seed « Campagnes »', () => {
     expect(f.repoWrites).toEqual([])
   })
 
-  it('projet neuf : seed historique (partagé) puis Campagnes (privé)', async () => {
+  it('projet neuf : Campagnes (privé) seul automatiquement ; Status (partagé) après validation (GH336)', async () => {
     const f = fixture()
     await f.service.ensureSeeded(REPO, 'alice')
-    expect([...f.dashboards.values()].map(d => [d.title, d.scope])).toEqual([['Status', 'shared'], ['Campagnes', 'private']])
+    expect([...f.dashboards.values()].map(d => [d.title, d.scope])).toEqual([['Campagnes', 'private']])
+    expect(await f.service.sharedSeedPending(REPO, 'alice')).toBe(true)
+    await f.service.applySharedSeed(REPO, 'alice')
+    expect([...f.dashboards.values()].map(d => d.title).sort()).toEqual(['Campagnes', 'Status'])
   })
 
   it('un marqueur par utilisateur : chacun reçoit le sien', async () => {

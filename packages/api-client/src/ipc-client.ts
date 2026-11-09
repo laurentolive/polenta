@@ -158,6 +158,10 @@ export function createIpcClient(
       logout: () => invoke('auth:logout'),
       openPasswordChange: () => invoke('auth:open-password-change'),
     },
+    conformity: {
+      check: (p, root) => invoke('conformity:check', p, root),
+      apply: (p, root) => invoke('conformity:apply', p, root),
+    },
     sync: {
       status: (p) => invoke('sync:status', p),
       commit: (p, m) => invoke('sync:commit', p, m),

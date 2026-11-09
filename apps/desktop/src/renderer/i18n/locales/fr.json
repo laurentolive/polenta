@@ -483,7 +483,24 @@
       "refreshConflict_one": "Conflit avec la branche distante ({{count}} fichier) : rien n'a été modifié.",
       "refreshConflict_other": "Conflit avec la branche distante ({{count}} fichiers) : rien n'a été modifié.",
       "integrationTag": "intégration",
-      "terminal": "Terminal (Ctrl+ù)"
+      "terminal": "Terminal (Ctrl+ù)",
+      "conformity": {
+        "title": "Polenta doit mettre à jour ce dépôt",
+        "intro": "Ces fichiers seront écrits, commités et poussés aussitôt (aucune autre modification n'est incluse) :",
+        "item_gitattributes": "Fins de ligne LF pour tout le dépôt (.gitattributes)",
+        "item_gitignore": "Fichiers locaux ignorés (.gitignore : préférences, cache)",
+        "item_tracked-local": "Fichiers locaux commités par erreur, retirés de git (gardés sur votre poste)",
+        "item_agent-files": "Fichiers pour les agents IA à jour (AGENTS.md, .mcp.json)",
+        "details": "Détail",
+        "apply": "Valider",
+        "later": "Plus tard",
+        "applying": "Mise à jour…",
+        "done": "Dépôt mis à jour et poussé.",
+        "pushFailed": "Commit fait, mais le push a échoué : {{error}}",
+        "errorDirty": "Publiez ou annulez d'abord vos modifications en cours.",
+        "errorOffIntegration": "Passez d'abord sur la branche d'intégration {{branch}}.",
+        "errorDiverged": "La branche d'intégration a divergé du serveur : resynchronisez-la d'abord."
+      }
     },
     "reorderable": {
       "deleteTitle": "Supprimer ?",

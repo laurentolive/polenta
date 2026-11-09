@@ -330,6 +330,17 @@ export interface CheckoutBranchResult {
   remoteRef?: string
 }
 
+// GH336 — mirrors RepoConformityService's ConformityItem / ConformityResult.
+export interface ConformityItem {
+  id: 'gitattributes' | 'gitignore' | 'tracked-local' | 'agent-files' | 'dashboards-seed'
+  files: string[]
+}
+export interface ConformityResult {
+  sha: string | null
+  pushed: boolean
+  pushError?: string
+}
+
 // GH39 — mirrors SyncService's IntegrationRemoteState / ResyncOutcome.
 export type IntegrationRemoteStateKind = 'no-remote' | 'up-to-date' | 'behind' | 'ahead' | 'diverged'
 export interface IntegrationRemoteState {
@@ -633,6 +644,12 @@ export interface ApiClient {
       | { status: 'ok'; path: string }
       | { status: 'error'; message: string }
     >
+  }
+  /** GH336 — mise en conformité d'un repo : `check` sans écrire ; `apply` écrit, commite ces seuls fichiers et pousse.
+   *  `apply` lève `conformity-dirty`, `conformity-off-integration:<branche>` ou `conformity-diverged`. */
+  conformity: {
+    check(repoPath: string, root: boolean): Promise<ConformityItem[]>
+    apply(repoPath: string, root: boolean): Promise<ConformityResult>
   }
   sync: {
     status(repoPath: string): Promise<SyncStatus>

@@ -12,6 +12,7 @@ import git from 'isomorphic-git'
 import type { AuthService } from '../services/auth.service'
 import type { GitService } from '../services/git.service'
 import type { SyncService } from '../services/sync.service'
+import type { RepoConformityService } from '../services/repo-conformity.service'
 import type { MergeResolutionService } from '../services/merge-resolution.service'
 import type { DiffEditService } from '../services/diff-edit.service'
 import type { WorkspaceService } from '../services/workspace.service'
@@ -106,6 +107,7 @@ import { readFileAt } from '../services/read-file-at.util'
 
 export interface Container {
   auth: AuthService
+  conformity: RepoConformityService
   git: GitService
   sync: SyncService
   mergeResolution: MergeResolutionService
@@ -225,7 +227,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
   'sync:discard', 'sync:discard-all', 'sync:merge', 'sync:merge-into', 'sync:rebase', 'sync:resync-integration', 'sync:auto-sync',
-  'sync:settle-auto-branch',
+  'sync:settle-auto-branch', 'conformity:apply',
   'integration:designate', 'integration:create',
   'diff:save-working-file',
 ])
@@ -325,6 +327,9 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
 
   // ── Sync ─────────────────────────────────────────────────────────────────────
   r.handle('sync:status', (_e, repoPath: string) => c.sync.status(repoPath))
+  // GH336 — mise en conformité d'un repo (validée par l'utilisateur dans le panneau Version).
+  r.handle('conformity:check', (_e, repoPath: string, root: boolean) => c.conformity.check(repoPath, !!root))
+  r.handle('conformity:apply', (_e, repoPath: string, root: boolean) => c.conformity.apply(repoPath, !!root))
   r.handle('sync:commit', (_e, repoPath: string, message: string) =>
     c.sync.commit(repoPath, message))
   r.handle('sync:push', (_e, repoPath: string) => c.sync.push(repoPath))

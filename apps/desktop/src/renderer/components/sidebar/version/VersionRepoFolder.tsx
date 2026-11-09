@@ -15,6 +15,7 @@ import { useOpenMergeResolution } from '../../merge/useOpenMergeResolution'
 import { useRepoIntegrationSync, useResyncIntegration } from '../../../hooks/useIntegrationSync'
 import type { WorkspaceTreeNode } from '@polenta/types'
 import { branchErrorText } from '../../../lib/branchErrors'
+import { ConformityNotice } from './ConformityNotice'
 
 interface Props {
   node: WorkspaceTreeNode
@@ -275,6 +276,14 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
           />
         </div>
       </div>
+
+      <ConformityNotice
+        repoPath={repoPath}
+        workspaceDir={workspaceDir}
+        root={depth === 0}
+        detached={!!syncStatus && !syncStatus.branch}
+        indent={indent}
+      />
 
       {(isCheckoutError || checkoutPinWarning || branchNotices.length > 0) && (
         <div style={{ paddingLeft: `${8 + indent}px` }} className="px-3">

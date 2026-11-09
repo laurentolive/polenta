@@ -23,6 +23,7 @@ import type { TraceabilityService } from '../services/traceability.service'
 import type { TransitionGuardService } from '../services/transition-guard.service'
 import type { ReflectionsService } from '../services/reflections.service'
 import { readOwnedTypeDef } from '../services/field-write.util'
+import { checkoutKeepingEol } from '../services/eol-status.util'
 import type { ReviewsService } from '../services/reviews.service'
 import type { RepoWatcherService } from '../services/repo-watcher.service'
 import type { SchemaService } from '../services/schema.service'
@@ -355,7 +356,7 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     }))
   })
   r.handle('sync:checkout-commit', async (_e, repoPath: string, sha: string) => {
-    await git.checkout({ fs, dir: repoPath, ref: sha })
+    await checkoutKeepingEol({ dir: repoPath, ref: sha })
   })
   r.handle('sync:stage', (_e, repoPath: string, filepath: string) =>
     c.sync.stage(repoPath, filepath))

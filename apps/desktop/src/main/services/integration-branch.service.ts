@@ -9,6 +9,7 @@ import type { DesignateOutcome, IntegrationCreateFrom, IntegrationGuardCode, Int
 import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
 import type { ForgeService } from './forge/forge.service'
+import { checkoutKeepingEol } from './eol-status.util'
 
 const PROJECT_FILE = 'config/project.yaml'
 const INT_PREFIX = 'int-'
@@ -150,7 +151,7 @@ export class IntegrationBranchService {
     try {
       if (previous && (await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined)) === branch) {
         // Sans tag, la branche a été créée sans toucher au WD (T87) : retour sans réécrire les fichiers.
-        await git.checkout({ fs, dir: repoPath, ref: previous, noCheckout: !rewroteWd })
+        await checkoutKeepingEol({ dir: repoPath, ref: previous, noCheckout: !rewroteWd })
       }
       if ((await git.listBranches({ fs, dir: repoPath })).includes(branch)) await git.deleteBranch({ fs, dir: repoPath, ref: branch })
     } catch {

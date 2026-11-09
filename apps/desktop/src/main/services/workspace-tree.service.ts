@@ -32,6 +32,7 @@ import type {
 import type { PolentaRepoDependency } from '@polenta/types'
 import { findSystemNode, isAutoBranch } from '@polenta/types'
 import { parseTreeCache, serializeTreeCache } from './tree-cache.util'
+import { checkoutKeepingEol } from './eol-status.util'
 
 // ── Internal types ────────────────────────────────────────────────────────────
 
@@ -204,7 +205,7 @@ export class WorkspaceTreeService {
             const isSha = /^[0-9a-f]{7,40}$/i.test(node.pin)
             try {
               // GH314 — un tag annoté se checkout par son commit : sinon HEAD reçoit l'objet tag.
-              await git.checkout({ fs, dir: node.repoPath, ref: await this.pinCheckoutRef(node.repoPath, node.pin) })
+              await checkoutKeepingEol({ dir: node.repoPath, ref: await this.pinCheckoutRef(node.repoPath, node.pin) })
             } catch {
               if (isSha) {
                 // Best-effort for a SHA pin — repo still usable at its default branch.

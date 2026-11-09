@@ -66,3 +66,35 @@ export async function addKeepingEol(repoPath: string, filepath: string): Promise
   }
   await git.add({ fs, dir: repoPath, filepath })
 }
+
+type CheckoutArgs = Omit<Parameters<typeof git.checkout>[0], 'fs'>
+
+/**
+ * GH335 — `git.checkout` qui ne bloque pas sur un fichier ne différant de HEAD que par ses fins de
+ * ligne (CRLF sur le disque après un checkout natif avec `core.autocrlf=true` système, LF dans git).
+ * isomorphic-git compare le contenu brut : sans ce garde, un tel fichier, s'il change entre la
+ * branche courante et la cible, fait échouer le checkout (`CheckoutConflictError`), alors que
+ * `git status` et le statut Polenta (GH296) le voient inchangé.
+ * Si *tous* les fichiers en conflit sont dans ce cas, ils sont réécrits tels que dans HEAD (même
+ * contenu aux fins de ligne près — rien n'est perdu) et le checkout est relancé. Une vraie
+ * modification locale continue de bloquer, comme avant.
+ */
+export async function checkoutKeepingEol(args: CheckoutArgs): Promise<void> {
+  try {
+    await git.checkout({ fs, ...args })
+  } catch (err: unknown) {
+    if (!(err instanceof git.Errors.CheckoutConflictError)) throw err
+    const repoPath = args.dir as string
+    const conflicts = err.data.filepaths
+    const rows = await eolAwareStatusMatrix(repoPath, conflicts)
+    const unchanged = new Set(rows.filter(([, h, w, s]) => h === 1 && w === 1 && s === 1).map(([f]) => f))
+    if (!conflicts.every(f => unchanged.has(f))) throw err
+    const cache = {}
+    for (const filepath of conflicts) {
+      const headBlob = await readHeadBlob(repoPath, filepath, cache)
+      if (!headBlob) throw err
+      await fsP.writeFile(path.join(repoPath, filepath), headBlob)
+    }
+    await git.checkout({ fs, ...args })
+  }
+}

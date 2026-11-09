@@ -11,6 +11,7 @@ import { AGENTS_MD_TEMPLATE_VERSION, buildAgentsMdTemplate, extractAgentsMdVersi
 import { BRAND } from '../../shared/brand'
 import type { HostContext } from '../host/host-context'
 import { parseTreeCache, serializeTreeCache } from './tree-cache.util'
+import { GITATTRIBUTES_CONTENT, GITIGNORE_CONTENT } from './repo-conformity.util'
 import {
   buildMcpJsonContent,
   extractMcpJsonVersion,
@@ -155,7 +156,9 @@ export class WorkspaceService {
   polentaInitFiles(): Record<string, string> {
     const mcpServerLaunch = this.host.mcpServerLaunch
     return {
-      '.gitignore': '.polenta/tree.cache.yaml\n*.pref\n',
+      '.gitignore': GITIGNORE_CONTENT,
+      // GH336 — fins de ligne LF pour tout le repo, quel que soit `core.autocrlf` du poste.
+      '.gitattributes': GITATTRIBUTES_CONTENT,
       'AGENTS.md': buildAgentsMdTemplate(BRAND),
       ...(mcpServerLaunch ? { '.mcp.json': buildMcpJsonContent(mcpServerLaunch()) } : {}),
     }

@@ -32,7 +32,7 @@ import type {
 import type { PolentaRepoDependency } from '@polenta/types'
 import { findSystemNode, isAutoBranch } from '@polenta/types'
 import { parseTreeCache, serializeTreeCache } from './tree-cache.util'
-import { checkoutKeepingEol } from './eol-status.util'
+import { safeCheckout } from './safe-checkout.util'
 
 // ── Internal types ────────────────────────────────────────────────────────────
 
@@ -205,7 +205,7 @@ export class WorkspaceTreeService {
             const isSha = /^[0-9a-f]{7,40}$/i.test(node.pin)
             try {
               // GH314 — un tag annoté se checkout par son commit : sinon HEAD reçoit l'objet tag.
-              await checkoutKeepingEol({ dir: node.repoPath, ref: await this.pinCheckoutRef(node.repoPath, node.pin) })
+              await safeCheckout({ dir: node.repoPath, ref: await this.pinCheckoutRef(node.repoPath, node.pin) })
             } catch {
               if (isSha) {
                 // Best-effort for a SHA pin — repo still usable at its default branch.
@@ -305,31 +305,11 @@ export class WorkspaceTreeService {
   async writeCache(workspaceDir: string, tree: WorkspaceTree): Promise<void> {
     const polentaDir = path.join(workspaceDir, '.polenta')
     await fsP.mkdir(polentaDir, { recursive: true })
-    await this.ensureCacheIgnored(workspaceDir)
+    // GH336 — plus d'ajout silencieux au `.gitignore` (ex-`ensureCacheIgnored`, T156) : la ligne
+    // `.polenta/tree.cache.yaml` est écrite à la création du repo, et proposée par la mise en
+    // conformité (`repo-conformity`) pour un repo existant. Un cache non ignoré reste visible.
     const cachePath = path.join(polentaDir, 'tree.cache.yaml')
     await fsP.writeFile(cachePath, serializeTreeCache(workspaceDir, tree), 'utf-8')
-  }
-
-  /**
-   * T156: this cache must never be versioned (T69-design.md — it stores machine-local absolute
-   * paths and is fully regenerable, so a stale/foreign copy committed by someone else is worse
-   * than useless). `createNewProject`/`openProject` (`workspace.service.ts`) only write a
-   * `.gitignore` for the *self-contained* case where `workspaceDir` happens to equal the git
-   * repo root — a multi-repo flat workspace's `workspaceDir` is a plain container directory one
-   * level above the root repo, which those writes never touch, and `openProject`'s adopt-existing-
-   * repo path wrote no `.gitignore` at all. Rather than chase every caller, this runs once here,
-   * right at the only place the cache is ever written: a `.gitignore` placed directly next to the
-   * `.polenta/` folder it excludes is honored by git regardless of which ancestor directory (if
-   * any) turns out to be the actual repo root — and a no-op (inert stray file) if `workspaceDir`
-   * isn't under git at all, which is the common case for a freshly chosen container folder.
-   */
-  private async ensureCacheIgnored(workspaceDir: string): Promise<void> {
-    const gitignorePath = path.join(workspaceDir, '.gitignore')
-    const line = '.polenta/tree.cache.yaml'
-    const existing = await fsP.readFile(gitignorePath, 'utf-8').catch(() => '')
-    if (existing.split(/\r?\n/).includes(line)) return
-    const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : ''
-    await fsP.appendFile(gitignorePath, `${prefix}${line}\n`)
   }
 
   /**

@@ -4,28 +4,22 @@ import * as os from 'os'
 import * as path from 'path'
 import { writePref } from './pref-store.util'
 
-describe('GH167 — writePref garde le .pref hors gestion de conf', () => {
+describe('GH336 — writePref ne touche jamais au .gitignore (ex-GH167)', () => {
   let repo: string
+  const exists = () => fs.existsSync(path.join(repo, '.gitignore'))
   const gitignore = () => fs.readFileSync(path.join(repo, '.gitignore'), 'utf-8')
 
   beforeEach(() => { repo = fs.mkdtempSync(path.join(os.tmpdir(), 'pref-store-')) })
   afterEach(() => { fs.rmSync(repo, { recursive: true, force: true }) })
 
-  it('crée le .gitignore avec *.pref s’il n’existe pas', () => {
+  it('ne crée pas de .gitignore', () => {
     writePref(repo, 'alice', { a: 1 })
-    expect(gitignore()).toBe('*.pref\n')
+    expect(exists()).toBe(false)
   })
 
-  it('ajoute *.pref à un .gitignore existant sans saut de ligne final', () => {
+  it('ne complète pas un .gitignore existant (la mise en conformité le propose)', () => {
     fs.writeFileSync(path.join(repo, '.gitignore'), 'node_modules/')
     writePref(repo, 'alice', { a: 1 })
-    expect(gitignore()).toBe('node_modules/\n*.pref\n')
-  })
-
-  it('ne duplique pas la ligne', () => {
-    fs.writeFileSync(path.join(repo, '.gitignore'), '.polenta/tree.cache.yaml\r\n*.pref\r\n')
-    writePref(repo, 'alice', { a: 1 })
-    writePref(repo, 'alice', { a: 2 })
-    expect(gitignore()).toBe('.polenta/tree.cache.yaml\r\n*.pref\r\n')
+    expect(gitignore()).toBe('node_modules/')
   })
 })

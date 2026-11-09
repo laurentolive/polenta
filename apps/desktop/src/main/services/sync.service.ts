@@ -13,7 +13,8 @@ import { AUTO_BRANCH_PREFIX, isAutoBranch } from '@polenta/types'
 
 import { extractHost, type AuthService } from './auth.service'
 import type { GitAuthor } from './git.service'
-import { addKeepingEol, checkoutKeepingEol, eolAwareStatusMatrix } from './eol-status.util'
+import { addKeepingEol, eolAwareStatusMatrix } from './eol-status.util'
+import { safeCheckout } from './safe-checkout.util'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
 import { assertNotVersionTag } from './version-tags.util'
 import { mergeRecursive } from './recursive-merge.util'
@@ -742,7 +743,7 @@ export class SyncService {
       if (!conflictFiles(err)) throw err
       return { outcome: 'set-aside', branch: await this.setAside(repoPath, branch, checkedOut, remote) }
     }
-    if (checkedOut) await checkoutKeepingEol({ dir: repoPath, ref: branch })
+    if (checkedOut) await safeCheckout({ dir: repoPath, ref: branch })
     if (state === 'behind') return { outcome: 'fast-forwarded' }
     await this.pushBranch(repoPath, branch, remote)
     return { outcome: 'merged' }
@@ -809,7 +810,7 @@ export class SyncService {
     }
     if (isAutoBranch(current) && !dirty
       && await this.isMergedInto(repoPath, current, integrationBranch).catch(() => false)) {
-      await checkoutKeepingEol({ dir: repoPath, ref: integrationBranch })
+      await safeCheckout({ dir: repoPath, ref: integrationBranch })
       await this.deleteBranch(repoPath, current).catch(() => {})
       return { action: 'returned', branch: current }
     }
@@ -873,7 +874,7 @@ export class SyncService {
             fastForwardOnly: true,
           })
           .then(r => !r.alreadyMerged, () => false)
-        if (fastForwarded) await checkoutKeepingEol({ dir: repoPath, ref: current })
+        if (fastForwarded) await safeCheckout({ dir: repoPath, ref: current })
       }
     }
     // GH173: not checked out → only its ref moves, never the working directory. Only while the
@@ -1157,7 +1158,7 @@ export class SyncService {
       // annotated tag, `git.checkout` would otherwise write the tag object's id into HEAD.
       const isBranch = await git.resolveRef({ fs, dir: repoPath, ref: `refs/heads/${name}` }).then(() => true, () => false)
       const tagCommit = isBranch ? null : await this.resolveTag(repoPath, name)
-      await checkoutKeepingEol({ dir: repoPath, ref: tagCommit ?? name })
+      await safeCheckout({ dir: repoPath, ref: tagCommit ?? name })
       return { branch: name }
     }
     const { remote, branch } = tracking
@@ -1178,7 +1179,7 @@ export class SyncService {
     } else {
       state = 'diverged'
     }
-    await checkoutKeepingEol({ dir: repoPath, ref: branch })
+    await safeCheckout({ dir: repoPath, ref: branch })
     return { branch, remote: state, remoteRef: `${remote}/${branch}` }
   }
 

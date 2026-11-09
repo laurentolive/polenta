@@ -16,6 +16,7 @@ import { ISSUE_IMPACT_LINK, displayIdFieldError, transitionRuleIssues, findSyste
 import type { AuthService } from './auth.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
+import { GITATTRIBUTES_CONTENT, GITIGNORE_CONTENT } from './repo-conformity.util'
 
 const DEFAULT_SCHEMA: ProjectSchema = {
   version: 1,
@@ -669,7 +670,8 @@ export class SchemaService {
             console.log('[SchemaService] initialising empty git repo for workspace component:', nodeName)
             await fsP.mkdir(node.repoPath, { recursive: true })
             await git.init({ fs, dir: node.repoPath, defaultBranch: 'main' })
-            await fsP.writeFile(path.join(node.repoPath, '.gitignore'), '*.pref\n', 'utf-8')
+            await fsP.writeFile(path.join(node.repoPath, '.gitignore'), GITIGNORE_CONTENT, 'utf-8')
+            await fsP.writeFile(path.join(node.repoPath, '.gitattributes'), GITATTRIBUTES_CONTENT, 'utf-8')
           }
           return node.repoPath
         }

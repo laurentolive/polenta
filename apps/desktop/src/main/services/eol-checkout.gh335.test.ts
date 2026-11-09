@@ -68,7 +68,7 @@ describe('GH335 — checkout et fins de ligne', () => {
 
   it('une vraie modification locale bloque toujours, et rien n\'est réécrit', async () => {
     await write('tree.yaml', 'a: local\r\nb: 1\r\n')
-    await expect(sync.checkoutBranch(repo, 'int-tmp')).rejects.toBeInstanceOf(git.Errors.CheckoutConflictError)
+    await expect(sync.checkoutBranch(repo, 'int-tmp')).rejects.toThrow(/tree.yaml : modifié/)
     expect(await git.currentBranch({ fs, dir: repo })).toBe('main')
     expect(await read('tree.yaml')).toBe('a: local\r\nb: 1\r\n')
   })

@@ -575,7 +575,7 @@ function GraphContextMenu({
           className="w-full border border-edge rounded px-2 py-1 text-xs bg-surface text-ink outline-none focus:border-status-info mb-2"
         />
         {mutationError && (
-          <p className="text-status-danger text-xs mb-2">{mutationError}</p>
+          <p className="text-status-danger text-xs mb-2 whitespace-pre-line">{mutationError}</p>
         )}
         {(createBranchAtMut.isPending || createTagMut.isPending) && (
           <div className="flex items-center gap-1.5 text-xs text-ink-3 mb-2">
@@ -613,7 +613,7 @@ function GraphContextMenu({
       style={pos}
     >
       {mutationError && (
-        <p className="px-3 py-1.5 text-status-danger leading-snug">{mutationError}</p>
+        <p className="px-3 py-1.5 text-status-danger leading-snug whitespace-pre-line">{mutationError}</p>
       )}
       {mergeConflict && (
         <div className="px-3 pb-1.5">

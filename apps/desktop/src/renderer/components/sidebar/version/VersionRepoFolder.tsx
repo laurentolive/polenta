@@ -14,6 +14,7 @@ import { useModalHotkeys } from '../../../hooks/useModalHotkeys'
 import { useOpenMergeResolution } from '../../merge/useOpenMergeResolution'
 import { useRepoIntegrationSync, useResyncIntegration } from '../../../hooks/useIntegrationSync'
 import type { WorkspaceTreeNode } from '@polenta/types'
+import { branchErrorText } from '../../../lib/branchErrors'
 
 interface Props {
   node: WorkspaceTreeNode
@@ -278,8 +279,8 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
       {(isCheckoutError || checkoutPinWarning || branchNotices.length > 0) && (
         <div style={{ paddingLeft: `${8 + indent}px` }} className="px-3">
           {isCheckoutError && (
-            <p className="text-xs text-status-danger leading-snug">
-              {checkoutError instanceof Error ? checkoutError.message : t('sidebar.version.checkoutError')}
+            <p className="text-xs text-status-danger leading-snug whitespace-pre-line">
+              {checkoutError ? branchErrorText(checkoutError) : t('sidebar.version.checkoutError')}
             </p>
           )}
           <BranchNotices notices={branchNotices} onDismiss={dismissBranchNotices} />

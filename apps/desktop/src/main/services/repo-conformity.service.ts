@@ -47,11 +47,22 @@ export class RepoConformityService {
       .filter(isLocalStateFile)
     if (tracked.length > 0) items.push({ id: 'tracked-local', files: tracked })
     if (root) {
-      const agentFiles = await this.workspace.pendingAgentFiles(repoPath)
+      // Contrôles propres au repo racine, isolés : un échec (gabarit MCP, lecture des dashboards…)
+      // ne doit jamais masquer les autres éléments — la ligne disparaissait sans rien dire.
+      const agentFiles = await this.workspace.pendingAgentFiles(repoPath).catch((err: unknown) => {
+        console.error('[RepoConformity] vérification AGENTS.md/.mcp.json impossible :', err)
+        return []
+      })
       if (agentFiles.length > 0) items.push({ id: 'agent-files', files: agentFiles.map(f => f.path) })
-      if (this.dashboardSeed && await this.dashboardSeed.sharedSeedPending(repoPath, await this.usernameOf(repoPath)).catch(() => false)) {
-        items.push({ id: 'dashboards-seed', files: ['dashboards/', 'queries/'] })
-      }
+      const seedPending = this.dashboardSeed
+        ? await this.usernameOf(repoPath)
+          .then(user => this.dashboardSeed!.sharedSeedPending(repoPath, user))
+          .catch((err: unknown) => {
+            console.error('[RepoConformity] vérification du contenu partagé des dashboards impossible :', err)
+            return false
+          })
+        : false
+      if (seedPending) items.push({ id: 'dashboards-seed', files: ['dashboards/', 'queries/'] })
     }
     return items
   }

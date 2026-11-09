@@ -485,13 +485,13 @@
       "integrationTag": "integration",
       "terminal": "Terminal (Ctrl+`)",
       "conformity": {
-        "title": "Polenta needs to update this repository",
+        "title": "Polenta needs to update this repository:",
         "intro": "These files will be written, committed and pushed right away (no other change is included):",
-        "item_gitattributes": "LF line endings for the whole repository (.gitattributes)",
-        "item_gitignore": "Local files ignored (.gitignore: preferences, cache)",
-        "item_tracked-local": "Local files committed by mistake, removed from git (kept on your machine)",
-        "item_agent-files": "AI agent files up to date (AGENTS.md, .mcp.json)",
-        "details": "Details",
+        "item_gitattributes": "LF line endings (.gitattributes)",
+        "item_gitignore": "preferences and cache ignored (.gitignore)",
+        "item_tracked-local": "local files committed by mistake, removed from git (kept on your machine)",
+        "item_agent-files": "AGENTS.md / .mcp.json to update",
+        "details": "Files",
         "apply": "Apply",
         "later": "Later",
         "applying": "Updating…",
@@ -499,7 +499,9 @@
         "pushFailed": "Committed, but the push failed: {{error}}",
         "errorDirty": "Publish or discard your pending changes first.",
         "errorOffIntegration": "Switch to the integration branch {{branch}} first.",
-        "errorDiverged": "The integration branch diverged from the server: resynchronize it first."
+        "errorDiverged": "The integration branch diverged from the server: resynchronize it first.",
+        "checkFailed": "Conformity check failed: {{error}}",
+        "item_dashboards-seed": "default dashboards (Status, library)"
       }
     },
     "reorderable": {

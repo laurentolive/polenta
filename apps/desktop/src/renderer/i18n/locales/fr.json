@@ -485,13 +485,13 @@
       "integrationTag": "intégration",
       "terminal": "Terminal (Ctrl+ù)",
       "conformity": {
-        "title": "Polenta doit mettre à jour ce dépôt",
+        "title": "Polenta doit mettre à jour ce dépôt :",
         "intro": "Ces fichiers seront écrits, commités et poussés aussitôt (aucune autre modification n'est incluse) :",
-        "item_gitattributes": "Fins de ligne LF pour tout le dépôt (.gitattributes)",
-        "item_gitignore": "Fichiers locaux ignorés (.gitignore : préférences, cache)",
-        "item_tracked-local": "Fichiers locaux commités par erreur, retirés de git (gardés sur votre poste)",
-        "item_agent-files": "Fichiers pour les agents IA à jour (AGENTS.md, .mcp.json)",
-        "details": "Détail",
+        "item_gitattributes": "fins de ligne LF (.gitattributes)",
+        "item_gitignore": "préférences et cache ignorés (.gitignore)",
+        "item_tracked-local": "fichiers locaux commités par erreur, retirés de git (gardés sur votre poste)",
+        "item_agent-files": "AGENTS.md / .mcp.json à mettre à jour",
+        "details": "Fichiers",
         "apply": "Valider",
         "later": "Plus tard",
         "applying": "Mise à jour…",
@@ -499,7 +499,9 @@
         "pushFailed": "Commit fait, mais le push a échoué : {{error}}",
         "errorDirty": "Publiez ou annulez d'abord vos modifications en cours.",
         "errorOffIntegration": "Passez d'abord sur la branche d'intégration {{branch}}.",
-        "errorDiverged": "La branche d'intégration a divergé du serveur : resynchronisez-la d'abord."
+        "errorDiverged": "La branche d'intégration a divergé du serveur : resynchronisez-la d'abord.",
+        "checkFailed": "Vérification de conformité impossible : {{error}}",
+        "item_dashboards-seed": "dashboards par défaut (Status, bibliothèque)"
       }
     },
     "reorderable": {

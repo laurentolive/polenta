@@ -38,7 +38,7 @@ export function ConformityNotice({ repoPath, workspaceDir, root, detached, inden
   const [hidden, setHidden] = useState(() => isDismissed(workspaceDir, repoPath))
   const [showDetails, setShowDetails] = useState(false)
 
-  const { data: items = [] } = useQuery({
+  const { data: items = [], error: checkError } = useQuery({
     queryKey: ['conformity:check', repoPath, root],
     queryFn: () => api.conformity.check(repoPath, root),
     enabled: !!repoPath && !detached && !hidden,
@@ -56,7 +56,7 @@ export function ConformityNotice({ repoPath, workspaceDir, root, detached, inden
 
   const result = apply.data
   if (detached || hidden) return null
-  if (items.length === 0 && !result && !apply.isError) return null
+  if (items.length === 0 && !result && !apply.isError && !checkError) return null
 
   const errorText = (() => {
     if (!apply.error) return null
@@ -85,19 +85,15 @@ export function ConformityNotice({ repoPath, workspaceDir, root, detached, inden
               {t('sidebar.version.conformity.details')}
             </button>
           </div>
-          {showDetails && (
-            <div className="text-xs text-ink-2 mt-1 ml-4">
-              <p className="mb-0.5">{t('sidebar.version.conformity.intro')}</p>
-              <ul className="list-disc ml-4">
-                {items.map(item => (
-                  <li key={item.id}>
-                    {t(`sidebar.version.conformity.item_${item.id}`)}
-                    <span className="text-ink-3"> — {item.files.join(', ')}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <ul className="text-xs text-ink-2 mt-0.5 ml-5 list-disc pl-3">
+            {items.map(item => (
+              <li key={item.id}>
+                {t(`sidebar.version.conformity.item_${item.id}`)}
+                {showDetails && <span className="text-ink-3"> — {item.files.join(', ')}</span>}
+              </li>
+            ))}
+          </ul>
+          {showDetails && <p className="text-xs text-ink-3 mt-0.5 ml-5">{t('sidebar.version.conformity.intro')}</p>}
           <div className="flex gap-2 mt-1 ml-4">
             <button
               type="button"
@@ -117,6 +113,11 @@ export function ConformityNotice({ repoPath, workspaceDir, root, detached, inden
             </button>
           </div>
         </>
+      )}
+      {checkError && (
+        <p className="text-xs text-status-danger leading-snug">
+          {t('sidebar.version.conformity.checkFailed', { error: branchErrorText(checkError) })}
+        </p>
       )}
       {errorText && <p className="text-xs text-status-danger leading-snug mt-1 whitespace-pre-line">{errorText}</p>}
       {result && (result.pushed

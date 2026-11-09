@@ -4,6 +4,7 @@ import * as path from 'path'
 import git from 'isomorphic-git'
 
 import { racySafeStatusMatrix } from './racy-status.util'
+import './git-lock-limits'
 
 /**
  * GH296 — isomorphic-git ne lit que `.git/config`, alors que `core.autocrlf=true` est le plus souvent

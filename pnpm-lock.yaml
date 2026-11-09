@@ -150,6 +150,9 @@ importers:
       angular-expressions:
         specifier: ^1.7.0
         version: 1.7.0
+      async-lock:
+        specifier: 1.4.1
+        version: 1.4.1
       chokidar:
         specifier: ^3.6.0
         version: 3.6.0

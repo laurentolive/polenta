@@ -50,7 +50,12 @@ test('T1 — « Avancement dans le temps » : aire par étape d\'avancement (GH1
 
 test('B1 / U1 — bibliothèque copiée au premier accès ; fichier livré manquant proposé puis appliqué', async () => {
   const { localPath } = s.project
-  // Copiée au premier accès à Suivi (test précédent), notée dans le marqueur.
+  // GH336 — plus copiée d'office au premier accès : proposée par la mise en conformité du dépôt,
+  // écrite, commitée et poussée sur validation. Notée dans le marqueur.
+  // Travail en cours des tests précédents publié d'abord (la conformité refuse un arbre modifié).
+  await s.invoke('sync:stage-all', localPath)
+  await s.invoke('sync:commit', localPath, 'gh74 — exécutions de test').catch(() => {})
+  await s.invoke('conformity:apply', localPath, true) // sans effet si une autre spec l'a déjà validée
   expect(fs.existsSync(path.join(localPath, 'dashboards/lib/campaign.js'))).toBe(true)
   const markerPath = path.join(localPath, 'dashboards/.seeded.yaml')
   const marker = yaml.load(fs.readFileSync(markerPath, 'utf8')) as { library: string[] }

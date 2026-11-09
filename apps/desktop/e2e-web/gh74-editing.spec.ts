@@ -51,6 +51,8 @@ test('D1 — premier accès à Suivi : bibliothèque, types et jsconfig copiés 
   const { localPath } = s.project
   await s.openView('Suivi')
   await expect(s.page.getByText('Campagnes', { exact: true }).last()).toBeVisible({ timeout: 15_000 })
+  // GH336 — bibliothèque partagée : écrite sur validation de la mise en conformité du dépôt.
+  await s.invoke('conformity:apply', localPath, true)
   for (const f of ['dashboards/lib/campaign.js', 'dashboards/lib/polenta.d.ts', 'dashboards/jsconfig.json']) {
     expect(fs.existsSync(path.join(localPath, f)), f).toBe(true)
   }

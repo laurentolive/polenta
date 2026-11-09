@@ -531,13 +531,25 @@ export class SyncService {
     await git.resetIndex({ fs, dir: repoPath, filepath }).catch(() => {})
   }
 
-  /** Discards every staged/unstaged change in one pass — same statusMatrix walk as stageAll/unstageAll. */
+  /**
+   * Discards every staged/unstaged change. GH336 — en une passe : `discard` fichier par fichier
+   * relisait et réécrivait tout l'index à chaque fichier (plusieurs minutes pour quelques centaines
+   * de fichiers, ex. après un checkout interrompu). Un seul checkout forcé, limité aux fichiers
+   * suivis ou indexés concernés, rétablit index et contenu d'après HEAD ; les fichiers nouveaux
+   * jamais indexés (que le checkout ignore) sont supprimés ensuite.
+   */
   async discardAll(repoPath: string): Promise<void> {
     const matrix = await eolAwareStatusMatrix(repoPath)
     const changed = matrix.filter(([, head, workdir, stage]) => !(head === 1 && workdir === 1 && stage === 1))
-    for (const [filepath] of changed) {
-      await this.discard(repoPath, filepath)
+    if (changed.length === 0) return
+    const known = changed.filter(([, head, , stage]) => head !== 0 || stage !== 0).map(([f]) => f)
+    const untracked = changed.filter(([, head, , stage]) => head === 0 && stage === 0).map(([f]) => f)
+    if (known.length > 0) {
+      const branch = await git.currentBranch({ fs, dir: repoPath })
+      const ref = branch ?? await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+      await git.checkout({ fs, dir: repoPath, ref, force: true, noUpdateHead: true, filepaths: known })
     }
+    for (const filepath of untracked) await fsP.unlink(path.join(repoPath, filepath)).catch(() => {})
   }
 
   async push(repoPath: string, remote = 'origin'): Promise<void> {

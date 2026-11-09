@@ -1,12 +1,9 @@
-import { useEffect } from 'react'
 import { useNavigate, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { api } from '../../api'
 import { encodeProjectId, decodeProjectId } from '../../lib/projectId'
 import { markProjectJustClosed } from '../../lib/projectCloseSignal'
-import { useAppVersion } from '../../lib/useAppVersion'
-import { BRAND } from '../../../shared/brand'
 
 interface Props {
   currentProjectId: string | null
@@ -20,12 +17,6 @@ function NoProjectPanel() {
     queryKey: ['workspace:list-recents'],
     queryFn: () => api.workspace.listRecents(),
   })
-  const { data: version } = useAppVersion()
-
-  useEffect(() => {
-    if (version) api.app.setTitle(`${BRAND.productName} v${version}`)
-  }, [version])
-
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b border-edge">
@@ -68,20 +59,13 @@ function WithProjectPanel({ projectId }: { projectId: string }) {
 
   const repoPath = project?.localPath ?? ''
   const displayName = project?.label || project?.name
-  const { data: version } = useAppVersion()
 
+  // Le titre de fenêtre (y compris au retour à l'accueil) est tenu par useWindowTitle (GH338).
   const handleClose = async () => {
     markProjectJustClosed()
     await api.workspace.clearLastOpened()
-    api.app.setTitle(version ? `${BRAND.productName} v${version}` : BRAND.productName)
     navigate({ to: '/' })
   }
-
-  useEffect(() => {
-    if (displayName && project?.localPath && version) {
-      api.app.setTitle(`${BRAND.productName} v${version} — ${displayName} — ${project.localPath}`)
-    }
-  }, [displayName, project?.localPath, version])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

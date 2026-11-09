@@ -62,6 +62,19 @@ describe('GH74 — DashboardLibraryService', () => {
     expect(b.modules['moteur::lib/mesures.js']).toBe('export const m = 4\n')
   })
 
+  it('GH336 — repo sans bibliothèque (copie pas encore validée) : modules livrés ; bibliothèque présente : elle seule', async () => {
+    fs.rmSync(path.join(root, 'dashboards/lib'), { recursive: true, force: true })
+    const service = new DashboardLibraryService(new GitService(), tree())
+    const shipped = service.readShippedManifest().files.filter(f => f.repoPath.endsWith('.js'))
+    const lib = await service.load(root, ws)
+    expect(lib.modules['lib/campaign.js']).toBe(service.readShippedFile(shipped.find(f => f.repoPath === 'dashboards/lib/campaign.js')!.path))
+    expect(lib.modules['moteur::lib/mesures.js']).toBe('export const m = 3\n')
+
+    write(root, 'dashboards/lib/campaign.js', 'export const c = 1\n')
+    service.invalidate(root)
+    expect(Object.keys((await service.load(root, ws)).modules).sort()).toEqual(['lib/campaign.js', 'moteur::lib/mesures.js'])
+  })
+
   it('bibliothèque de départ : manifeste et fichiers livrés', () => {
     const service = new DashboardLibraryService(new GitService())
     const manifest = service.readShippedManifest()

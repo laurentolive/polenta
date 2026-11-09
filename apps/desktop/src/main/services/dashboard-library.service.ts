@@ -195,6 +195,20 @@ export class DashboardLibraryService {
     for (const { r, files } of lists) {
       for (const f of files) modules[`${r.prefix}lib/${f.path}`] = f.source
     }
+    // GH336 — repo sans bibliothèque (copie pas encore validée dans la mise en conformité, qui ne
+    // l'écrit plus d'office) : les scripts importent la bibliothèque livrée, sinon les modèles et
+    // le seed « Campagnes » (`lib/campaign.js`) échoueraient d'ici là. Une bibliothèque présente,
+    // même partielle, reste seule utilisée (un fichier supprimé par le projet ne revient pas).
+    if (lists[0].files.length === 0) {
+      try {
+        for (const f of this.readShippedManifest().files) {
+          if (!f.repoPath.startsWith(`${LIBRARY_DIR}/`) || !f.repoPath.endsWith('.js')) continue
+          modules[`lib/${f.repoPath.slice(LIBRARY_DIR.length + 1)}`] = this.readShippedFile(f.path)
+        }
+      } catch (err: unknown) {
+        console.warn('[dashboard-library] bibliothèque livrée illisible :', err instanceof Error ? err.message : String(err))
+      }
+    }
     const h = crypto.createHash('sha256')
     for (const k of Object.keys(modules).sort()) h.update(k).update('\u0000').update(modules[k]).update('\u0000')
     return { modules, hash: h.digest('hex') }

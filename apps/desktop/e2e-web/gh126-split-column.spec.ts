@@ -205,8 +205,10 @@ test('T47 — modèle « Résultat par campagne » : une sous-colonne par campag
   })
   expect(q.column.splitColumn).toBe('campaignId')
   const groupOf = () => modal().locator(`[data-testid="field-config-computed-group"][data-query-id="${q.id}"]`)
-  // Bibliothèque livrée v4 (copiée au premier accès, ou mise à jour proposée par le bandeau).
-  expect(fs.readFileSync(path.join(localPath, 'dashboards', 'lib', 'campaign.js'), 'utf8')).toMatch(/^\/\/ @polenta-lib campaign 4/)
+  // Bibliothèque livrée v4. GH336 : la copie dans le repo n'est écrite que sur validation de la mise
+  // en conformité ; d'ici là, les scripts importent la bibliothèque livrée.
+  const libFile = path.join(localPath, 'dashboards', 'lib', 'campaign.js')
+  if (fs.existsSync(libFile)) expect(fs.readFileSync(libFile, 'utf8')).toMatch(/^\/\/ @polenta-lib campaign 4/)
 
   await openTests('Vue tableau')
   await s.page.getByTitle('Configurer les colonnes').click()

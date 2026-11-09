@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { AuthService } from './auth.service'
 import { SyncService } from './sync.service'
+import { eolAwareStatusMatrix } from './eol-status.util'
 
 /**
  * GH335 — checkout bloqué par des fichiers qui ne diffèrent de HEAD que par les fins de ligne
@@ -71,4 +72,17 @@ describe('GH335 — checkout et fins de ligne', () => {
     expect(await git.currentBranch({ fs, dir: repo })).toBe('main')
     expect(await read('tree.yaml')).toBe('a: local\r\nb: 1\r\n')
   })
+})
+
+describe('GH335 — file du verrou packed-refs', () => {
+  it('statut d\'un repo entièrement en CRLF (> 1000 fichiers) : pas de « Too many pending tasks »', async () => {
+    const files = Array.from({ length: 1100 }, (_, i) => `r/f${i}.yaml`)
+    await fsP.mkdir(path.join(repo, 'r'))
+    await Promise.all(files.map(f => write(f, 'a: 1\nb: 1\n')))
+    await commitAll('many')
+    await Promise.all(files.map(f => write(f, 'a: 1\r\nb: 1\r\n')))
+
+    const rows = await eolAwareStatusMatrix(repo)
+    expect(rows.filter(([, h, w, s]) => !(h === 1 && w === 1 && s === 1))).toEqual([])
+  }, 60_000)
 })

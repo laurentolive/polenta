@@ -23,9 +23,16 @@ function differsOnlyByEol(a: Buffer, b: Buffer): boolean {
   return toLf(a).equals(toLf(b))
 }
 
-async function readHeadBlob(repoPath: string, filepath: string, cache: object): Promise<Buffer | null> {
+/**
+ * GH335 — `headOid` à passer dès qu'on lit plusieurs fichiers : `git.resolveRef` prend le verrou
+ * `packed-refs` d'isomorphic-git, *global au processus* et limité à 1000 attentes. Résolu une fois par
+ * fichier sur un repo entièrement en CRLF (centaines de lignes), en parallèle sur plusieurs repos, il
+ * saturait cette file : « Too many pending tasks in queue packed-refs », et un checkout en cours
+ * échouait à mi-chemin (index écrit, HEAD pas déplacé).
+ */
+async function readHeadBlob(repoPath: string, filepath: string, cache: object, headOid?: string | null): Promise<Buffer | null> {
   try {
-    const oid = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+    const oid = headOid ?? await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
     const { blob } = await git.readBlob({ fs, dir: repoPath, oid, filepath, cache })
     return Buffer.from(blob)
   } catch {
@@ -42,10 +49,12 @@ async function readHeadBlob(repoPath: string, filepath: string, cache: object): 
 export async function eolAwareStatusMatrix(repoPath: string, filepaths?: string[]) {
   const matrix = await racySafeStatusMatrix(repoPath, filepaths)
   const cache = {}
+  const headOid = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' }).catch(() => null)
+  if (!headOid) return matrix
   return Promise.all(matrix.map(async row => {
     const [filepath, head, workdir, stage] = row
     if (head !== 1 || workdir !== 2 || stage !== 1) return row
-    const headBlob = await readHeadBlob(repoPath, filepath, cache)
+    const headBlob = await readHeadBlob(repoPath, filepath, cache, headOid)
     const onDisk = await fsP.readFile(path.join(repoPath, filepath)).catch(() => null)
     if (!headBlob || !onDisk || !differsOnlyByEol(headBlob, onDisk)) return row
     return [filepath, 1, 1, 1] as typeof row
@@ -90,8 +99,9 @@ export async function checkoutKeepingEol(args: CheckoutArgs): Promise<void> {
     const unchanged = new Set(rows.filter(([, h, w, s]) => h === 1 && w === 1 && s === 1).map(([f]) => f))
     if (!conflicts.every(f => unchanged.has(f))) throw err
     const cache = {}
+    const headOid = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
     for (const filepath of conflicts) {
-      const headBlob = await readHeadBlob(repoPath, filepath, cache)
+      const headBlob = await readHeadBlob(repoPath, filepath, cache, headOid)
       if (!headBlob) throw err
       await fsP.writeFile(path.join(repoPath, filepath), headBlob)
     }

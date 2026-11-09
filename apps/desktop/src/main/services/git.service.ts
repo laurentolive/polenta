@@ -4,6 +4,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import git from 'isomorphic-git'
+import { checkoutKeepingEol } from './eol-status.util'
 
 export interface GitAuthor {
   name: string
@@ -467,7 +468,7 @@ export class GitService {
     if (create) {
       await git.branch({ fs, dir: repoPath, ref: branchName, checkout: true })
     } else {
-      await git.checkout({ fs, dir: repoPath, ref: branchName })
+      await checkoutKeepingEol({ dir: repoPath, ref: branchName })
     }
   }
 

@@ -22,3 +22,7 @@ Format :
 ## 2026-11-06 — Bug de position : seul l'état final testé, sur un seul parcours
 - Erreur : GH300, la position de défilement était testée après coup, sur le changement d'onglet et Précédent ; l'humain a vu un à-coup (frames peintes en haut puis sur l'élément sélectionné) et une perte de position en revenant par la barre d'activité (Exigences → Tests → Exigences).
 - Règle : pour un bug de position / d'affichage, recenser tous les chemins de retour qu'a l'utilisateur (onglet, historique, barre d'activité, arbre) et tester aussi les états intermédiaires (échantillonnage à chaque frame), pas seulement l'état final.
+
+## 2026-11-09 — Architecture déduite de la doc, pas du code
+- Erreur : GH332, l'agent a avancé « pin de submodule modifié des deux côtés » comme cause probable parce que `CLAUDE.md` décrit les composants comme des submodules git ; ils sont gérés à la main par Polenta, et les postes clients n'ont pas de git CLI (le repli proposé était donc inapplicable).
+- Règle : avant de bâtir un diagnostic ou un correctif sur un point d'architecture (submodules, outils présents chez le client), le vérifier dans le code ; ne pas proposer de dépendance à un outil externe (git CLI) sans confirmer qu'il est disponible chez les clients.

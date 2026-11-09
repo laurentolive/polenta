@@ -16,6 +16,7 @@ import type { GitAuthor } from './git.service'
 import { addKeepingEol, eolAwareStatusMatrix } from './eol-status.util'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
 import { assertNotVersionTag } from './version-tags.util'
+import { mergeRecursive } from './recursive-merge.util'
 
 const execFileAsync = promisify(execFile)
 
@@ -580,8 +581,7 @@ export class SyncService {
 
     const author = await this.auth.getAuthor(repoPath)
     try {
-      const result = await git.merge({
-        fs,
+      const result = await mergeRecursive({
         dir: repoPath,
         ours: branch,
         theirs: remoteRef,
@@ -674,8 +674,7 @@ export class SyncService {
   ): Promise<{ ok: true } | { ok: false; conflicts: string[] }> {
     const author = await this.auth.getAuthor(repoPath)
     try {
-      await git.merge({
-        fs,
+      await mergeRecursive({
         dir: repoPath,
         ours: branch,
         theirs: `${remote}/${branch}`,
@@ -731,8 +730,7 @@ export class SyncService {
 
     const author = await this.auth.getAuthor(repoPath)
     try {
-      await git.merge({
-        fs,
+      await mergeRecursive({
         dir: repoPath,
         ours: branch,
         theirs: `${remote}/${branch}`,
@@ -1231,8 +1229,7 @@ export class SyncService {
     const before = await git.resolveRef({ fs, dir: repoPath, ref: intoBranch })
     const author = await this.auth.getAuthor(repoPath)
     try {
-      const result = await git.merge({
-        fs,
+      const result = await mergeRecursive({
         dir: repoPath,
         ours: intoBranch,
         theirs: fromBranch,

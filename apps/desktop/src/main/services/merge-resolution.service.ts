@@ -19,6 +19,7 @@ import type { SyncService } from './sync.service'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { TOMBSTONES_DIR } from './id-counter.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
+import { singleMergeBase } from './recursive-merge.util'
 
 /**
  * GH37 — résolution des conflits de merge dans l'outil (specs/GH37-design.md §2.2, §4, §5).
@@ -99,9 +100,10 @@ export class MergeResolutionService {
   async open(repoPath: string, leftRef: string, rightRef: string, origin: MergeOrigin): Promise<MergeSessionInfo> {
     const leftOid = await git.resolveRef({ fs, dir: repoPath, ref: leftRef })
     const rightOid = await git.resolveRef({ fs, dir: repoPath, ref: rightRef })
-    const bases = await git.findMergeBase({ fs, dir: repoPath, oids: [leftOid, rightOid] })
-    if (bases.length !== 1) throw new Error(`Cannot resolve this merge: ${bases.length} merge bases`)
-    const baseOid = bases[0] as string
+    // GH332: histoire croisée (plusieurs ancêtres communs) → base virtuelle, comme la fusion.
+    const author = await this.auth.getAuthor(repoPath)
+    const baseOid = await singleMergeBase(repoPath, leftOid, rightOid, { name: author.name, email: author.email })
+    if (!baseOid) throw new Error('Cannot resolve this merge: no common ancestor')
 
     const id = createHash('sha1').update(`${path.resolve(repoPath)}\0${leftOid}\0${rightOid}`).digest('hex')
     const existing = await this.load(id)

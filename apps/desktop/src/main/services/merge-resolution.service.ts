@@ -9,14 +9,14 @@ import {
 } from '@polenta/merge-core'
 import type {
   MergeConflictKind, MergeFileDetail, MergeFileDraft, MergeFileEntry, MergeFileKind, MergeFinalizeResult,
-  MergeKeepBothResult, MergeOrigin, MergeSessionInfo, MergeSide, MergeValidation, MergeValidationIssue,
+  MergeKeepBothResult, MergeOrigin, MergeSessionInfo, ProjectSchema, MergeSide, MergeValidation, MergeValidationIssue,
 } from '@polenta/types'
 import { activeRequiredWhen, objectFieldReader } from '@polenta/types'
 
 import type { AuthService } from './auth.service'
 import type { SchemaService } from './schema.service'
 import type { SyncService } from './sync.service'
-import { findObjectTypeDef } from './schema-lookup.util'
+import { findObjectTypeDef, type ResolvedObjectType } from './schema-lookup.util'
 import { TOMBSTONES_DIR } from './id-counter.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
 import { singleMergeBase } from './recursive-merge.util'
@@ -208,7 +208,7 @@ export class MergeResolutionService {
     const { session } = await this.require(id)
     const entry = session.files.find(f => f.path === filepath)
     if (!entry) throw new Error(`${filepath} is not in conflict in this merge`)
-    return this.validateText(session.repoPath, entry, text)
+    return this.validateText(session, entry, text)
   }
 
   async abandon(id: string): Promise<void> {
@@ -363,7 +363,7 @@ export class MergeResolutionService {
     for (const f of session.files) {
       const d = draft.files[f.path]
       if (d.text !== undefined) {
-        if ((await this.validateText(repoPath, f, d.text)).errors.length > 0) invalid.push(f.path)
+        if ((await this.validateText(session, f, d.text)).errors.length > 0) invalid.push(f.path)
       } else if (!d.choice) {
         invalid.push(f.path)
       }
@@ -621,7 +621,7 @@ export class MergeResolutionService {
     return blob === null ? null : `data:${mime};base64,${Buffer.from(blob).toString('base64')}`
   }
 
-  private async validateText(repoPath: string, entry: MergeFileEntry, text: string): Promise<MergeValidation> {
+  private async validateText(session: MergeSessionInfo, entry: MergeFileEntry, text: string): Promise<MergeValidation> {
     const errors: MergeValidationIssue[] = []
     const warnings: MergeValidationIssue[] = []
     const parsed = parseOutput(entry.kind, text)
@@ -660,11 +660,17 @@ export class MergeResolutionService {
       errors.push({ code: 'fieldsNotObject' })
     }
     const ref = typeof obj.objectTypeRef === 'string' ? obj.objectTypeRef : ''
-    const typeDef = findObjectTypeDef(await this.schema.get(repoPath), ref)
+    // Le schéma du résultat n'est pas celui du disque : un type ou un statut ajouté par l'une des
+    // deux branches fusionnées (ex. la destination) est valide. Destination d'abord, puis l'autre
+    // côté, puis le disque ; le premier type trouvé porte les règles de champs.
+    const resolved = (await this.resultSchemas(session)).map(s => findObjectTypeDef(s, ref))
+    const defs = resolved.filter((d): d is Exclude<typeof d, null | 'unresolvable'> => d !== null && d !== 'unresolvable')
+    const typeDef: ResolvedObjectType = defs.length > 0 ? defs[0] : resolved.includes('unresolvable') ? 'unresolvable' : null
     if (typeDef === null) {
       errors.push({ code: 'unknownType', params: { ref } })
     } else if (typeDef !== 'unresolvable') {
-      if (typeDef.statuses && typeDef.statuses.length > 0 && !typeDef.statuses.some(s => s.name === obj.status)) {
+      const statusKnown = defs.some(d => !d.statuses || d.statuses.length === 0 || d.statuses.some(s => s.name === obj.status))
+      if (!statusKnown) {
         errors.push({ code: 'unknownStatus', params: { status: String(obj.status ?? '') } })
       }
       // Non bloquant (sprint 2) : mêmes règles que l'import en masse et la maturité, signalées
@@ -682,6 +688,17 @@ export class MergeResolutionService {
       }
     }
     return { errors, warnings }
+  }
+
+  /** Schémas candidats du résultat : destination, autre côté, disque (les absents sont omis). */
+  private async resultSchemas(session: MergeSessionInfo): Promise<ProjectSchema[]> {
+    const { repoPath } = session
+    const [right, left, disk] = await Promise.all([
+      this.schema.getAt(repoPath, session.rightOid).catch(() => null),
+      this.schema.getAt(repoPath, session.leftOid).catch(() => null),
+      this.schema.get(repoPath),
+    ])
+    return [right, left, disk].filter((s): s is ProjectSchema => !!s)
   }
 
   // ─── Drafts (userData/merge-drafts) ─────────────────────────────────────────────

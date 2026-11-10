@@ -64,8 +64,10 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   handle('app:take-pending-invite', () => takePendingInvite())
 
   // ── App ───────────────────────────────────────────────────────────────────────
-  handle('app:set-title', (_event, title: string) => {
-    BrowserWindow.getFocusedWindow()?.setTitle(title)
+  // GH338 — fenêtre émettrice, pas la fenêtre active : au démarrage la fenêtre n'a pas encore le
+  // focus et getFocusedWindow() vaut null (titre perdu).
+  handle('app:set-title', (event, title: string) => {
+    BrowserWindow.fromWebContents((event as IpcMainInvokeEvent).sender)?.setTitle(title)
   })
   // GH158 — version déduite du tag git au build (scripts/app-version.ts) : la même que le nom de
   // l'installeur et que latest.yml.

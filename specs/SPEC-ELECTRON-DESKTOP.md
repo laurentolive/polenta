@@ -1465,8 +1465,9 @@ Projet chargé : "Polenta — mon-projet — C:\projets\mon-projet"
 
 ```typescript
 // main
-ipcMain.on('app:set-title', (_event, title: string) => {
-  BrowserWindow.getFocusedWindow()?.setTitle(title)
+ipcMain.handle('app:set-title', (event, title: string) => {
+  // GH338 — fenêtre émettrice : au démarrage, getFocusedWindow() vaut null
+  BrowserWindow.fromWebContents(event.sender)?.setTitle(title)
 })
 
 // renderer — appelé quand un projet est chargé ou fermé
@@ -1546,13 +1547,17 @@ Le panneau Projet, quand un projet est chargé, est un hub de configuration. Il 
 
 **Bouton "Fermer le projet" (✕) :**
 - Affiché à droite du nom du projet dans le header du panneau
-- Appelle `api.workspace.clearLastOpened()`, remet le titre à `<productName> v<version>` (marque du build, GH49), navigue vers `/`
+- Appelle `api.workspace.clearLastOpened()`, navigue vers `/` (le titre revient à
+  `<productName> v<version>` par `useWindowTitle`, ci-dessous)
 
 **Titre de fenêtre :**
-- Mis à jour via `api.app.setTitle(...)` dans un `useEffect` sur `project?.name` / `project?.localPath`
-- Format `<productName> v<version> — <projet> — <chemin>` (`BRAND.productName`, GH49) ; `<title>` de
+- Tenu par le hook `useWindowTitle(currentProjectId)` appelé dans `AppLayout` (toujours monté), donc
+  correct dès le démarrage quel que soit le panneau actif (GH338 — avant, `ProjectPanel` le posait et
+  n'était monté qu'avec le panneau « Projet »)
+- Format `<productName> v<version>` sans projet, `<productName> v<version> — <projet> — <chemin>` avec
+  (`BRAND.productName`, GH49 ; `<projet>` = libellé ou nom du workspace) ; `<title>` de
   `index.html` et icône d'onglet injectés au build par `scripts/vite-brand-plugin.ts`
-- `ProjectPanel` est l'unique responsable du titre — `VersionPanel` ne l'appelle pas
+- Aucun panneau n'appelle `api.app.setTitle`
 
 ### 19.8b Panneau — Version
 

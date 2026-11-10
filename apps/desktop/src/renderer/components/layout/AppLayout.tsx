@@ -10,6 +10,7 @@ import { TerminalProvider } from '../../contexts/TerminalContext'
 import { TerminalPanel } from '../terminal/TerminalPanel'
 import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
+import { useWindowTitle } from '../../lib/useWindowTitle'
 import { ForgeAccessBanner } from './ForgeAccessBanner'
 import { RepoAccessBanner } from './RepoAccessBanner'
 import { JobBanner } from '../admin/JobBanner'
@@ -94,6 +95,8 @@ export function AppLayout() {
   // `VersioningProvider` below purely so it's unconditional, next to the other top-level hooks,
   // ahead of this component's early `if (!currentProjectId) return inner` (rules of hooks).
   useAutoPull(currentProjectId)
+  // GH338 — titre de fenêtre posé ici (toujours monté), pas dans un panneau de la barre latérale.
+  useWindowTitle(currentProjectId)
 
   // Sidebar-only panels (account, search) have no dedicated route — track separately
   const [sidebarOverride, setSidebarOverride] = useState<Panel | null>(null)

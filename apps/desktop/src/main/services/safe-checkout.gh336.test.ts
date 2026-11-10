@@ -87,11 +87,22 @@ describe('GH336 — checkout sûr', () => {
   })
 
   it('un fichier non suivi que la cible versionne est nommé comme tel', async () => {
+    await git.checkout({ fs, dir: repo, ref: 'int-PH2', force: true })
+    await write('extra.yaml', 'e: ph2\n')
+    await commitAll('extra')
     await git.checkout({ fs, dir: repo, ref: 'main', force: true })
-    await write('.local.migrated.pref', 'x\n') // pas de .gitignore sur main : non suivi, visible
+    await write('extra.yaml', 'e: local\n')
     const err = await sync.checkoutBranch(repo, 'int-PH2').catch(e => e)
     expect(err).toBeInstanceOf(LocalChangesError)
-    expect(err.message).toContain('- .local.migrated.pref : non suivi, existe sur int-PH2')
+    expect(err.message).toContain('- extra.yaml : non suivi, existe sur int-PH2')
+  })
+
+  it('une pref non suivie que la cible versionne ne bloque pas : copie locale gardée', async () => {
+    await git.checkout({ fs, dir: repo, ref: 'main', force: true })
+    await write('.local.migrated.pref', 'x\n') // pas de .gitignore sur main : non suivi
+    await sync.checkoutBranch(repo, 'int-PH2')
+    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-PH2')
+    expect(await read('.local.migrated.pref')).toBe('x\n')
   })
 
   it('le retour sur la branche où la pref est ignorée aboutit aussi', async () => {
@@ -121,6 +132,39 @@ describe('GH336 — checkout sûr', () => {
     expect(await git.currentBranch({ fs, dir: repo })).toBe('int-tmp')
     expect(await exists('.gitignore')).toBe(true)
     expect(await read('a.yaml')).toBe('a: 0\n')
+    expect(await nothingToCommit()).toBe(true)
+  })
+
+  it('pref commitée par erreur et modifiée localement (capture client, dev-auto → int-PH2) : passe, copie locale gardée', async () => {
+    // dev-auto (depuis int-PH2) : la pref y est suivie, avec un autre contenu.
+    await git.checkout({ fs, dir: repo, ref: 'int-PH2', force: true })
+    await git.branch({ fs, dir: repo, ref: 'dev-auto', checkout: true })
+    await write('.local.migrated.pref', 'committed: dev-auto\n')
+    await commitAll('pref modifiée sur dev-auto')
+    await write('.local.migrated.pref', 'mes réglages\n')
+
+    await safeCheckout({ dir: repo, ref: 'int-PH2' })
+
+    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-PH2')
+    expect(await read('.local.migrated.pref')).toBe('mes réglages\n')
+    expect(await read('a.yaml')).toBe('a: ph2\n')
+
+    // Et vers une branche qui ignore les .pref (non suivie là-bas) : passe aussi, copie gardée.
+    await safeCheckout({ dir: repo, ref: 'int-tmp' })
+    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-tmp')
+    expect(await read('.local.migrated.pref')).toBe('mes réglages\n')
+    expect(await nothingToCommit()).toBe(true)
+  })
+
+  it('pref indexée (stagée) : ne bloque pas non plus', async () => {
+    await git.checkout({ fs, dir: repo, ref: 'int-PH2', force: true })
+    await write('.local.migrated.pref', 'stagée\n')
+    await git.add({ fs, dir: repo, filepath: '.local.migrated.pref' })
+
+    await safeCheckout({ dir: repo, ref: 'int-tmp' })
+
+    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-tmp')
+    expect(await read('.local.migrated.pref')).toBe('stagée\n')
     expect(await nothingToCommit()).toBe(true)
   })
 })

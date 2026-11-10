@@ -4,6 +4,7 @@ import * as path from 'path'
 import git from 'isomorphic-git'
 
 import { eolAwareStatusMatrix, readHeadBlob } from './eol-status.util'
+import { isLocalStateFile } from './repo-conformity.util'
 
 /**
  * GH336 (spec §3.3, §5) — le seul checkout de Polenta. Règle : si le panneau Version n'affiche
@@ -13,7 +14,7 @@ import { eolAwareStatusMatrix, readHeadBlob } from './eol-status.util'
  * panneau Version) ne voient pourtant rien de modifié, ou rien de visible :
  * - fichier qui ne diffère de HEAD que par ses fins de ligne (`core.autocrlf=true` système, GH335) →
  *   réécrit tel que dans HEAD (même contenu), puis checkout ;
- * - `*.pref` ignoré ici mais versionné sur la cible (commité par erreur, Q1) → copie locale mise de
+ * - fichier d'état local (`*.pref`, cache de l'arbre), ignoré ou commité par erreur (Q1) → copie locale mise de
  *   côté, checkout, copie restaurée : ce sont les préférences de l'utilisateur ;
  * - tout autre cas → `LocalChangesError`, un fichier par ligne avec sa raison.
  *
@@ -34,7 +35,7 @@ export class LocalChangesError extends Error {
   }
 }
 
-const isPref = (filepath: string) => /(^|\/)[^/]*\.pref$/.test(filepath)
+
 
 export async function safeCheckout(args: CheckoutArgs): Promise<void> {
   if (args.noCheckout) {
@@ -43,7 +44,9 @@ export async function safeCheckout(args: CheckoutArgs): Promise<void> {
   }
   const dir = args.dir
   const start = await startPosition(dir)
-  const setAside = new Map<string, Buffer>()
+  // État local suivi par HEAD (commité par erreur) : isomorphic-git le supprime ou l'écrase sans
+  // conflit quand il est indexé — copie gardée d'office, restaurée après le checkout.
+  const setAside = await trackedLocalState(dir)
   try {
     try {
       await git.checkout({ fs, ...args })
@@ -60,40 +63,63 @@ export async function safeCheckout(args: CheckoutArgs): Promise<void> {
     throw err
   } finally {
     for (const [filepath, content] of setAside) {
-      await fsP.writeFile(path.join(dir, filepath), content).catch(() => {})
+      const abs = path.join(dir, filepath)
+      await fsP.mkdir(path.dirname(abs), { recursive: true }).catch(() => {})
+      await fsP.writeFile(abs, content).catch(() => {})
     }
   }
+}
+
+async function trackedLocalState(dir: string): Promise<Map<string, Buffer>> {
+  const out = new Map<string, Buffer>()
+  const files = await git.listFiles({ fs, dir, ref: 'HEAD' }).catch(() => [] as string[])
+  for (const filepath of files.filter(isLocalStateFile)) {
+    const content = await fsP.readFile(path.join(dir, filepath)).catch(() => null)
+    if (content) out.set(filepath, content)
+  }
+  return out
 }
 
 /** Lève `LocalChangesError` si un fichier en cause est une vraie modification ; sinon le neutralise. */
 async function clearConflicts(dir: string, target: string, conflicts: string[], setAside: Map<string, Buffer>) {
   const rows = new Map((await eolAwareStatusMatrix(dir, conflicts)).map(r => [r[0], r]))
   const eolOnly: string[] = []
+  const localState: string[] = []
   const blocking: { path: string; reason: string }[] = []
   for (const filepath of conflicts) {
     const row = rows.get(filepath)
     if (row && row[1] === 1 && row[2] === 1 && row[3] === 1) {
       eolOnly.push(filepath)
+    } else if (isLocalStateFile(filepath)) {
+      // État local de l'utilisateur, réécrit en continu par Polenta : jamais bloquant, même
+      // commité par erreur (suivi ici et/ou sur la cible) — gardé tel quel de part et d'autre.
+      localState.push(filepath)
     } else if (!row && await git.isIgnored({ fs, dir, filepath })) {
-      if (isPref(filepath)) setAside.set(filepath, await fsP.readFile(path.join(dir, filepath)))
-      else blocking.push({ path: filepath, reason: `ignoré ici, versionné sur ${target}` })
+      blocking.push({ path: filepath, reason: `ignoré ici, versionné sur ${target}` })
     } else if (row && row[1] === 0 && row[3] === 0) {
       blocking.push({ path: filepath, reason: `non suivi, existe sur ${target}` })
     } else {
       blocking.push({ path: filepath, reason: 'modifié' })
     }
   }
-  if (blocking.length > 0) {
-    setAside.clear()
-    throw new LocalChangesError(target, blocking)
-  }
+  if (blocking.length > 0) throw new LocalChangesError(target, blocking)
   const headOid = await git.resolveRef({ fs, dir, ref: 'HEAD' })
   const cache = {}
   for (const filepath of eolOnly) {
     const headBlob = await readHeadBlob(dir, filepath, cache, headOid)
     if (headBlob) await fsP.writeFile(path.join(dir, filepath), headBlob)
   }
-  for (const filepath of setAside.keys()) await fsP.rm(path.join(dir, filepath), { force: true })
+  // Copie locale mise de côté (restaurée par `safeCheckout`), fichier ramené à HEAD (index et
+  // working directory) le temps du checkout.
+  for (const filepath of localState) {
+    const abs = path.join(dir, filepath)
+    const local = await fsP.readFile(abs).catch(() => null)
+    if (local) setAside.set(filepath, local)
+    await git.resetIndex({ fs, dir, filepath }).catch(() => {})
+    const headBlob = await readHeadBlob(dir, filepath, cache, headOid)
+    if (headBlob) await fsP.writeFile(abs, headBlob)
+    else await fsP.rm(abs, { force: true })
+  }
 }
 
 async function startPosition(dir: string): Promise<{ ref: string; oid: string } | null> {

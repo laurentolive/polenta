@@ -7,17 +7,23 @@ import { expect, it } from 'vitest'
 // l'historique (`HistoryService.stamp`). Un nouvel appel `writeYaml` sur `requirements/`,
 // `tests/` ou `campaigns/` ailleurs fait échouer ce test : le brancher sur la méthode désignée,
 // ou, s'il ne change aucune valeur suivie par construction, l'ajouter ici en le justifiant.
+// GH340 — même garde-fou pour les dates de création / modification (posées par `stampObject`
+// dans ces mêmes méthodes, écrites par `auditForWrite`) ; les issues sont couvertes aussi.
 
 const ALLOWED = new Set([
   'main/services/requirements.service.ts#persist',
   'main/services/tests.service.ts#persist',
   'main/services/campaigns.service.ts#persist',
-  // Pose / levée de needsRevalidation : passe par `history.stamp` (comble un trou éventuel).
+  'main/services/issues.service.ts#persist',
+  // Renommage de champ / valeur / type d'issue : écriture brute de l'objet relu, ni valeur suivie
+  // ni date changée (comme `rewriteObjects` des exigences, qui passe par `persist` en `raw`).
+  'main/services/issues.service.ts#rewriteObjects',
+  // Pose / levée de needsRevalidation : passe par `history.stampObject` (comble un trou éventuel).
   'main/services/revalidation.service.ts#writeElement',
 ])
 
 const SRC = path.resolve(__dirname, '../..')
-const OBJECT_WRITE = /\.write(Yaml|Text|File)\([^\n]*(`(requirements|tests|campaigns)\/|\$\{dir\}\/)/
+const OBJECT_WRITE = /\.write(Yaml|Text|File)\([^\n]*(`(requirements|tests|campaigns|issues)\/|\$\{(dir|ISSUES_DIR)\}\/)/
 const METHOD = /^ {2}(?:(?:private|public|protected|static|async|readonly) )*(\w+)\s*[(<]/
 
 function sources(dir: string): string[] {

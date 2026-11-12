@@ -394,7 +394,11 @@ brouillon) une **session de résolution** dans un onglet `/merge-resolve` :
     `needsRevalidation` le OU logique. **GH77** : `history` n'est jamais en conflit — union des
     entrées des deux côtés par champ, dédoublonnées sur `(at, by, value, source)`, triées par `at`
     (`mergeHistories`) ; si la valeur fusionnée diffère de la dernière entrée, la règle « valeur
-    courante » de SPEC-REQ §4.4 s'applique.
+    courante » de SPEC-REQ §4.4 s'applique. **GH340** : les dates ne sont jamais en conflit et
+    chaque paire (date, auteur) vient d'un seul côté — `updatedAt`/`updatedBy` du côté le plus
+    récent, `createdAt`/`createdBy` du côté le plus ancien, une date absente cédant à l'autre.
+    Décidé d'après les deux documents (`StructureDesc.decide`) **avant** les cas triviaux, pour
+    qu'un auteur suive toujours sa date.
   - *`links/links.yaml`* : fusion par lien (`id`), union des ajouts.
   - *`parameters/parameters.yaml`* : fusion par paramètre, clés triées.
   - *Autre YAML écrit par l'app* (GH222, `kind: 'yaml'`) : fusion structurelle générique — schéma,

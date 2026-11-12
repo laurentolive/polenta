@@ -26,7 +26,42 @@ export interface StructureDesc {
   sorted?(path: NodePath): boolean
   /** Valeurs modifiées différemment des deux côtés et réconciliées sans conflit. */
   reconcile?(path: NodePath, b: unknown, l: unknown, r: unknown): Reconciled | undefined
+  /**
+   * Valeur fixée d'après les deux documents entiers, **avant** les cas triviaux (GH340) : un nœud
+   * qui suit un autre nœud (l'auteur d'une date) ne doit pas être repris d'un côté par le seul fait
+   * qu'il n'y a pas changé. `undefined` = règle ordinaire.
+   */
+  decide?(path: NodePath, roots: { l: unknown; r: unknown }): Reconciled | undefined
   blockKey(path: NodePath): string
+}
+
+/**
+ * GH340 — dates de création / modification posées par l'application : chaque paire (date, auteur)
+ * vient d'un seul côté — la modification la plus récente, la création la plus ancienne ; une date
+ * absente d'un côté cède à l'autre. Égalité : gauche.
+ */
+const AUDIT_PAIRS: Record<string, { date: string; newest: boolean }> = {
+  updatedAt: { date: 'updatedAt', newest: true },
+  updatedBy: { date: 'updatedAt', newest: true },
+  createdAt: { date: 'createdAt', newest: false },
+  createdBy: { date: 'createdAt', newest: false },
+}
+
+function timeOf(v: unknown): number | null {
+  const t = v instanceof Date ? v.getTime() : typeof v === 'string' ? Date.parse(v) : NaN
+  return Number.isNaN(t) ? null : t
+}
+
+function decideAudit(p: NodePath, roots: { l: unknown; r: unknown }): Reconciled | undefined {
+  if (p.length !== 1 || !('k' in p[0])) return undefined
+  const pair = AUDIT_PAIRS[p[0].k]
+  if (!pair || !isPlainObject(roots.l) || !isPlainObject(roots.r)) return undefined
+  const lt = timeOf(roots.l[pair.date])
+  const rt = timeOf(roots.r[pair.date])
+  if (lt === null && rt === null) return undefined
+  const left = rt === null || (lt !== null && (pair.newest ? lt >= rt : lt <= rt))
+  const side = left ? roots.l : roots.r
+  return { value: side[p[0].k], from: left ? 'left' : 'right' }
 }
 
 const SUIVI_DUMP: yaml.DumpOptions = { lineWidth: -1, noRefs: true }
@@ -100,6 +135,7 @@ export const OBJECT_DESC: StructureDesc = {
         return undefined
     }
   },
+  decide: decideAudit,
   blockKey(p) {
     const [a, b] = p
     if (p.length === 1 && 'k' in a) return a.k

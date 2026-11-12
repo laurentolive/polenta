@@ -4,7 +4,7 @@ import type { CreateIssueDto, UpdateIssueDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { SchemaService } from './schema.service'
 import type { HistoryService } from './history.service'
-import { omitAuditFields } from './audit-fields.util'
+import { auditForWrite, withAuditFields } from './audit-fields.util'
 import { applyFieldsWrite, readOwnedTypeDef } from './field-write.util'
 import type { TransitionGuardService } from './transition-guard.service'
 import { nextCounterId } from './id-counter.util'
@@ -134,7 +134,7 @@ export class IssuesService {
           const next = transform(await this.findOne(repoPath, id))
           if (next === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
           if (!next || next === 'conflict') return
-          await this.git.writeYaml(repoPath, `${ISSUES_DIR}/${id}.yaml`, omitAuditFields(next))
+          await this.git.writeYaml(repoPath, `${ISSUES_DIR}/${id}.yaml`, auditForWrite(next))
           this.upsert(repoPath, next)
           result.migrated.push(id)
         })
@@ -152,7 +152,7 @@ export class IssuesService {
     if (filePath.split(/[\\/]/)[0] === ISSUES_DIR) this.invalidate(repoPath)
   }
 
-  /** Seule écriture d'un fichier d'issue : historique des champs suivis, sans les champs d'audit. */
+  /** Seule écriture d'un fichier d'issue : historique des champs suivis et dates (GH340). */
   private async persist(
     repoPath: string, targetRepo: string, before: Issue | null, next: Issue, comment?: string, workspaceDir?: string,
   ): Promise<WithTransitionWarnings<Issue>> {
@@ -161,10 +161,11 @@ export class IssuesService {
     const transitionWarnings = this.transitionGuard
       ? await this.transitionGuard.assert(repoPath, await readOwnedTypeDef(this.git, repoPath, after.objectTypeRef, targetRepo), before, after, workspaceDir)
       : []
+    // GH340 — historique et dates de création / modification.
     const stamped = this.history
-      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo, comment)
+      ? await this.history.stampObject(repoPath, after.objectTypeRef, before, after, `${ISSUES_DIR}/${after.id}.yaml`, targetRepo, comment)
       : after
-    await this.git.writeYaml(targetRepo, `${ISSUES_DIR}/${stamped.id}.yaml`, omitAuditFields(stamped))
+    await this.git.writeYaml(targetRepo, `${ISSUES_DIR}/${stamped.id}.yaml`, auditForWrite(stamped))
     this.upsert(repoPath, stamped)
     // Notifications rendues à l'appelant, jamais écrites ni indexées.
     return transitionWarnings.length > 0 ? { ...stamped, transitionWarnings } : stamped
@@ -188,22 +189,13 @@ export class IssuesService {
     const cached = this.index.get(repoPath)
     if (cached) return cached
     const files = (await this.git.listFiles(repoPath, ISSUES_DIR).catch(() => [])).filter(f => f.endsWith('.yaml'))
-    // Dérivés du git log du fichier, jamais lus dans le YAML (T112).
-    const historyMap = await this.git.fileHistoryMap(repoPath, ISSUES_DIR).catch(() => new Map())
     const built = new Map<string, Issue>()
     await Promise.all(files.map(async (file) => {
       // Un fichier en cours d'édition peut être invalide : ignoré plutôt que de vider la liste.
       const issue = await this.git.readYaml<Issue>(repoPath, file).catch(() => null)
       if (!issue?.id) return
-      const audit = historyMap.get(file)
-      built.set(issue.id, {
-        ...issue,
-        fields: issue.fields ?? {},
-        createdAt: audit?.createdAt ?? null,
-        createdBy: audit?.createdBy ?? null,
-        updatedAt: audit?.updatedAt ?? null,
-        updatedBy: audit?.updatedBy ?? null,
-      })
+      // GH340 — dates lues dans le YAML (posées par l'application), jamais dans git.
+      built.set(issue.id, withAuditFields({ ...issue, fields: issue.fields ?? {} }))
     }))
     this.index.set(repoPath, built)
     return built

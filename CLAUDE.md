@@ -251,7 +251,7 @@ validation (`validations/<ID>.yaml`) — `versionId`, `entries` (une par exigenc
 `comment`, `contentHash`, `atSignature`…). Une version released et une validation signée sont figées.
 **Champs personnalisés** : tout dans `fields: {}`, définis par le type dans `schema.yaml`
 **Liens entre objets** : via `ObjectLink`, dans un fichier séparé `links/links.yaml` (pas dans le fichier de l'exigence) — voir §"Sens d'un lien de couverture test ↔ exigence" plus haut
-**Champs dérivés** (non stockés dans le YAML, lus depuis `git log` du fichier) : `createdAt`, `createdBy`, `updatedAt`, `updatedBy`
+**Dates de création / modification** (GH340 — exigences, tests, issues) : `createdAt`, `createdBy`, `updatedAt`, `updatedBy`, stockées dans le YAML, posées par l'application (création ; modification seulement si le contenu hors clés de l'application change), jamais à la main ; absentes tant que non reprises (mise en conformité), jamais lues dans git ni écrites à `null`, jamais dans une copie `testSnapshot`
 
 ---
 
@@ -372,6 +372,7 @@ Ne pas définir la variable d'environnement `CLAUDE_CODE_SUBAGENT_MODEL` : elle 
 - Ne pas modifier un `.drawio` sans lire les exigences/tests qui le référencent
 - Ne pas réutiliser un ID même si l'exigence est `obsolete`
 - Ne pas écrire ni corriger le champ `history` d'un objet à la main (GH77) — l'application l'alimente à chaque écriture
+- Ne pas écrire ni corriger `createdAt` / `createdBy` / `updatedAt` / `updatedBy` à la main (GH340) — même règle
 - Ne pas supprimer une pierre tombale `.polenta/tombstones/<ID>`, ni supprimer à la main le fichier d'un objet (passer par l'application, qui pose la pierre tombale)
 - Ne pas éditer `.polenta/trees/<nœud>/<type>.yaml` manuellement dans un vrai projet — c'est l'application qui le maintient au fil des actions dans l'UI, pas un script
 - Ne pas éditer `.polenta/views/<nœud>/<type>.yaml` à la main (GH203) : même règle ; un fichier invalide bloque toutes les vues d'équipe du type

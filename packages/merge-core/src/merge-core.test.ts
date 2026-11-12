@@ -63,6 +63,50 @@ describe('mergeObject (field level)', () => {
     expect(yaml.load(m.output)).toMatchObject({ needsRevalidation: true, title: 'Autre titre' })
   })
 
+  // GH340 — scénarios F1–F3 de specs/GH340-tests.md : chaque paire (date, auteur) vient d'un seul côté.
+  describe('audit dates (GH340)', () => {
+    const aBase = {
+      ...base,
+      createdAt: '2026-09-01T08:00:00Z', createdBy: 'lolive',
+      updatedAt: '2026-09-01T08:00:00Z', updatedBy: 'lolive',
+    }
+    const load = (o: string) => yaml.load(o) as Record<string, unknown>
+
+    it('F1 — different fields edited on both sides: newest update with its author, no block', () => {
+      const left = withFields(aBase as typeof base, { priority: 'high' }, { updatedAt: '2026-09-05T10:00:00Z', updatedBy: 'sdupont' })
+      const right = withFields(aBase as typeof base, { statement: 'WHEN on\nTHE system SHALL start in 500 ms' }, { updatedAt: '2026-09-03T10:00:00Z', updatedBy: 'mdupont' })
+      const m = mergeFile(dump(aBase), dump(left), dump(right), labels)
+      expect(m.blocks).toEqual([])
+      expect(load(m.output)).toMatchObject({ updatedAt: '2026-09-05T10:00:00Z', updatedBy: 'sdupont', createdAt: aBase.createdAt })
+    })
+
+    it('F1b — newer side kept its base author: the author follows the date, not the other side', () => {
+      // Gauche : date plus récente, même auteur que la base ; droite : plus ancienne, autre auteur.
+      const left = withFields(aBase as typeof base, { priority: 'high' }, { updatedAt: '2026-09-05T10:00:00Z' })
+      const right = withFields(aBase as typeof base, { priority: 'medium', title: 'T' }, { updatedAt: '2026-09-03T10:00:00Z', updatedBy: 'mdupont' })
+      const m = mergeFile(dump(aBase), dump(left), dump(right), labels)
+      expect(m.blocks).toEqual([])
+      expect(load(m.output)).toMatchObject({ updatedAt: '2026-09-05T10:00:00Z', updatedBy: 'lolive' })
+    })
+
+    it('F2 — creation dates differ: oldest with its author', () => {
+      const noDates = { ...base }
+      const left = { ...base, title: 'L', createdAt: '2026-08-01T08:00:00Z', createdBy: 'ancien', updatedAt: '2026-09-02T08:00:00Z', updatedBy: 'lolive' }
+      const right = { ...base, createdAt: '2026-08-15T08:00:00Z', createdBy: 'autre', updatedAt: '2026-08-20T08:00:00Z', updatedBy: 'autre' }
+      const m = mergeFile(dump(noDates), dump(left), dump(right), labels)
+      expect(m.blocks).toEqual([])
+      expect(load(m.output)).toMatchObject({ title: 'L', createdAt: '2026-08-01T08:00:00Z', createdBy: 'ancien', updatedAt: '2026-09-02T08:00:00Z', updatedBy: 'lolive' })
+    })
+
+    it('F3 — dates on one side only: that side', () => {
+      const right = { ...base, title: 'R', createdAt: '2026-08-15T08:00:00Z', createdBy: 'autre', updatedAt: '2026-08-20T08:00:00Z', updatedBy: 'autre' }
+      const left = { ...base, fields: { ...base.fields, priority: 'high' } }
+      const m = mergeFile(dump(base), dump(left), dump(right), labels)
+      expect(m.blocks).toEqual([])
+      expect(load(m.output)).toMatchObject({ createdBy: 'autre', updatedAt: '2026-08-20T08:00:00Z', updatedBy: 'autre' })
+    })
+  })
+
   // GH77 — scénarios F1–F4 de specs/GH77-tests.md.
   describe('history (GH77)', () => {
     const e = (value: string, at: string, by = 'lolive') => ({ value, at, by })

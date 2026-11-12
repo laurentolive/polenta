@@ -184,8 +184,8 @@ export class GitService {
   // ─── File history (git log) ─────────────────────────────────────────────────
 
   /**
-   * Créé/modifié le/par pour un fichier, dérivés de son historique git plutôt que
-   * stockés dans le fichier lui-même (T112) — commit le plus ancien touchant ce chemin
+   * Créé/modifié le/par d'un fichier d'après son historique git (repli des campagnes ; les
+   * exigences, tests et issues portent leurs dates dans le YAML, GH340) — commit le plus ancien touchant ce chemin
    * = création, le plus récent = dernière modification. `null` si le fichier n'a jamais
    * été commité (ex. juste créé, en attente de premier commit) : `force: true` évite que
    * `git.log` lève dans ce cas plutôt que de renvoyer un tableau vide.
@@ -204,72 +204,9 @@ export class GitService {
   }
 
   /**
-   * Batched equivalent of `fileHistory()` for every file under `prefix` (T142) — one single
-   * walk of the commit history instead of one `git.log({ filepath })` per file. isomorphic-git's
-   * per-file `git.log` re-walks the ENTIRE reachable commit DAG for every call (see its `_log`
-   * implementation: a topological traversal that resolves the file's blob oid at each commit),
-   * so calling it once per requirement/test file costs O(files × commits) — the more specs and
-   * the longer the project's history, the slower every index build (RequirementsIndexService /
-   * TestsIndexService), i.e. the app's perceived startup time (T141 fixed a separate, unrelated
-   * boot-time cost — this one scales with repo content, not with it).
-   *
-   * Walks the commit list once (`git.log` without `filepath`) and, for each commit, diffs its
-   * `prefix` subtree against the same subtree in its *first* parent (or against nothing, for the
-   * root commit) — `readSubtreeOid` + `diffSubtrees` below, both scoped to `prefix` from the
-   * start (never touch any other part of the tree) and pruned wherever a subtree's oid is
-   * unchanged, so the cost of a commit that didn't touch `prefix` at all is one `readTree` call,
-   * not a full walk. Measured on this repo's own `specs/` (280 files, 536 commits): ~12s batched
-   * vs. ~300s for the per-file loop it replaces (apps/desktop/src/main/services/*-index.service.ts).
-   *
-   * `createdAt` is the oldest commit touching a path, `updatedAt` the newest — same fields as
-   * `fileHistory()`, but **not always the same values**: cross-checked against this repo's own
-   * `specs/` history (which has real merges — see WORKFLOW.md's per-ticket branch/worktree
-   * model), `fileHistory()`'s per-file DAG traversal turned out to report false-positive
-   * `updatedAt`s on merge commits — timestamps matching no commit that `git log -- <path>`
-   * actually shows as having touched the file (e.g. `specs/T98.md`, `specs/T110.md`: verified
-   * against plain `git log -- <path>`). The first-parent diff here doesn't have that failure
-   * mode and agrees with `git log --full-history -- <path>` on every spot-checked case — so this
-   * is a correctness fix for those files, not just a speedup, even though the two can disagree.
-   */
-  // T179 — `ref` : historique jusqu'à un commit donné (tag de baseline) plutôt que HEAD.
-  async fileHistoryMap(repoPath: string, prefix: string, ref = 'HEAD'): Promise<Map<string, FileHistory>> {
-    const result = new Map<string, FileHistory>()
-    const commits = await git.log({ fs, dir: repoPath, ref, force: true }).catch(() => [])
-
-    for (const commit of commits) {
-      const parentOid = commit.commit.parent[0]
-      const [oidA, oidB] = await Promise.all([
-        this.readSubtreeOid(repoPath, commit.oid, prefix),
-        parentOid ? this.readSubtreeOid(repoPath, parentOid, prefix) : Promise.resolve(null),
-      ])
-      if (oidA === oidB) continue
-
-      const changed: string[] = []
-      await this.diffSubtrees(repoPath, prefix, oidA, oidB, changed)
-      if (changed.length === 0) continue
-
-      const when = new Date(commit.commit.author.timestamp * 1000).toISOString()
-      const who = commit.commit.author.name
-      for (const filepath of changed) {
-        const existing = result.get(filepath)
-        if (!existing) {
-          result.set(filepath, { updatedAt: when, updatedBy: who, createdAt: when, createdBy: who })
-        } else {
-          // `commits` is newest-first, so the last write to a given path (as we keep walking
-          // toward the root) is always its oldest — overwritten unconditionally on every hit.
-          existing.createdAt = when
-          existing.createdBy = who
-        }
-      }
-    }
-
-    return result
-  }
-
-  /**
    * GH77 — commits de la **chaîne des premiers parents** de `ref` qui modifient un fichier sous l'un
    * des `prefixes`, du plus ancien au plus récent, avec les fichiers modifiés (comparaison au premier
-   * parent, élagage des sous-arbres identiques, comme `fileHistoryMap`). Les commits d'une branche
+   * parent, élagage des sous-arbres identiques). Les commits d'une branche
    * fusionnée ne sont pas parcourus : leurs changements apparaissent au commit de fusion — l'histoire
    * de la branche d'intégration. Date = date de commit (monotone le long de la chaîne, contrairement
    * à la date d'auteur après un rebase). Base de la reprise de l'historique des champs.

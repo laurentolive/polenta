@@ -15,7 +15,7 @@ import type { RequirementsIndexService } from './requirements-index.service'
 import type { TestsIndexService } from './tests-index.service'
 import type { SchemaService } from './schema.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
-import { omitAuditFields } from './audit-fields.util'
+import { auditForWrite } from './audit-fields.util'
 import { findObjectTypeDef, isRefInReadonlyNode } from './schema-lookup.util'
 import { withKeyLock } from './serialize-writes.util'
 import type { HistoryService } from './history.service'
@@ -311,8 +311,11 @@ export class RevalidationService {
     const dir = category === 'requirement' ? 'requirements' : 'tests'
     const targetRepo = (await this.schema.resolveComponentRepoPath(p, after.objectTypeRef, workspaceDir)) ?? p
     // GH77 — le flag n'est pas un champ suivi : aucune entrée, mais un trou d'historique est comblé.
-    const updated = this.history ? await this.history.stamp(p, after.objectTypeRef, before, after, before, targetRepo) : after
-    await this.git.writeYaml(targetRepo, `${dir}/${updated.id}.yaml`, omitAuditFields(updated))
+    // GH340 — le flag n'est pas un contenu : dates reprises de `before`, inchangées.
+    const updated = this.history
+      ? await this.history.stampObject(p, after.objectTypeRef, before, after, `${dir}/${after.id}.yaml`, targetRepo)
+      : after
+    await this.git.writeYaml(targetRepo, `${dir}/${updated.id}.yaml`, auditForWrite(updated))
     if (category === 'requirement') this.reqIndex.upsert(p, updated as Requirement)
     else this.testsIndex.upsertTestCase(p, updated as TestCase)
     return targetRepo

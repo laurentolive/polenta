@@ -118,14 +118,19 @@ describe('exigences', () => {
     expect(file.history?.owner).toBeUndefined()
   })
 
-  it('acteur résolu seulement quand une entrée est ajoutée', async () => {
+  // GH340 — l'acteur sert aussi aux dates de modification : résolu quand l'écriture change quelque
+  // chose, jamais pour une sauvegarde automatique sans changement (cas courant).
+  it('acteur résolu seulement quand l\'écriture change quelque chose', async () => {
     let calls = 0
     const counting = new HistoryService(git, async () => { calls++; return { by: 'lolive' } }, () => NOW)
     const reqs = new RequirementsService(git, reqIndex, schemaStub, undefined, counting)
-    const req = await reqs.create(dir, { objectTypeRef: 'root::exigence', title: 'R' } as never)
-    expect(calls).toBe(1)
+    const req = await reqs.create(dir, { objectTypeRef: 'root::exigence', title: 'R', fields: { owner: 'x' } } as never)
+    const afterCreate = calls
+    expect(afterCreate).toBeGreaterThan(0)
     await reqs.update(dir, req.id, { fields: { owner: 'x' } } as never)
-    expect(calls).toBe(1)
+    expect(calls).toBe(afterCreate)
+    await reqs.update(dir, req.id, { fields: { owner: 'y' } } as never)
+    expect(calls).toBeGreaterThan(afterCreate)
   })
 
   it('W10 — retargetObjectTypeRef : aucune entrée', async () => {
@@ -253,6 +258,10 @@ describe('serveur MCP', () => {
     const req = await mcp.requirements.create(dir, { objectTypeRef: 'root::exigence', title: 'R' } as never)
     const file = await onDisk<Requirement>(`requirements/${req.id}.yaml`)
     expect(file.history?.status).toEqual([expect.objectContaining({ value: 'draft', by: 'alice', source: 'mcp' })])
+    // GH340 (W11) — même identité pour les dates ; une modification MCP les avance.
+    expect(file).toMatchObject({ createdBy: 'alice', updatedBy: 'alice' })
+    await mcp.requirements.update(dir, req.id, { fields: { owner: 'x' } } as never)
+    expect(await onDisk<Requirement>(`requirements/${req.id}.yaml`)).toMatchObject({ createdBy: 'alice', updatedBy: 'alice' })
   })
 
   it('W11 — sans --user : by = local', async () => {
@@ -260,5 +269,6 @@ describe('serveur MCP', () => {
     const tc = await mcp.tests.create(dir, { objectTypeRef: 'root::test', title: 'T', steps: [] } as never)
     const file = await onDisk<TestCase>(`tests/${tc.id}.yaml`)
     expect(file.history?.status[0]).toMatchObject({ by: 'local', source: 'mcp' })
+    expect(file).toMatchObject({ createdBy: 'local', updatedBy: 'local' })
   })
 })

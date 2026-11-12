@@ -26,10 +26,11 @@ sans drapeau par appelant :
 
 `omitAuditFields` est supprimé. À la place :
 
-- `APP_KEYS` : liste unique des clés de l'application. `version-tracking.service.ts` l'importe au
-  lieu de garder sa propre copie.
-- `contentChanged(before, after)` : compare la forme canonique, sans les `APP_KEYS`. Clés triées et
-  clés `undefined` retirées, comme le `canonical` de `campaign-snapshot.util`, extrait ici et partagé.
+- `APP_KEYS` : clés de l'application, propres aux dates. *Révisé : `version-tracking` garde sa liste,
+  où une `version` qui change compte comme un changement (GH201) ; les deux n'ont pas le même sens.*
+- `contentChanged(before, after)` : compare la forme canonique, sans les `APP_KEYS`. *Révisé : la
+  forme canonique est celle de `@polenta/merge-core` (`canonical(v, ignore)`, désormais exportée),
+  réutilisée aussi par `testFingerprint` (même chaîne, empreintes inchangées).*
 - `applyAudit(before, after, by, at)` :
   - création (`before` null) : les quatre champs ;
   - contenu changé : `updatedAt` / `updatedBy`, et `createdAt` / `createdBy` repris de `before` ;
@@ -39,21 +40,30 @@ sans drapeau par appelant :
 - `readAuditFields(obj)` : normalise à la lecture. Une valeur `Date` (YAML édité à la main, non
   quoté) devient une chaîne ISO, une valeur absente devient `null`.
 
-### 2.2 `HistoryService.stampAudit(repoPath, before, after)`
+### 2.2 `HistoryService.stampObject(repoPath, ref, before, after, filePath, ownerRepo?, comment?)`
 
-Nouvelle méthode. L'acteur et l'horloge vivent déjà dans `HistoryService` (`by` identique à
-l'historique). L'acteur n'est résolu que si les dates changent, et `at` vaut
-`historyTimestamp(now())`.
+*Révisé au sprint 1, après revue de code : remplace l'idée d'un `stampAudit` séparé.*
 
-Les campagnes ne l'appellent pas : elles ont leurs propres dates.
+Une seule méthode pour les exigences, tests et issues : les entrées d'historique **et** les dates.
+- Une seule horloge : l'entrée d'historique et `updatedAt` d'une même sauvegarde portent le même
+  instant.
+- Un seul acteur, résolu seulement si l'écriture change quelque chose.
+- Une seule comparaison du contenu.
+
+`filePath` sert au repli d'un trou d'historique : le dernier commit du fichier, lu seulement s'il y
+a un trou. Ce n'est pas `updatedAt`, parce qu'une édition hors de l'application, cause même du trou,
+ne l'avance pas. `readEffectiveHistory` et le graphe (`gapFallbacks`, objets à trou seulement)
+suivent la même règle.
+
+Les campagnes gardent `stamp` : elles ont leurs propres dates.
 
 ### 2.3 Écritures
 
 | Fichier | Changement |
 |---|---|
-| `requirements.service.ts`, `tests.service.ts` `persist` | non `raw` : `stampAudit` après `stamp`. Écriture `auditForWrite(stamped)` dans tous les cas, `raw` compris |
+| `requirements.service.ts`, `tests.service.ts` `persist` | non `raw` : `stampObject` à la place de `stamp`. Écriture `auditForWrite(stamped)` dans tous les cas, `raw` compris |
 | `issues.service.ts` `persist`, `rewriteObjects` | idem |
-| `revalidation.service.ts` `writeElement` | `stampAudit` (donne « rien », §1) puis `auditForWrite`. Cela garde le fichier cohérent si un jour la revalidation change autre chose |
+| `revalidation.service.ts` `writeElement` | `stampObject` (dates inchangées, §1) puis `auditForWrite`. Cela garde le fichier cohérent si un jour la revalidation change autre chose |
 | création (`create` des trois services) | les `null` d'aujourd'hui restent : `stampAudit` les remplit (`before` null) |
 
 ### 2.4 Lectures
@@ -72,10 +82,11 @@ Les campagnes ne l'appellent pas : elles ont leurs propres dates.
 
 ### 2.6 Fusion — `packages/merge-core`
 
-- `StructureDesc.reconcile` reçoit un 5ᵉ argument `roots: { l, r }`, les objets racine des deux
-  côtés, conservés par `MergeContext.root()`. C'est nécessaire parce qu'un auteur suit sa date :
-  `updatedBy` dépend des `updatedAt` des deux côtés.
-- `OBJECT_DESC.reconcile` :
+- *Révisé : nouveau crochet `StructureDesc.decide(path, roots)`, évalué **avant** les cas triviaux.*
+  Un `reconcile` ne suffit pas : si le côté le plus récent n'a pas changé son auteur, le cas
+  trivial reprendrait l'auteur de l'autre côté et casserait la paire. `MergeContext.root()`
+  conserve les deux racines.
+- `OBJECT_DESC.decide` :
   - `updatedAt` : la plus récente ;
   - `updatedBy` : celui du côté dont `updatedAt` est le plus récent ;
   - `createdAt` : la plus ancienne ;

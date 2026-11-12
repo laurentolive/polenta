@@ -82,6 +82,8 @@ app.on('before-quit', () => {
   // Cmd+Q, installation d'une mise à jour, `app.quit()` : toutes les fenêtres encore ouvertes. Sous
   // Windows, fermer la dernière fenêtre passe par `close` (ci-dessous) avant d'arriver ici, sans
   // fenêtre : `saveState` n'écrit rien dans ce cas.
+  // `quitting` n'est jamais remis à faux : aucune garde de Polenta n'annule une sortie (la garde de
+  // fermeture ne s'applique pas pendant `quitting`).
   if (!quitting) saveState()
   quitting = true
 })

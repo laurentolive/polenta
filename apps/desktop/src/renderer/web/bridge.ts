@@ -9,6 +9,7 @@
 import type { UpdateState } from '@polenta/types'
 import { EVENTS_RECONNECTED } from '../lib/webEvents'
 import { CSRF_HEADER_NAME, csrfToken } from '../lib/webSession'
+import { isValidAppRoute } from '../../shared/app-route'
 
 type Listener = (...args: unknown[]) => void
 
@@ -161,8 +162,7 @@ const adapters: Record<string, (...args: unknown[]) => Promise<unknown>> = {
   'app:set-title': async (title) => { document.title = String(title) },
   // GH342 — « Ouvrir dans une nouvelle fenêtre » : nouvel onglet du navigateur sur la même page.
   'app:open-window': async (route) => {
-    const r = String(route)
-    if (r.startsWith('/') && !r.startsWith('//')) window.open(r, '_blank', 'noopener')
+    if (isValidAppRoute(route)) window.open(route, '_blank', 'noopener')
   },
   // GH342 — onglet Polenta non sauvegardé : confirmation générique du navigateur à la fermeture.
   'app:window-state': async (patch) => {

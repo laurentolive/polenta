@@ -39,9 +39,19 @@ describe('GH342 fitToDisplays (R3, CA11)', () => {
     expect(fitToDisplays(p, [primary], primary)).toEqual({ x: 0, y: 0, width: 1920, height: 1040, fullScreen: true })
   })
 
-  it('recentre une fenêtre à cheval sur deux écrans (pas entièrement dans l’un)', () => {
-    const p = { x: 1800, y: 100, width: 800, height: 600 }
-    expect(fitToDisplays(p, [primary, right], primary)).toEqual({ x: 560, y: 220, width: 800, height: 600 })
+  it('fenêtre collée au bord (bordures invisibles de Windows) : reste sur son écran, recadrée', () => {
+    const p = { x: 1913, y: -7, width: 1280, height: 800 }
+    expect(fitToDisplays(p, [primary, right], primary)).toEqual({ x: 1920, y: 0, width: 1280, height: 800 })
+  })
+
+  it('fenêtre à cheval : sur l’écran qui en contient le plus', () => {
+    const p = { x: 1700, y: 100, width: 800, height: 600 }
+    expect(fitToDisplays(p, [primary, right], primary)).toEqual({ x: 1920, y: 100, width: 800, height: 600 })
+  })
+
+  it('fenêtre presque entièrement hors écran : recentrée sur l’écran principal', () => {
+    const p = { x: 1800, y: 900, width: 800, height: 600 }
+    expect(fitToDisplays(p, [primary], primary)).toEqual({ x: 560, y: 220, width: 800, height: 600 })
   })
 })
 

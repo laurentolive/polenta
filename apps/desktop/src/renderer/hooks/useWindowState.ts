@@ -3,12 +3,11 @@ import { api } from '../api'
 import { useTabs } from '../contexts/TabsContext'
 import { hrefOf } from '../lib/tabHistory'
 
-const ROUTE_DEBOUNCE_MS = 300
-
 /**
  * GH342 — remonte au main l'état de la fenêtre : la page de l'onglet actif (rouverte au lancement
  * suivant) et la présence d'onglets non sauvegardés (garde de fermeture de la fenêtre ; web :
- * `beforeunload`).
+ * `beforeunload`). Sans délai : la disposition est enregistrée à la fermeture, une navigation faite
+ * juste avant ne doit pas être perdue (les changements de page sont rares, l'appel est léger).
  */
 export function useWindowState(): void {
   const { activeTab, dirtyTabIds } = useTabs()
@@ -16,8 +15,7 @@ export function useWindowState(): void {
   const dirty = dirtyTabIds.size > 0
 
   useEffect(() => {
-    const id = setTimeout(() => { void api.app.setWindowState({ route }).catch(() => {}) }, ROUTE_DEBOUNCE_MS)
-    return () => clearTimeout(id)
+    void api.app.setWindowState({ route }).catch(() => {})
   }, [route])
 
   useEffect(() => {

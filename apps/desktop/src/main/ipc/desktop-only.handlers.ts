@@ -1,7 +1,7 @@
 import { app, ipcMain, dialog, shell, BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { takePendingInvite } from '../host/invite-link'
 import { applyZoom } from '../host/app-zoom'
-import { openWindowFrom, setWindowState, type WindowStatePatch } from '../host/app-windows'
+import { lastFocusedAppWindow, openWindowFrom, setWindowState, type WindowStatePatch } from '../host/app-windows'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { isAcceptedLinkUrl, isHttpLinkUrl } from '@polenta/types'
@@ -62,7 +62,12 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   handle('auth:logout', () => c.auth.logout())
   handle('auth:open-password-change', () => c.auth.openPasswordChange())
   // GH45 S2b — lien d'invitation reçu avant que l'interface ne soit prête (spec §3ter).
-  handle('app:take-pending-invite', () => takePendingInvite())
+  // GH342 — plusieurs fenêtres rouvertes au lancement : seule la dernière active (la dernière
+  // créée, au premier plan) la prend ; les autres la laissent en attente.
+  handle('app:take-pending-invite', (e) => {
+    const win = BrowserWindow.fromWebContents((e as IpcMainInvokeEvent).sender)
+    return win && win !== lastFocusedAppWindow() ? null : takePendingInvite()
+  })
 
   // ── App ───────────────────────────────────────────────────────────────────────
   // GH338 — fenêtre émettrice, pas la fenêtre active : au démarrage la fenêtre n'a pas encore le

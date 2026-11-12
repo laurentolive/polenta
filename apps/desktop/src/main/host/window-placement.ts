@@ -4,6 +4,10 @@
  * d'Electron) : testé unitairement.
  */
 
+import { isValidAppRoute, routeProjectId } from '../../shared/app-route'
+
+export { isValidAppRoute }
+
 export interface Rect { x: number; y: number; width: number; height: number }
 
 export interface WindowPlacement extends Rect {
@@ -23,12 +27,6 @@ export const MAX_SAVED_WINDOWS = 8
 export const NEW_WINDOW_OFFSET = 30
 const MIN_WIDTH = 400
 const MIN_HEIGHT = 300
-
-function contains(area: Rect, r: Rect): boolean {
-  return r.x >= area.x && r.y >= area.y
-    && r.x + r.width <= area.x + area.width
-    && r.y + r.height <= area.y + area.height
-}
 
 function overlap(a: Rect, b: Rect): number {
   const w = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)
@@ -69,15 +67,20 @@ export function offsetPlacement(from: Rect, displays: DisplayArea[]): Rect {
 }
 
 /**
- * Placement restauré : conservé s'il tient entièrement dans l'aire de travail d'un écran actuel ;
- * sinon (écran débranché, résolution changée) recentré sur l'écran principal, réduit à son aire de
- * travail si besoin. Maximisation et plein écran conservés.
+ * Placement restauré : gardé sur l'écran actuel qui recouvre au moins la moitié de la fenêtre,
+ * ramené entièrement dans son aire de travail (une fenêtre collée au bord, ou débordant de ses
+ * bordures invisibles sous Windows, reste sur son écran) ; sinon (écran débranché, résolution
+ * changée) recentré sur l'écran principal, réduit à son aire de travail si besoin. Maximisation et
+ * plein écran conservés.
  */
 export function fitToDisplays(p: WindowPlacement, displays: DisplayArea[], primary: DisplayArea): WindowPlacement {
   const { maximized, fullScreen } = p
   const rect: Rect = { x: p.x, y: p.y, width: p.width, height: p.height }
   const flags = { ...(maximized ? { maximized } : {}), ...(fullScreen ? { fullScreen } : {}) }
-  if (displays.some(d => contains(d.workArea, rect))) return { ...rect, ...flags }
+  const best = displays
+    .map(d => d.workArea)
+    .reduce<Rect | null>((acc, a) => (!acc || overlap(a, rect) > overlap(acc, rect) ? a : acc), null)
+  if (best && overlap(best, rect) * 2 >= rect.width * rect.height) return { ...clampInto(best, rect), ...flags }
   return { ...centerIn(primary.workArea, rect.width, rect.height), ...flags }
 }
 
@@ -87,16 +90,7 @@ function isFiniteNumber(v: unknown): v is number {
 
 /** Une route restaurable : page d'un projet, interne à l'application. */
 export function isRestorableRoute(route: unknown): route is string {
-  if (!isValidAppRoute(route)) return false
-  const query = route.includes('?') ? route.slice(route.indexOf('?') + 1) : ''
-  return !!new URLSearchParams(query).get('projectId')
-}
-
-/** Route interne à l'application (`/…`), jamais une URL ni un chemin protocol-relative. */
-export function isValidAppRoute(route: unknown): route is string {
-  return typeof route === 'string'
-    && route.length > 0 && route.length <= 4096
-    && route.startsWith('/') && !route.startsWith('//') && !route.includes('\\')
+  return isValidAppRoute(route) && !!routeProjectId(route)
 }
 
 /** Lecture tolérante du contenu de `windows-state.json` : toute entrée invalide est ignorée. */

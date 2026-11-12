@@ -6,6 +6,7 @@ import { routeTree } from './routeTree.gen'
 import { api } from './api'
 import { isWeb } from './platform'
 import { decodeProjectId } from './lib/projectId'
+import { isValidAppRoute, routeProjectId, splitAppRoute } from '../shared/app-route'
 import './index.css'
 import './i18n'
 
@@ -50,9 +51,8 @@ const openTarget = bootParams.get('__open')
  *  habituel). Page hors projet : ouverte telle quelle. Pas de contrôle de compte comme l'accueil :
  *  une page à rouvrir vient d'une session déjà ouverte (le premier lancement n'en a pas). */
 async function canOpen(route: string): Promise<boolean> {
-  if (!route.startsWith('/') || route.startsWith('//')) return false
-  const query = route.includes('?') ? route.slice(route.indexOf('?') + 1) : ''
-  const projectId = new URLSearchParams(query).get('projectId')
+  if (!isValidAppRoute(route)) return false
+  const projectId = routeProjectId(route)
   if (!projectId) return true
   try {
     await api.workspace.resolve(decodeProjectId(projectId))
@@ -67,9 +67,7 @@ async function boot() {
     bootParams.delete('__print')
     await router.navigate({ to: printTarget as never, search: Object.fromEntries(bootParams) as never, replace: true })
   } else if (openTarget && await canOpen(openTarget)) {
-    const q = openTarget.indexOf('?')
-    const pathname = q < 0 ? openTarget : openTarget.slice(0, q)
-    const search = Object.fromEntries(new URLSearchParams(q < 0 ? '' : openTarget.slice(q + 1)))
+    const { pathname, search } = splitAppRoute(openTarget)
     await router.navigate({ to: pathname as never, search: search as never, replace: true })
   } else {
     // T114 — same file://-entry-URL quirk as above, hitting the normal (non-print) boot path too:

@@ -297,6 +297,27 @@ export class GraphService {
     }
   }
 
+  /**
+   * GH340 — repli des trous d'historique (exigences, tests, issues) : dernier commit du fichier,
+   * comme pour les campagnes. Lu seulement pour les objets à trou (rares : édition hors de
+   * l'application) ; jamais pour les dates de l'objet, lues dans le YAML.
+   */
+  private async gapFallbacks(perRepo: RawRepo[]): Promise<Map<object, HistoryFallback>> {
+    const out = new Map<object, HistoryFallback>()
+    for (const r of perRepo) {
+      const types = typeResolver(r.schema)
+      const groups: Array<[string, Array<Requirement | TestCase | Issue>]> = [['requirements', r.requirements], ['tests', r.testCases], ['issues', r.issues]]
+      for (const [dir, objects] of groups) {
+        for (const o of objects) {
+          if (!hasHistoryGap({ status: o.status, fields: o.fields ?? {}, history: o.history }, types(o.objectTypeRef).typeDef)) continue
+          const dates = await this.git.fileHistory(r.repoPath, `${dir}/${o.id}.yaml`).catch(() => null)
+          out.set(o, { at: dates?.updatedAt ? historyTimestamp(new Date(dates.updatedAt)) : null, by: dates?.updatedBy ?? null })
+        }
+      }
+    }
+    return out
+  }
+
   private async doBuild(repoPath: string, workspaceDir: string | undefined, locale: 'fr' | 'en'): Promise<BuiltGraph> {
     const repos = await this.resolveRepos(repoPath, workspaceDir)
     const perRepo = await Promise.all(repos.map((r) => this.fetchRepo(r)))
@@ -336,8 +357,9 @@ export class GraphService {
       }
     }
 
+    const gaps = await this.gapFallbacks(perRepo)
     const issues: GraphIssue[] = perRepo.flatMap((r) => r.issues.map((i): GraphIssue => ({
-      ...objectBase(i, r.name, typeResolver(r.schema), now),
+      ...objectBase(i, r.name, typeResolver(r.schema), now, gaps.get(i)),
       origin: { runs: i.origin?.runs ?? [], decisions: i.origin?.decisions ?? [] },
     })))
     const requirements: GraphRequirement[] = []
@@ -349,12 +371,12 @@ export class GraphService {
       const types = typeResolver(r.schema)
       for (const q of r.requirements) {
         requirements.push({
-          ...objectBase(q, r.name, types, now),
+          ...objectBase(q, r.name, types, now, gaps.get(q)),
           coverageStatus: coverage.get(q.id)?.coverageStatus ?? 'not_covered',
           designVersion: r.designVersions.get(q.id) ?? null,
         })
       }
-      for (const tc of r.testCases) tests.push(objectBase(tc, r.name, types, now))
+      for (const tc of r.testCases) tests.push(objectBase(tc, r.name, types, now, gaps.get(tc)))
       for (const l of r.links) {
         links.push({ id: l.id, type: l.type, sourceId: l.sourceId, targetId: l.targetId, repo: r.name, createdAt: l.createdAt ?? null, createdBy: l.createdBy ?? null })
       }
@@ -492,14 +514,15 @@ function toGraphType(t: ObjectTypeDefinition, repo: string, nodeName: string, co
   }
 }
 
-function objectBase(o: Requirement | TestCase | Issue, repo: string, types: TypeResolver, now: Date): GraphObjectBase {
+/**
+ * `gap` (GH340) : repli d'un trou d'historique — dernier commit du fichier, lu seulement pour un
+ * objet à trou (édition hors de l'application, qui n'avance pas `updatedAt`).
+ */
+function objectBase(o: Requirement | TestCase | Issue, repo: string, types: TypeResolver, now: Date, gap?: HistoryFallback): GraphObjectBase {
   const { typeDef, component } = types(o.objectTypeRef)
   const fields = o.fields ?? {}
   const audit = o as { updatedAt?: string | null; updatedBy?: string | null; createdAt?: string | null; createdBy?: string | null }
-  const fallback: HistoryFallback = {
-    at: audit.updatedAt ? historyTimestamp(new Date(audit.updatedAt)) : null,
-    by: audit.updatedBy ?? null,
-  }
+  const fallback: HistoryFallback = gap ?? { at: null, by: null }
   const history: ObjectHistory = effectiveHistory({ status: o.status, fields, history: o.history }, typeDef, fallback, now)
   return {
     id: o.id,

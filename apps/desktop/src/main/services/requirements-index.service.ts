@@ -4,6 +4,7 @@ import type { Requirement, ObjectLink } from '@polenta/types'
 import type { GitService } from './git.service'
 import { withKeyLock } from './serialize-writes.util'
 import { IndexBuilds } from './index-builds.util'
+import { withAuditFields } from './audit-fields.util'
 
 const LINKS_FILE = 'links/links.yaml'
 
@@ -266,26 +267,15 @@ export class RequirementsIndexService {
     const versionFiles = await this.git.listFiles(repoPath, 'versions')
     const linksFiles = await this.git.listFiles(repoPath, 'links')
 
-    // Load requirements — createdAt/createdBy/updatedAt/updatedBy are derived from the
-    // file's git log (T112), never trusted from the YAML itself: overwritten
-    // unconditionally below, whatever stale/absent keys the file may still have.
-    // T142 — one batched history walk for every file under `requirements/`, instead of one
-    // `git.fileHistory()` (full history re-walk) per file: see GitService.fileHistoryMap().
-    const historyMap = await this.git.fileHistoryMap(repoPath, 'requirements')
+    // Load requirements — GH340 : createdAt/createdBy/updatedAt/updatedBy are read from the
+    // YAML (set by the app on each write), never from git: no history walk here.
     await Promise.all(
       reqFiles
         .filter((f) => f.endsWith('.yaml'))
         .map(async (file) => {
           const req = await this.git.readYaml<Requirement>(repoPath, file)
           if (!req?.id) return
-          const history = historyMap.get(file)
-          requirements.set(req.id, {
-            ...req,
-            createdAt: history?.createdAt ?? null,
-            createdBy: history?.createdBy ?? null,
-            updatedAt: history?.updatedAt ?? null,
-            updatedBy: history?.updatedBy ?? null,
-          })
+          requirements.set(req.id, withAuditFields(req))
         }),
     )
 

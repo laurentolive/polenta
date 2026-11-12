@@ -141,8 +141,9 @@ fields: {}
   (écrit seulement quand vrai) et \`history\` (absent tant que vide) — voir « Invariants ».
 - **Champs métier** : tout ce qui est sous \`fields:\`, propre à chaque projet — leur
   liste, type et obligation (\`required\`) sont définis dans le schéma, pas ici.
-- **Non stockés** : \`createdAt\`, \`createdBy\`, \`updatedAt\`, \`updatedBy\` d'une exigence ou
-  d'un test sont lus depuis l'historique git du fichier — ne pas les écrire dans le YAML.
+- **Dates** : \`createdAt\`, \`createdBy\`, \`updatedAt\`, \`updatedBy\` d'une exigence, d'un test
+  ou d'une issue sont posés par ${name} à chaque modification réelle — **ne jamais les écrire ni
+  les corriger à la main** ; une modification hors de l'application ne les met pas à jour.
 - **Campagnes et exécutions** : leur structure (instances de test avec copie figée du test,
   résultats…) est gérée par ${name} — les créer via l'application ou les tools MCP
   (\`bulk_import_campaigns\`), pas à la main.

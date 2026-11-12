@@ -10,13 +10,19 @@ import { TestsIndexService } from './tests-index.service'
 const tc = (id: string) => ({ id, title: id }) as unknown as TestCase
 const run = (id: string, testCaseId: string, executedAt: string) => ({ id, testCaseId, executedAt }) as unknown as TestRun
 
-/** Faux dépôt : le contenu de `files` est lu au moment de la lecture, `fileHistoryMap` attend `gate`. */
+/**
+ * Faux dépôt : le contenu de `files` est lu au moment de la lecture. Le premier listage du dossier
+ * des objets (`tests/`, `requirements/`) marque le début d'une construction et attend `gate` —
+ * depuis GH340, une construction ne lit plus l'historique git (`histories` compte les constructions).
+ */
 function fakeGit(files: Record<string, unknown>, gate: () => Promise<void> = async () => {}) {
   const calls = { histories: 0 }
   const git = {
-    listFiles: async (_repo: string, dir: string) => Object.keys(files).filter(f => f.startsWith(`${dir}/`)),
+    listFiles: async (_repo: string, dir: string) => {
+      if (dir === 'tests' || dir === 'requirements') { calls.histories++; await gate() }
+      return Object.keys(files).filter(f => f.startsWith(`${dir}/`))
+    },
     readYaml: async (_repo: string, file: string) => files[file] ?? null,
-    fileHistoryMap: async () => { calls.histories++; await gate(); return new Map() },
   } as unknown as GitService
   return { git, calls }
 }

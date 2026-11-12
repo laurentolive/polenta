@@ -4,6 +4,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import git from 'isomorphic-git'
+import { historyTimestamp } from '@polenta/types'
 import { safeCheckout } from './safe-checkout.util'
 
 export interface GitAuthor {
@@ -184,8 +185,8 @@ export class GitService {
   // ─── File history (git log) ─────────────────────────────────────────────────
 
   /**
-   * Créé/modifié le/par pour un fichier, dérivés de son historique git plutôt que
-   * stockés dans le fichier lui-même (T112) — commit le plus ancien touchant ce chemin
+   * Créé/modifié le/par d'un fichier d'après son historique git (repli des campagnes ; les
+   * exigences, tests et issues portent leurs dates dans le YAML, GH340) — commit le plus ancien touchant ce chemin
    * = création, le plus récent = dernière modification. `null` si le fichier n'a jamais
    * été commité (ex. juste créé, en attente de premier commit) : `force: true` évite que
    * `git.log` lève dans ce cas plutôt que de renvoyer un tableau vide.
@@ -204,72 +205,9 @@ export class GitService {
   }
 
   /**
-   * Batched equivalent of `fileHistory()` for every file under `prefix` (T142) — one single
-   * walk of the commit history instead of one `git.log({ filepath })` per file. isomorphic-git's
-   * per-file `git.log` re-walks the ENTIRE reachable commit DAG for every call (see its `_log`
-   * implementation: a topological traversal that resolves the file's blob oid at each commit),
-   * so calling it once per requirement/test file costs O(files × commits) — the more specs and
-   * the longer the project's history, the slower every index build (RequirementsIndexService /
-   * TestsIndexService), i.e. the app's perceived startup time (T141 fixed a separate, unrelated
-   * boot-time cost — this one scales with repo content, not with it).
-   *
-   * Walks the commit list once (`git.log` without `filepath`) and, for each commit, diffs its
-   * `prefix` subtree against the same subtree in its *first* parent (or against nothing, for the
-   * root commit) — `readSubtreeOid` + `diffSubtrees` below, both scoped to `prefix` from the
-   * start (never touch any other part of the tree) and pruned wherever a subtree's oid is
-   * unchanged, so the cost of a commit that didn't touch `prefix` at all is one `readTree` call,
-   * not a full walk. Measured on this repo's own `specs/` (280 files, 536 commits): ~12s batched
-   * vs. ~300s for the per-file loop it replaces (apps/desktop/src/main/services/*-index.service.ts).
-   *
-   * `createdAt` is the oldest commit touching a path, `updatedAt` the newest — same fields as
-   * `fileHistory()`, but **not always the same values**: cross-checked against this repo's own
-   * `specs/` history (which has real merges — see WORKFLOW.md's per-ticket branch/worktree
-   * model), `fileHistory()`'s per-file DAG traversal turned out to report false-positive
-   * `updatedAt`s on merge commits — timestamps matching no commit that `git log -- <path>`
-   * actually shows as having touched the file (e.g. `specs/T98.md`, `specs/T110.md`: verified
-   * against plain `git log -- <path>`). The first-parent diff here doesn't have that failure
-   * mode and agrees with `git log --full-history -- <path>` on every spot-checked case — so this
-   * is a correctness fix for those files, not just a speedup, even though the two can disagree.
-   */
-  // T179 — `ref` : historique jusqu'à un commit donné (tag de baseline) plutôt que HEAD.
-  async fileHistoryMap(repoPath: string, prefix: string, ref = 'HEAD'): Promise<Map<string, FileHistory>> {
-    const result = new Map<string, FileHistory>()
-    const commits = await git.log({ fs, dir: repoPath, ref, force: true }).catch(() => [])
-
-    for (const commit of commits) {
-      const parentOid = commit.commit.parent[0]
-      const [oidA, oidB] = await Promise.all([
-        this.readSubtreeOid(repoPath, commit.oid, prefix),
-        parentOid ? this.readSubtreeOid(repoPath, parentOid, prefix) : Promise.resolve(null),
-      ])
-      if (oidA === oidB) continue
-
-      const changed: string[] = []
-      await this.diffSubtrees(repoPath, prefix, oidA, oidB, changed)
-      if (changed.length === 0) continue
-
-      const when = new Date(commit.commit.author.timestamp * 1000).toISOString()
-      const who = commit.commit.author.name
-      for (const filepath of changed) {
-        const existing = result.get(filepath)
-        if (!existing) {
-          result.set(filepath, { updatedAt: when, updatedBy: who, createdAt: when, createdBy: who })
-        } else {
-          // `commits` is newest-first, so the last write to a given path (as we keep walking
-          // toward the root) is always its oldest — overwritten unconditionally on every hit.
-          existing.createdAt = when
-          existing.createdBy = who
-        }
-      }
-    }
-
-    return result
-  }
-
-  /**
    * GH77 — commits de la **chaîne des premiers parents** de `ref` qui modifient un fichier sous l'un
    * des `prefixes`, du plus ancien au plus récent, avec les fichiers modifiés (comparaison au premier
-   * parent, élagage des sous-arbres identiques, comme `fileHistoryMap`). Les commits d'une branche
+   * parent, élagage des sous-arbres identiques). Les commits d'une branche
    * fusionnée ne sont pas parcourus : leurs changements apparaissent au commit de fusion — l'histoire
    * de la branche d'intégration. Date = date de commit (monotone le long de la chaîne, contrairement
    * à la date d'auteur après un rebase). Base de la reprise de l'historique des champs.
@@ -309,6 +247,72 @@ export class GitService {
       })
     }
     return out
+  }
+
+  /**
+   * GH340 — dates de création / modification des fichiers sous `prefixes`, pour la reprise (mise en
+   * conformité). Un parcours unique de **tous** les commits atteignables depuis `ref` (pas seulement
+   * les premiers parents) :
+   * - commit à un parent : fichiers différents du parent ; commit racine : tous ses fichiers. Les
+   *   commits de fusion sont écartés, pour que l'auteur soit celui qui a fait la modification et non
+   *   celui qui a fusionné ;
+   * - un fichier que seuls des commits de fusion ont touché (résolution de conflit, « Garder les
+   *   deux » de GH37) prend ses dates de ces commits (comparés au premier parent) ;
+   * - création = plus ancien commit qui touche le fichier, modification = plus récent, par **date de
+   *   commit** (comme GH77 : un rebase ou un cherry-pick garde la date d'auteur d'origine) ; auteur =
+   *   l'auteur du commit. À égalité de date, le commit le plus loin de `ref` crée, le plus proche modifie ;
+   * - dépôt superficiel (shallow) : un parent absent arrête cette branche du parcours, sans erreur.
+   * Les déplacements et renommages ne sont pas suivis (création = le commit qui crée le chemin).
+   * Fait une fois par dépôt ; à remplacer par `git log --name-only` (#337).
+   */
+  async auditDatesFromHistory(repoPath: string, prefixes: string[], ref = 'HEAD'): Promise<Map<string, FileHistory>> {
+    type Dates = { created: number; createdBy: string; updated: number; updatedBy: string }
+    const direct = new Map<string, Dates>()
+    const viaMerge = new Map<string, Dates>()
+    const record = (into: Map<string, Dates>, files: string[], at: number, by: string) => {
+      for (const file of files) {
+        const cur = into.get(file)
+        if (!cur) { into.set(file, { created: at, createdBy: by, updated: at, updatedBy: by }); continue }
+        // Parcours depuis `ref` : à date égale, le commit vu plus tard est le plus ancien.
+        if (at <= cur.created) { cur.created = at; cur.createdBy = by }
+        if (at > cur.updated) { cur.updated = at; cur.updatedBy = by }
+      }
+    }
+    let head: string
+    try {
+      head = await git.resolveRef({ fs, dir: repoPath, ref })
+    } catch {
+      return new Map() // repo sans commit
+    }
+    const subtrees = new Map<string, Promise<string | null>>()
+    const subtree = (commitOid: string, prefix: string) => {
+      const key = `${commitOid}:${prefix}`
+      if (!subtrees.has(key)) subtrees.set(key, this.readSubtreeOid(repoPath, commitOid, prefix))
+      return subtrees.get(key)!
+    }
+    const seen = new Set<string>([head])
+    const queue = [head]
+    while (queue.length > 0) {
+      const oid = queue.pop()!
+      const read = await git.readCommit({ fs, dir: repoPath, oid }).catch(() => null)
+      if (!read) continue // dépôt superficiel : parent absent
+      const { commit } = read
+      for (const p of commit.parent) if (!seen.has(p)) { seen.add(p); queue.push(p) }
+      const files: string[] = []
+      for (const prefix of prefixes) {
+        const [oidA, oidB] = await Promise.all([
+          subtree(oid, prefix),
+          commit.parent[0] ? subtree(commit.parent[0], prefix) : Promise.resolve(null),
+        ])
+        await this.diffSubtrees(repoPath, prefix, oidA, oidB, files)
+      }
+      record(commit.parent.length > 1 ? viaMerge : direct, files, commit.committer.timestamp, commit.author.name)
+    }
+    for (const [file, d] of viaMerge) if (!direct.has(file)) direct.set(file, d)
+    const at = (s: number) => historyTimestamp(new Date(s * 1000))
+    return new Map([...direct].map(([file, d]) => [file, {
+      createdAt: at(d.created), createdBy: d.createdBy, updatedAt: at(d.updated), updatedBy: d.updatedBy,
+    }]))
   }
 
   /**

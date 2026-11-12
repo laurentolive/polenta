@@ -401,10 +401,10 @@ statement: |
 | `title` | text | Titre de l'exigence (obligatoire) |
 | `objectTypeRef` | string | Référence au type : `"nœud::nom-type"` |
 | `status` | string | Statut courant (parmi les statuts configurés du type) |
-| `createdAt` | datetime | Date de création |
-| `createdBy` | user | Auteur |
-| `updatedAt` | datetime | Date de dernière modification |
-| `updatedBy` | user | Auteur de la dernière modification |
+| `createdAt` | datetime | Date de création — **GH340** : stockée dans le YAML, posée par l'application (comme `history`, même identité et même format que ses entrées), jamais à la main ; absente (« — ») tant que l'objet n'est pas repris par la mise en conformité, jamais lue dans git |
+| `createdBy` | user | Auteur (GH340, idem) |
+| `updatedAt` | datetime | Date de dernière modification (GH340) : avance à une écriture de l'application **dont le contenu change**, hors clés posées par l'application (`history`, `needsRevalidation`, `version`, `objectTypeRef`, `projectId`, `branchId`, dates) — donc pas sur une revalidation, un renommage, un déplacement, une reprise |
+| `updatedBy` | user | Auteur de la dernière modification (GH340, idem). Aussi sur les tests et les issues ; jamais dans une copie `testSnapshot` |
 | `needsRevalidation` | bool? | **T172** — impact à vérifier : un élément lié a quitté un statut d'approbation (§5.3). Persisté uniquement quand vrai (absent = `false`), indépendant du statut. Aussi présent sur les cas de test |
 | `history` | map? | **GH77** — historique des champs suivis (§4.4) : une liste par champ, posée par l'application seule, absente tant que vide. Aussi sur les tests et les campagnes |
 
@@ -504,7 +504,9 @@ fichier d'objet est écrit ailleurs.
 
 **La valeur courante fait foi** : si elle diffère de la dernière entrée (YAML édité à la main,
 ancienne version, `git revert`, fusion), la lecture (`history:get`, tool MCP `get_history`) ajoute
-une entrée `implicit: true` datée du dernier commit (jamais avant la dernière entrée) ; la prochaine
+une entrée `implicit: true` datée du dernier commit du fichier, lu seulement en cas de trou (GH340 :
+pas `updatedAt`, qu'une édition hors de l'application n'avance pas ; jamais avant la dernière
+entrée) ; la prochaine
 écriture l'enregistre (`source: schema` si la liste était vide).
 
 **Évolution du schéma** : désactiver le suivi n'efface rien ; renommer un champ dans l'éditeur migre

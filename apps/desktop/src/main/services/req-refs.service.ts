@@ -5,6 +5,7 @@ import type { RequirementsIndexService } from './requirements-index.service'
 import type { SchemaService } from './schema.service'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { matchCoverageLink } from './traceability.service'
+import { withAuditFields } from './audit-fields.util'
 
 const SYSTEM_FIELD_SET = new Set<string>(REQ_REF_SYSTEM_FIELDS)
 
@@ -79,23 +80,16 @@ export class ReqRefsService {
   private async readAtTag(repoPath: string, tag: string): Promise<{ requirements: Requirement[]; links: ObjectLink[] } | null> {
     const oid = await this.git.resolveTagOid(repoPath, tag)
     if (!oid) return null
-    const [files, linksData, history] = await Promise.all([
+    const [files, linksData] = await Promise.all([
       this.git.listFilesAtRef(repoPath, oid, 'requirements').catch(() => [] as string[]),
       this.git.readYamlRef<{ links?: ObjectLink[] }>(repoPath, oid, 'links/links.yaml'),
-      this.git.fileHistoryMap(repoPath, 'requirements', oid),
     ])
     const requirements: Requirement[] = []
     await Promise.all(files.filter(f => f.endsWith('.yaml')).map(async (file) => {
       const req = await this.git.readYamlRef<Requirement>(repoPath, oid, file)
       if (!req?.id) return
-      const h = history.get(file)
-      requirements.push({
-        ...req,
-        createdAt: h?.createdAt ?? null,
-        createdBy: h?.createdBy ?? null,
-        updatedAt: h?.updatedAt ?? null,
-        updatedBy: h?.updatedBy ?? null,
-      } as Requirement)
+      // GH340 — dates du fichier au tag ; absentes (tag antérieur à la reprise) → null, sans git.
+      requirements.push(withAuditFields(req))
     }))
     return { requirements, links: linksData?.links ?? [] }
   }

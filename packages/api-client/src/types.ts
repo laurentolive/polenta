@@ -332,7 +332,7 @@ export interface CheckoutBranchResult {
 
 // GH336 — mirrors RepoConformityService's ConformityItem / ConformityResult.
 export interface ConformityItem {
-  id: 'gitattributes' | 'gitignore' | 'tracked-local' | 'agent-files' | 'dashboards-seed'
+  id: 'gitattributes' | 'gitignore' | 'tracked-local' | 'agent-files' | 'dashboards-seed' | 'audit-dates'
   files: string[]
 }
 export interface ConformityResult {

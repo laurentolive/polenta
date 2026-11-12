@@ -27,6 +27,13 @@ export class MergeContext {
    *  `name`, or list element. Returns the merged value (placeholders for the blocks), `undefined`
    *  when the node is absent from the result. */
   node(path: NodePath, slot: Slot, b: unknown, l: unknown, r: unknown): unknown {
+    // GH340 — nœud fixé d'après les deux documents (paire date / auteur), y compris quand un seul
+    // côté l'a changé : sinon l'auteur d'une date pourrait venir de l'autre côté.
+    const decided = this.roots && !deepEqual(l, r) ? this.desc.decide?.(path, this.roots) : undefined
+    if (decided) {
+      this.recordAuto(path, b, decided.value, decided.from)
+      return decided.value
+    }
     if (deepEqual(l, r)) {
       if (!deepEqual(l, b)) this.recordAuto(path, b, l, 'both')
       return l
@@ -55,8 +62,12 @@ export class MergeContext {
 
   /** Merges a whole document whose root is a mapping on every side present. */
   root(b: unknown, l: unknown, r: unknown): unknown {
+    this.roots = { l, r }
     return this.map([], (isPlainObject(b) ? b : {}) as Obj, l as Obj, r as Obj)
   }
+
+  /** Documents entiers des deux côtés, pour `StructureDesc.decide`. */
+  private roots?: { l: unknown; r: unknown }
 
   /** A block of list elements (`left` / `right` = the elements of each side, maybe none). */
   items(blockKey: string, left: unknown[], right: unknown[], base?: unknown[]): string {

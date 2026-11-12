@@ -508,7 +508,9 @@
         "errorOffIntegration": "Passez d'abord sur la branche d'intégration {{branch}}.",
         "errorDiverged": "La branche d'intégration a divergé du serveur : resynchronisez-la d'abord.",
         "checkFailed": "Vérification de conformité impossible : {{error}}",
-        "item_dashboards-seed": "dashboards par défaut (Status, bibliothèque)"
+        "item_dashboards-seed": "dashboards par défaut (Status, bibliothèque)",
+        "item_audit-dates_one": "dates de création / modification de {{count}} objet, reprises de l'historique git",
+        "item_audit-dates_other": "dates de création / modification de {{count}} objets, reprises de l'historique git"
       }
     },
     "reorderable": {

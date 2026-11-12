@@ -5,7 +5,7 @@ import type { GitService } from './git.service'
 import type { RequirementsIndexService, RequirementFilters } from './requirements-index.service'
 import type { SchemaService } from './schema.service'
 import { RevalidationService } from './revalidation.service'
-import { omitAuditFields } from './audit-fields.util'
+import { auditForWrite } from './audit-fields.util'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
@@ -100,8 +100,7 @@ export class RequirementsService {
       version: 1,
       fields: dto.fields ?? {},
       jiraLinks: [],
-      // Fichier neuf, aucun commit ne le touche encore — pas d'appel git.fileHistory()
-      // ici, il renverrait `null` de toute façon (T112).
+      // GH340 — posés par `persist` (création).
       createdAt: null,
       createdBy: null,
       updatedAt: null,
@@ -124,9 +123,7 @@ export class RequirementsService {
       if (!existing) throw new Error(`Requirement ${id} not found`)
 
       const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-      // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
-      // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
-      // pas ici (T112).
+      // createdAt/updatedAt… : avancés par `persist` si le contenu change (GH340).
       const next: Requirement = {
         ...existing,
         ...(dto.title && { title: dto.title }),
@@ -170,7 +167,7 @@ export class RequirementsService {
 
   /**
    * Seule écriture d'un fichier d'exigence (GH77) : complète l'historique des champs suivis
-   * (`before` null = création), écrit sans les champs d'audit, met l'index à jour.
+   * (`before` null = création), pose les dates (GH340), met l'index à jour.
    */
   private async persist(
     repoPath: string, targetRepo: string, before: Requirement | null, after: Requirement,
@@ -184,10 +181,11 @@ export class RequirementsService {
     const transitionWarnings = this.transitionGuard && !opts.raw
       ? await this.transitionGuard.assert(repoPath, await readOwnedTypeDef(this.git, repoPath, after.objectTypeRef, targetRepo), before, after, opts.workspaceDir)
       : []
+    // GH340 — historique et dates de création / modification (écriture brute : inchangés).
     const stamped = this.history && !opts.raw
-      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo, opts.comment)
+      ? await this.history.stampObject(repoPath, after.objectTypeRef, before, after, `requirements/${after.id}.yaml`, targetRepo, opts.comment)
       : after
-    await this.git.writeYaml(targetRepo, `requirements/${stamped.id}.yaml`, omitAuditFields(stamped))
+    await this.git.writeYaml(targetRepo, `requirements/${stamped.id}.yaml`, auditForWrite(stamped))
     this.index.upsert(repoPath, stamped)
     // Notifications rendues à l'appelant, jamais écrites ni indexées.
     return transitionWarnings.length > 0 ? { ...stamped, transitionWarnings } : stamped

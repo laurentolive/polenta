@@ -126,7 +126,9 @@ describe('objet', () => {
     expect(a.history?.status?.[0]).toMatchObject({ value: 'ouverte', by: 'alice' })
     const onDisk = await gitSvc.readYaml<Record<string, unknown>>(root, 'issues/PI-0001.yaml')
     expect(onDisk).toMatchObject({ id: 'PI-0001', title: 'Coupure' })
-    expect(onDisk).not.toHaveProperty('createdAt')
+    // GH340 — dates posées par l'application dans le YAML (annule T112).
+    expect(onDisk).toMatchObject({ createdBy: 'alice', updatedBy: 'alice' })
+    expect(onDisk?.createdAt).toBe(onDisk?.updatedAt)
   })
 
   it('I2 — modification libre, même sur un statut `isApproval` ; `version` inchangée', async () => {

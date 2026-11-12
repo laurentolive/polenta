@@ -5,7 +5,7 @@ import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
 import type { SchemaService } from './schema.service'
 import { RevalidationService } from './revalidation.service'
-import { omitAuditFields } from './audit-fields.util'
+import { auditForWrite } from './audit-fields.util'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
@@ -83,8 +83,7 @@ export class TestsService {
       steps: dto.steps,
       postconditions: dto.postconditions ?? '',
       fields: dto.fields ?? {},
-      // Fichier neuf, aucun commit ne le touche encore — pas d'appel git.fileHistory()
-      // ici, il renverrait `null` de toute façon (T112).
+      // GH340 — posés par `persist` (création).
       createdAt: null,
       createdBy: null,
       updatedAt: null,
@@ -106,9 +105,7 @@ export class TestsService {
       if (!existing) throw new Error(`Test case ${id} not found`)
 
       const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-      // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
-      // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
-      // pas ici (T112).
+      // createdAt/updatedAt… : avancés par `persist` si le contenu change (GH340).
       const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
       // GH164 / GH243 — un test approuvé qui quitte ce statut voit sa version incrémentée, comme une
       // exigence (`RequirementsService.transition`, T150) : même règle quel que soit le chemin.
@@ -187,7 +184,7 @@ export class TestsService {
 
   /**
    * Seule écriture d'un fichier de cas de test (GH77) : complète l'historique des champs suivis
-   * (`before` null = création), écrit sans les champs d'audit, met l'index à jour.
+   * (`before` null = création), pose les dates (GH340), met l'index à jour.
    */
   private async persist(
     repoPath: string, targetRepo: string, before: TestCase | null, after: TestCase,
@@ -200,10 +197,11 @@ export class TestsService {
     const transitionWarnings = this.transitionGuard && !opts.raw
       ? await this.transitionGuard.assert(repoPath, await readOwnedTypeDef(this.git, repoPath, after.objectTypeRef, targetRepo), before, after, opts.workspaceDir)
       : []
+    // GH340 — historique et dates de création / modification (écriture brute : inchangés).
     const stamped = this.history && !opts.raw
-      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo, opts.comment)
+      ? await this.history.stampObject(repoPath, after.objectTypeRef, before, after, `tests/${after.id}.yaml`, targetRepo, opts.comment)
       : after
-    await this.git.writeYaml(targetRepo, `tests/${stamped.id}.yaml`, omitAuditFields(stamped))
+    await this.git.writeYaml(targetRepo, `tests/${stamped.id}.yaml`, auditForWrite(stamped))
     this.testsIndex.upsertTestCase(repoPath, stamped)
     // Notifications rendues à l'appelant, jamais écrites ni indexées.
     return transitionWarnings.length > 0 ? { ...stamped, transitionWarnings } : stamped

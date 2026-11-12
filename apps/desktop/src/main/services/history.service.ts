@@ -6,8 +6,9 @@ import type {
 } from '@polenta/types'
 import type { GitService } from './git.service'
 import { readOwnedTypeDef } from './field-write.util'
+import { applyAudit, contentChanged, type AuditFields } from './audit-fields.util'
 
-/** Repli connu sans appel git (exigences / tests : dates du dernier commit fournies par l'index). */
+/** Repli d'un trou d'historique fourni par l'appelant (dates d'un commit). */
 export interface AuditDates {
   updatedAt: string | null
   updatedBy: string | null
@@ -30,6 +31,34 @@ export class HistoryService {
   /** GH204 — identité courante (décisions d'une validation), comme l'historique. */
   currentActor(repoPath: string): Promise<HistoryActor> {
     return this.actor(repoPath).catch((): HistoryActor => ({ by: 'local' }))
+  }
+
+  /**
+   * GH340 — écriture d'une exigence, d'un test ou d'une issue : entrées d'historique (`stamp`) et
+   * dates de création / modification, avec **une seule** horloge et **un seul** acteur — l'entrée
+   * d'historique et `updatedAt` d'une même sauvegarde portent le même instant et le même auteur.
+   * L'acteur n'est résolu que si l'écriture change quelque chose. `filePath` (relatif au repo du
+   * fichier) : repli d'un trou d'historique, le dernier commit du fichier, lu seulement s'il y a un
+   * trou — une édition hors de l'application n'avance pas `updatedAt`, qui ne peut donc pas servir.
+   */
+  async stampObject<T extends HistoryCarrier>(
+    repoPath: string,
+    objectTypeRef: string | undefined,
+    before: HistoryCarrier | null,
+    after: T,
+    filePath: string,
+    ownerRepo?: string,
+    comment?: string,
+  ): Promise<T & AuditFields> {
+    const typeDef = await this.typeDef(repoPath, objectTypeRef, ownerRepo)
+    const now = this.now()
+    const fallback = before && hasHistoryGap(before, typeDef) ? await this.fallback(ownerRepo ?? repoPath, { filePath }) : { at: null, by: null }
+    const historyDue = applyHistory(before, after, typeDef, { by: '' }, now, fallback) !== after
+    const changed = !before || contentChanged(before, after)
+    if (!historyDue && !changed) return applyAudit(before, after, '', '', false)
+    const actor = await this.currentActor(repoPath)
+    const stamped = historyDue ? applyHistory(before, after, typeDef, { ...actor, ...(comment && { comment }) }, now, fallback) : after
+    return applyAudit(before, stamped, actor.by, historyTimestamp(now), changed)
   }
 
   /**
@@ -112,13 +141,15 @@ export interface HistoryObjectReaders {
 export async function readEffectiveHistory(
   c: HistoryObjectReaders, repoPath: string, kind: HistoryObjectKind, id: string,
 ): Promise<ObjectHistory> {
+  // GH340 — repli d'un trou : dernier commit du fichier (lu seulement s'il y a un trou), pas
+  // `updatedAt`, qu'une édition hors de l'application n'avance pas.
   if (kind === 'requirement') {
     const req = await c.requirements.findOne(repoPath, id)
-    return c.history.effective(repoPath, req, req)
+    return c.history.effective(repoPath, req, { filePath: `requirements/${id}.yaml` })
   }
   if (kind === 'test') {
     const test = await c.tests.findOne(repoPath, id)
-    return c.history.effective(repoPath, test, test)
+    return c.history.effective(repoPath, test, { filePath: `tests/${id}.yaml` })
   }
   if (kind === 'campaign') {
     const campaign = await c.campaigns.get(repoPath, id)
@@ -126,7 +157,7 @@ export async function readEffectiveHistory(
   }
   if (kind === 'issue' && c.issues) {
     const issue = await c.issues.findOne(repoPath, id)
-    return c.history.effective(repoPath, issue, issue)
+    return c.history.effective(repoPath, issue, { filePath: `issues/${id}.yaml` })
   }
   throw new Error(`history:get — unknown object kind: ${String(kind)}`)
 }

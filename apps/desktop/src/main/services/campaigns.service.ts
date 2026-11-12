@@ -5,7 +5,8 @@ import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
 import type { SchemaService } from './schema.service'
 import type { HistoryService } from './history.service'
-import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, flattenSystemNodes, isApprovalStatus, renameFieldKeys, withoutHistory } from '@polenta/types'
+import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, flattenSystemNodes, isApprovalStatus, renameFieldKeys } from '@polenta/types'
+import { snapshotOf } from './campaign-snapshot.util'
 import type { FieldRename, FieldRenameResult, HistoryCarrier, ObjectHistory } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { findObjectTypeDef } from './schema-lookup.util'
@@ -152,7 +153,7 @@ export class CampaignsService {
           throw new Error(`Test ${displayed.id} does not match entry ${entryId} (${campaign.runs[runIndex].testCaseId})`)
         }
         const isApproved = await this.approvalPredicate(repoPath)
-        if (isResyncable(campaign, campaign.runs[runIndex], isApproved)) frozen = withoutHistory(displayed) as TestCase
+        if (isResyncable(campaign, campaign.runs[runIndex], isApproved)) frozen = snapshotOf(displayed)
       }
 
       // `executedBy` est réécrit à chaque saisie : absent (exécution dans l'outil), il est retiré
@@ -759,8 +760,8 @@ export class CampaignsService {
     const snapshots = new Map<string, TestCase>()
     uniqueIds.forEach((id, i) => {
       const test = found[i]
-      // GH77 — la copie figée ne porte pas l'historique du test (spec §11).
-      if (test) snapshots.set(id, withoutHistory(test) as TestCase)
+      // GH77 / GH340 — la copie figée ne porte ni l'historique ni les dates du fichier du test.
+      if (test) snapshots.set(id, snapshotOf(test))
     })
     return snapshots
   }

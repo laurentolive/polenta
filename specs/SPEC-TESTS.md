@@ -197,7 +197,7 @@ utilisée à l'exécution est celle figée en campagne.
 référence un champ de l'exigence pour laquelle l'instance de campagne est générée : tout champ
 personnalisé (`fields`), tout champ système (`id`, `title`, `status`, `version`, `objectTypeRef`,
 `projectId`, `branchId`, `jiraLinks` — clés Jira —, `needsRevalidation` — absent = `false`) et les
-champs dérivés du git log (`createdAt`, `createdBy`, `updatedAt`, `updatedBy`) ; un champ
+dates de l'objet (`createdAt`, `createdBy`, `updatedAt`, `updatedBy`, lues dans le YAML depuis GH340) ; un champ
 personnalisé homonyme d'un champ système est masqué. Jamais préfixée d'un nœud (`{x::req.y}` reste
 littéral). Un test qui en contient au moins une est **itérant** : à l'ajout en campagne, une instance
 par exigence liée (§4.2). Les exigences liées sont celles du **lien de couverture**
@@ -890,7 +890,7 @@ ligne d'instance « (test introuvable) » sans étape.
 - Chaque ligne porte une **clé technique** masquée (`entryId` ou `entryId#order`) ; une feuille
   `_polenta` très masquée porte `formatVersion` (2 depuis GH81), `campaignId`, `exportedAt`,
   `locale` et, par instance, `entryId`, `testCaseId`, `orders`, `testFound`, `fingerprint` (GH81 :
-  sha256 de la version exportée, forme canonique sans `history`, champs dérivés du `git log`,
+  sha256 de la version exportée, forme canonique sans `history`, dates de l'objet (GH340),
   `needsRevalidation`, `status` ni `version` — `testFingerprint`). Les classeurs v1 restent
   importables.
 

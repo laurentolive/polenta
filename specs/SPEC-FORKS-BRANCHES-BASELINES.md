@@ -326,6 +326,11 @@ tourne jamais à l'ouverture du projet elle-même (`setInterval` diffère nature
 tick) — l'ouverture fait déjà sa propre résolution réseau (clone/fetch des dépendances manquantes),
 inutile de la ralentir davantage.
 
+GH342 — plusieurs fenêtres sur le même projet : chacune garde sa minuterie, mais seule la plus
+ancienne fenêtre dont la page porte ce `projectId` fait le pull (`app:auto-pull-owner`) ; à sa
+fermeture, la suivante prend le relais à son prochain tick. Web : chaque onglet du navigateur fait le
+sien (pas de coordination).
+
 Par repo, à chaque tick — un seul appel `SyncService.autoSync(repo, intégration)` (GH39, un seul
 fetch réseau) :
 1. `fetch` d'`origin`, **même si le repo a des modifications en attente** (un fetch n'écrit que des

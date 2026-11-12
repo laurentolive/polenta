@@ -9,6 +9,7 @@
 import type { UpdateState } from '@polenta/types'
 import { EVENTS_RECONNECTED } from '../lib/webEvents'
 import { CSRF_HEADER_NAME, csrfToken } from '../lib/webSession'
+import { isValidAppRoute } from '../../shared/app-route'
 
 type Listener = (...args: unknown[]) => void
 
@@ -129,6 +130,11 @@ async function exportAndDownload(channel: string, args: unknown[]) {
 
 const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.gif,.svg,.webp'
 
+function confirmUnload(e: BeforeUnloadEvent): void {
+  e.preventDefault()
+  e.returnValue = ''
+}
+
 /** Channels interceptés avant le réseau (desktop : dialogues natifs, fenêtres, shell). */
 const adapters: Record<string, (...args: unknown[]) => Promise<unknown>> = {
   'dialog:pick-image-file': async () => {
@@ -154,6 +160,18 @@ const adapters: Record<string, (...args: unknown[]) => Promise<unknown>> = {
   'export:save': (...args) => exportAndDownload('web:export', args),
   'campaigns:execution-sheet-export': (...args) => exportAndDownload('web:execution-sheet-export', args),
   'app:set-title': async (title) => { document.title = String(title) },
+  // GH342 — « Ouvrir dans une nouvelle fenêtre » : nouvel onglet du navigateur sur la même page.
+  'app:open-window': async (route) => {
+    if (isValidAppRoute(route)) window.open(route, '_blank', 'noopener')
+  },
+  // GH342 — chaque onglet du navigateur fait son pull automatique (pas de coordination entre onglets).
+  'app:auto-pull-owner': async () => true,
+  // GH342 — onglet Polenta non sauvegardé : confirmation générique du navigateur à la fermeture.
+  'app:window-state': async (patch) => {
+    const dirty = (patch as { dirty?: unknown } | null)?.dirty
+    if (dirty === true) window.addEventListener('beforeunload', confirmUnload)
+    else if (dirty === false) window.removeEventListener('beforeunload', confirmUnload)
+  },
   // GH302 — le serveur est mis à jour par l'exploitant : le navigateur ne fait que recharger.
   'update:get-state': () => webUpdateState(),
   // Signal de fin de rendu d'une route `/print/*` : relayé au Chromium headless du serveur (sprint 4).

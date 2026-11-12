@@ -1,7 +1,7 @@
 import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
-import { useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { HistorySection } from '../components/history/HistorySection'
 import { ExecutionsSection } from '../components/executions/ExecutionsSection'
@@ -22,6 +22,8 @@ import { TransitionScopeContext, transitionPreviewKey } from '../hooks/useTransi
 import { notifyTransitionResult } from '../lib/transitionNotices'
 import { TransitionStatusOptions } from '../components/transitions/TransitionStatusOptions'
 import { typeChoiceLabel } from '../lib/typeLabels'
+import { draftFields, fieldKeys, useDraftForm, type Draft } from '../lib/draftSync'
+import { ExternalChangeBanner } from '../components/ExternalChangeBanner'
 
 export const Route = createFileRoute('/test/$testId')({
   component: TestCaseDetailPage,
@@ -33,9 +35,26 @@ export const Route = createFileRoute('/test/$testId')({
   }),
 })
 
-function getStringField(fields: Record<string, unknown>, key: string): string {
-  const v = fields[key]
-  return fieldValueToText(v)
+/** GH342 — formulaire du test en clés (brouillon face aux modifications faites ailleurs). Les
+ *  étapes forment une seule clé (liste enregistrée en bloc) ; un test sans étape en montre une vide. */
+function testDraft(tc: TestCase): Draft {
+  const fields: Record<string, string> = {}
+  if (tc.fields && typeof tc.fields === 'object') {
+    for (const [k, v] of Object.entries(tc.fields as Record<string, unknown>)) fields[k] = fieldValueToText(v)
+  }
+  const steps: StepDraft[] = (tc.steps ?? [])
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map(s => ({ action: s.action, expectedResult: s.expectedResult }))
+  return {
+    title: tc.title ?? '',
+    type: tc.objectTypeRef ?? '',
+    status: tc.status ?? '',
+    preconditions: tc.preconditions ?? '',
+    postconditions: tc.postconditions ?? '',
+    steps: JSON.stringify(steps.length > 0 ? steps : [{ action: '', expectedResult: '' }]),
+    ...fieldKeys(fields),
+  }
 }
 
 function TestCaseDetailPage() {
@@ -44,14 +63,6 @@ function TestCaseDetailPage() {
   const qc = useQueryClient()
   const { repoPath, projectId } = Route.useSearch()
 
-  const [title, setTitle] = useState('')
-  const [type, setType] = useState<string>('manual')
-  const [status, setStatus] = useState<string>('')
-  const [fields, setFields] = useState<Record<string, string>>({})
-  const [preconditions, setPreconditions] = useState('')
-  const [steps, setSteps] = useState<StepDraft[]>([])
-  const [postconditions, setPostconditions] = useState('')
-  const [initialized, setInitialized] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const { data: tc, isLoading } = useQuery<TestCase>({
@@ -62,70 +73,63 @@ function TestCaseDetailPage() {
 
   const { data: schema } = useProjectSchema(repoPath)
   const testTypes = getAllObjectTypes(schema, 'test')
+  // GH342 — brouillon réconcilié avec l'objet relu : un champ changé ailleurs est adopté, sauf s'il
+  // est en cours de saisie ici (bandeau) ; l'enregistrement n'envoie que les champs modifiés ici.
+  const server = useMemo(() => (tc ? testDraft(tc) : undefined), [tc])
+  const form = useDraftForm(server, `${repoPath}::${testId}`)
+  const d = form.draft
+  const title = d['title'] ?? ''
+  const type = d['type'] ?? ''
+  const status = d['status'] ?? ''
+  const preconditions = d['preconditions'] ?? ''
+  const postconditions = d['postconditions'] ?? ''
+  const stepsJson = d['steps']
+  const steps = useMemo<StepDraft[]>(() => (stepsJson ? JSON.parse(stepsJson) as StepDraft[] : []), [stepsJson])
+  const fields = useMemo(() => draftFields(d), [d])
+  const setTitle = (v: string) => form.set('title', v)
+  const setType = (v: string) => form.set('type', v)
+  const setStatus = (v: string) => form.set('status', v)
+  const setPreconditions = (v: string) => form.set('preconditions', v)
+  const setPostconditions = (v: string) => form.set('postconditions', v)
+  const setSteps = (v: StepDraft[]) => form.set('steps', JSON.stringify(v))
+  const setField = (name: string, v: string) => form.set(`field:${name}`, v)
+
   const typeDef = getTestTypeDef(schema, tc?.objectTypeRef ?? type)
 
-  useEffect(() => {
-    if (tc && !initialized) {
-      setTitle(tc.title ?? '')
-      setType(tc.objectTypeRef ?? '')
-      setStatus(tc.status ?? '')
-      const stringFields: Record<string, string> = {}
-      if (tc.fields && typeof tc.fields === 'object') {
-        for (const [k, v] of Object.entries(tc.fields as Record<string, unknown>)) {
-          stringFields[k] = fieldValueToText(v)
-        }
-      }
-      setFields(stringFields)
-      setPreconditions(tc.preconditions ?? '')
-      const sorted = (tc.steps ?? [])
-        .slice()
-        .sort((a, b) => a.order - b.order)
-        .map(s => ({ action: s.action, expectedResult: s.expectedResult }))
-      setSteps(sorted.length > 0 ? sorted : [{ action: '', expectedResult: '' }])
-      setPostconditions(tc.postconditions ?? '')
-      setInitialized(true)
-    }
-  }, [tc, initialized])
-
-  // Pas « modifiée » avant que le formulaire ait copié l'objet : entre l'arrivée des données et
-  // l'initialisation, un rendu compare des champs vides et ouvrait « Quitter cette page ? » (gh228 E5).
-  const hasChanges = tc && initialized
-    ? title !== (tc.title ?? '') ||
-      type !== (tc.objectTypeRef ?? '') ||
-      status !== (tc.status ?? '') ||
-      preconditions !== (tc.preconditions ?? '') ||
-      postconditions !== (tc.postconditions ?? '') ||
-      steps.length !== (tc.steps ?? []).length ||
-      steps.some((s, i) => {
-        const orig = [...(tc.steps ?? [])].sort((a, b) => a.order - b.order)[i]
-        return !orig || s.action !== orig.action || s.expectedResult !== orig.expectedResult
-      }) ||
-      Object.keys(fields).some(k => fields[k] !== getStringField(tc.fields as Record<string, unknown>, k))
-    : false
+  // Pas « modifiée » avant que le formulaire ait copié l'objet (gh228 E5) : `changed` est vide tant
+  // que le brouillon n'est pas initialisé.
+  const hasChanges = form.changed.length > 0
   useRegisterTabDirty(hasChanges)
   useSetTabTitle(tc?.title)
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      api.tests.update(repoPath, testId, {
-        title,
-        objectTypeRef: type,
-        status,
-        preconditions: preconditions.trim() || undefined,
-        steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult, notes: null })),
-        postconditions: postconditions.trim() || undefined,
-        fields,
-      }, projectId ? decodeProjectId(projectId) : undefined),
-    onSuccess: (result) => {
+    // GH342 — base posée dès l'envoi : l'écho de notre écriture n'est pas un conflit.
+    onMutate: (values: Draft) => form.markSaved(values),
+    mutationFn: (values: Draft) => {
+      const changedFields = draftFields(values)
+      const sentSteps = 'steps' in values ? JSON.parse(values['steps']) as StepDraft[] : null
+      return api.tests.update(repoPath, testId, {
+        ...('title' in values ? { title: values['title'] } : {}),
+        ...('type' in values ? { objectTypeRef: values['type'] } : {}),
+        ...('status' in values ? { status: values['status'] } : {}),
+        ...('preconditions' in values ? { preconditions: values['preconditions'].trim() || undefined } : {}),
+        ...(sentSteps ? { steps: sentSteps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult, notes: null })) } : {}),
+        ...('postconditions' in values ? { postconditions: values['postconditions'].trim() || undefined } : {}),
+        ...(Object.keys(changedFields).length > 0 ? { fields: changedFields } : {}),
+      }, projectId ? decodeProjectId(projectId) : undefined)
+    },
+    onSuccess: (result, values) => {
       // GH206 — passage de statut notifié : motifs affichés, sans confirmation.
       notifyTransitionResult(result, testId)
       qc.invalidateQueries({ queryKey: transitionPreviewKey(repoPath) })
       qc.invalidateQueries({ queryKey: ['tests', repoPath] })
       qc.invalidateQueries({ queryKey: ['test', repoPath, testId] })
-      setInitialized(false)
       setSaveError(null)
     },
-    onError: (err: unknown) => setSaveError(err instanceof Error ? err.message : t('common.unknownError')),
+    onError: (err: unknown, _values, previous) => {
+      if (previous) form.restoreBase(previous)
+      setSaveError(err instanceof Error ? err.message : t('common.unknownError'))
+    },
   })
 
   const handleSave = () => {
@@ -133,7 +137,7 @@ function TestCaseDetailPage() {
     const emptyStep = steps.findIndex(s => !s.action.trim() || !s.expectedResult.trim())
     if (emptyStep !== -1) { setSaveError(t('testsPage.stepIncomplete', { index: emptyStep + 1 })); return }
     setSaveError(null)
-    saveMutation.mutate()
+    saveMutation.mutate(form.changedValues())
   }
 
   // Ctrl/Cmd+Entrée depuis un champ richtext (champ perso ou cellule d'étape) → « Enregistrer ».
@@ -146,6 +150,18 @@ function TestCaseDetailPage() {
   // GH200 — test approuvé (statut du formulaire) : contenu en lecture seule ; choisir un autre
   // statut le rouvre et rend le contenu modifiable dans le même enregistrement.
   const locked = !!typeDef?.statuses?.find(s => s.name === status)?.isApproval
+
+  const conflictLabel = (key: string): string => {
+    switch (key) {
+      case 'title': return t('requirementsPage.titleLabel')
+      case 'type': return t('system.editView.colType')
+      case 'status': return t('externalChange.status')
+      case 'preconditions': return t('testsPage.preconditions')
+      case 'postconditions': return t('testsPage.postconditions')
+      case 'steps': return t('system.wordView.stepsHeading')
+      default: return typeDef?.fields.find(f => `field:${f.name}` === key)?.label ?? key.replace(/^field:/, '')
+    }
+  }
 
   return (
     <ParamRefProvider repoPath={repoPath} workspaceDir={projectId ? decodeProjectId(projectId) : ''} projectId={projectId}>
@@ -198,6 +214,11 @@ function TestCaseDetailPage() {
             {t('system.editView.approvedLocked')}
           </p>
         )}
+          <ExternalChangeBanner
+            labels={form.conflicts.map(k => conflictLabel(k))}
+            onReload={() => form.reload(form.conflicts)}
+            onKeep={() => form.keep(form.conflicts)}
+          />
           <div>
             <label className="block text-sm font-medium text-ink mb-1">
               {t('requirementsPage.titleLabel')} <span className="text-status-danger">*</span>
@@ -219,7 +240,7 @@ function TestCaseDetailPage() {
             <DynamicField key={f.name} field={f}
               value={fields[f.name] ?? String(f.default ?? '')}
               requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: tc.status, fields: fields }))}
-              onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
+              onChange={v => setField(f.name, v)}
               disabled={locked}
               repoPath={repoPath}
               interfaceRoles={schema?.roles?.map(r => r.name)}
@@ -232,7 +253,7 @@ function TestCaseDetailPage() {
               <div key={key}>
                 <label className="block text-sm font-medium text-ink mb-1">{key}</label>
                 <input type="text" value={fields[key] ?? String(val ?? '')}
-                  onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))} readOnly={locked}
+                  onChange={e => setField(key, e.target.value)} readOnly={locked}
                   className="input-field w-full" />
               </div>
             ))

@@ -56,6 +56,7 @@ import { forgetViewScroll, viewScrollKey } from './viewScrollMemory'
 import { TransitionScopeContext, transitionPreviewKey } from '../../hooks/useTransitionPreview'
 import { notifyTransitionError, notifyTransitionResult } from '../../lib/transitionNotices'
 import { REFLECTION_COLUMNS, reflectionText, type ReflectionsData } from './ReflectionCell'
+import { registerEditFlusher } from '../../lib/pendingEdits'
 
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status', 'originRuns'])
 
@@ -741,20 +742,29 @@ export function SystemView() {
   // and the refetched (stale, pre-latest-keystroke) value flowed back into RichTextField,
   // whose external-resync effect then reset the live editor — wiping whatever had just
   // been typed (most visibly, a space between two words, since it's the fastest keystroke).
-  const inlineEditTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  // GH342 — `run` gardé avec la minuterie : la fermeture de la fenêtre lance tout de suite les
+  // enregistrements en attente (pendingEdits).
+  const inlineEditTimers = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; run: () => void }>())
 
   const handleAutoInlineEdit = useCallback((objectId: string, field: string, value: string) => {
     handleInlineEdit(objectId, field, value)
     if (!objectId) return
     const key = `${objectId}:${field}`
     const existing = inlineEditTimers.current.get(key)
-    if (existing) clearTimeout(existing)
-    const timer = setTimeout(() => {
-      autoSaveMutation.mutate({ objectId, field, value })
+    if (existing) clearTimeout(existing.timer)
+    const run = () => {
       inlineEditTimers.current.delete(key)
-    }, 800)
-    inlineEditTimers.current.set(key, timer)
+      autoSaveMutation.mutate({ objectId, field, value })
+    }
+    inlineEditTimers.current.set(key, { timer: setTimeout(run, 800), run })
   }, [handleInlineEdit, autoSaveMutation])
+
+  useEffect(() => registerEditFlusher(() => {
+    for (const { timer, run } of [...inlineEditTimers.current.values()]) {
+      clearTimeout(timer)
+      run()
+    }
+  }), [])
 
   const handleRenameNode = useCallback((nodeId: string, name: string) => {
     if (!repoPath || !effectiveNodeId || !effectiveTypeId) return

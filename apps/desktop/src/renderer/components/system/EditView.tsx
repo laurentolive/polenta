@@ -20,6 +20,9 @@ import { LinkEditor } from '../links/LinkEditor'
 import { LinkList } from '../links/LinkList'
 import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
 import { REFLECTION_COLUMNS, ReflectionValue, type ReflectionsData } from './ReflectionCell'
+import { registerEditFlusher } from '../../lib/pendingEdits'
+import { ExternalChangeBanner } from '../ExternalChangeBanner'
+import { externalConflicts } from '../../lib/draftSync'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -43,6 +46,9 @@ interface FieldControlProps {
   /** GH206 — objet édité : pré-contrôle des transitions du champ statut. */
   objectId?: string
 }
+
+/** GH342 — valeurs envoyées gardées par champ (écho d'un enregistrement antérieur). */
+const SENT_HISTORY = 5
 
 function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPath, interfaceRoles, objectId }: FieldControlProps) {
   const { t } = useTranslation()
@@ -443,6 +449,28 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
   const dirtyRef = useRef(false)
   // GH163 — commentaire du prochain changement de statut fait dans ce formulaire.
   const [statusComment, setStatusComment] = useState('')
+  // GH342 — champs en cours de saisie modifiés ailleurs (autre fenêtre, pull, MCP…) ; dernières
+  // valeurs envoyées par ce formulaire (l'écho de notre propre écriture n'est pas un conflit) ;
+  // génération par champ pour remonter son FieldControl au « Recharger ».
+  const [conflicts, setConflicts] = useState<string[]>([])
+  // Lu par les enregistrements (minuterie, sortie du champ) : un champ en conflit n'est pas envoyé
+  // tant que l'utilisateur n'a pas choisi (sinon la valeur extérieure serait écrasée sans bandeau).
+  const conflictsRef = useRef<string[]>([])
+  conflictsRef.current = conflicts
+  // Dernières valeurs envoyées par champ (plusieurs : l'écho d'un enregistrement antérieur peut
+  // arriver après l'envoi suivant, pendant la frappe).
+  const sentRef = useRef<Record<string, string[]>>({})
+  const recordSent = (k: string, v: string) => {
+    const list = sentRef.current[k] ?? []
+    sentRef.current[k] = [...list.filter(x => x !== v), v].slice(-SENT_HISTORY)
+  }
+  /** Valeurs à envoyer : un champ en conflit garde la valeur de base (pas envoyé avant le choix). */
+  const withoutConflicts = (values: Record<string, string>, baseline: Record<string, string>) => {
+    const out = { ...values }
+    for (const k of conflictsRef.current) out[k] = baseline[k] ?? ''
+    return out
+  }
+  const [reloadGen, setReloadGen] = useState<Record<string, number>>({})
 
   const onFlushValuesRef = useRef(onFlushValues)
   useEffect(() => { onFlushValuesRef.current = onFlushValues }, [onFlushValues])
@@ -463,7 +491,8 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
     dirtyRef.current = false
     // Snapshot des valeurs de CET objet : en cas d'échec on doit pouvoir retenter même si
     // le miroir a entre-temps été repointé sur un autre objet (branche switch).
-    const values = { ...localValuesRef.current }
+    const values = withoutConflicts(localValuesRef.current, baseline)
+    for (const [k, v] of Object.entries(values)) if (v !== (baseline[k] ?? '')) recordSent(k, v)
     void Promise.resolve(onFlushValuesRef.current(values, { objectId, category, baseline }))
       .then(ok => {
         if (ok) return
@@ -522,13 +551,23 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
       localValuesRef.current = objectData ? { ...objectData } : {}
       serverSnapshotRef.current = objectData ? { ...objectData } : {}
       dirtyRef.current = false
+      sentRef.current = {}
+      setConflicts([])
     } else if (objectData) {
       const prevServer = serverSnapshotRef.current
       const mirror = localValuesRef.current
+      // GH342 — saisie en cours sur un champ changé ailleurs (pas l'écho de nos envois) : conflit.
+      const changedElsewhere = externalConflicts(prevServer, mirror, objectData)
+        .filter(k => !(sentRef.current[k] ?? []).includes(objectData[k] ?? ''))
       for (const [k, v] of Object.entries(objectData)) {
         if ((mirror[k] ?? '') === (prevServer[k] ?? '')) mirror[k] = v
       }
       serverSnapshotRef.current = { ...objectData }
+      setConflicts(prev => {
+        const still = prev.filter(k => (mirror[k] ?? '') !== (objectData[k] ?? ''))
+        const next = [...new Set([...still, ...changedElsewhere])]
+        return next.length === prev.length && next.every((k, i) => k === prev[i]) ? prev : next
+      })
     }
 
     // `objectData` only goes null when the edited object actually changes (react-query keeps
@@ -536,6 +575,24 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
     prevObjectDataRef.current = id ? { id, category: typeDef?.category ?? '' } : null
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objectData, typeDef?.category, nodeId])
+
+  // GH342 — « Recharger » : la valeur extérieure remplace la saisie de ces champs (FieldControl
+  // remonté pour vider son tampon d'affichage) ; « Garder ma saisie » : elle sera enregistrée.
+  const reloadConflicts = () => {
+    const keys = conflicts
+    for (const k of keys) localValuesRef.current[k] = serverSnapshotRef.current[k] ?? ''
+    setReloadGen(prev => {
+      const next = { ...prev }
+      for (const k of keys) next[k] = (next[k] ?? 0) + 1
+      return next
+    })
+    setConflicts([])
+  }
+  const keepConflicts = () => {
+    setConflicts([])
+    dirtyRef.current = true
+    scheduleAutosave()
+  }
 
   // Navigate away — the outgoing flush is handled by the [objectData] switch branch (linked-
   // object nav keeps EditView mounted) or by the unmount cleanup below (viewMode leaves
@@ -561,7 +618,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
       if (!dirtyRef.current) return
       const prev = prevObjectDataRef.current
       const p = prev
-        ? onFlushValuesRef.current(localValuesRef.current, {
+        ? onFlushValuesRef.current(withoutConflicts(localValuesRef.current, serverSnapshotRef.current), {
             objectId: prev.id, category: prev.category, baseline: serverSnapshotRef.current,
           })
         : onFlushValuesRef.current(localValuesRef.current)
@@ -569,6 +626,15 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // GH342 — fermeture de la fenêtre : détruite sans démontage, l'effet ci-dessus ne tourne pas. Même
+  // envoi, à la demande (pendingEdits), pour un objet existant ; le miroir reste en place.
+  useEffect(() => registerEditFlusher(() => {
+    cancelAutosave()
+    const prev = prevObjectDataRef.current
+    if (prev) flushMirror(prev.id, prev.category, serverSnapshotRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [])
 
   // ── Keyboard: Escape → back ; Ctrl+Enter → blur active field ─────────────
   useEffect(() => {
@@ -680,6 +746,14 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
               {t('system.editView.approvedLocked')}
             </p>
           )}
+          <ExternalChangeBanner
+            labels={conflicts.map(k => {
+              const f = orderedFields.find(o => o.field.name === k)?.field
+              return f?.label ?? f?.name ?? k
+            })}
+            onReload={reloadConflicts}
+            onKeep={keepConflicts}
+          />
           {orderedFields.length === 0 && (
             <p className="text-sm text-ink-3 italic">
               Aucun champ configuré pour cette vue.
@@ -709,7 +783,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                 const locked = readOnly || (approvedLock && f.name !== 'status')
                 return (
                 <FieldRow
-                  key={f.name}
+                  key={`${f.name}:${reloadGen[f.name] ?? 0}`}
                   field={f}
                   label={f.label ?? f.name}
                   value={getValue(f.name)}
@@ -721,6 +795,8 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                     // annuler le timer (le richtext reste `dirty`, il sera flushé au
                     // prochain déclencheur) pour garder un seul write en vol.
                     cancelAutosave()
+                    if (conflictsRef.current.includes(f.name)) return
+                    recordSent(f.name, v)
                     if (f.name === 'status') {
                       // GH163 — le commentaire accompagne le changement de statut, puis est vidé.
                       const comment = statusComment.trim() || undefined

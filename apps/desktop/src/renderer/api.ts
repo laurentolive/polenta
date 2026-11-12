@@ -1,6 +1,7 @@
 import { createIpcClient } from '@polenta/api-client'
 import { parseForgeAccessError, parseIntegrationGuard } from '@polenta/types'
 import { forgeAccessNotices } from './lib/forgeAccessNotices'
+import { trackInflight } from './lib/pendingEdits'
 import i18n from './i18n'
 
 /**
@@ -39,4 +40,11 @@ async function transport(channel: string, ...args: unknown[]): Promise<unknown> 
   }
 }
 
-export const api = createIpcClient(transport)
+/** GH342 — appels suivis pour la fermeture de fenêtre (`flushPendingEdits`) ; les `app:*` (état et
+ *  fermeture de la fenêtre elle-même) ne sont pas attendus. */
+function trackedTransport(channel: string, ...args: unknown[]): Promise<unknown> {
+  const p = transport(channel, ...args)
+  return channel.startsWith('app:') ? p : trackInflight(p)
+}
+
+export const api = createIpcClient(trackedTransport)

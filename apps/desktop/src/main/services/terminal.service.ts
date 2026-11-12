@@ -38,7 +38,9 @@ export class TerminalService {
   private wingetAvailable: Promise<boolean> | null = null
 
   /** `send` diffuse aux fenêtres (`terminal:data`, `terminal:exit`). */
-  constructor(private readonly send: (channel: string, ...args: unknown[]) => void) {}
+  /** GH342 — `send` vise la fenêtre propriétaire (id de webContents) : avec plusieurs fenêtres, la
+   *  sortie d'un shell ne part pas dans les autres. */
+  constructor(private readonly send: (owner: number, channel: string, ...args: unknown[]) => void) {}
 
   private shell() {
     return resolveShell({ platform: process.platform, env: process.env, exists: p => fs.existsSync(p) })
@@ -88,10 +90,10 @@ export class TerminalService {
     })
     const id = String(this.nextId++)
     this.sessions.set(id, { pty, owner })
-    pty.onData(chunk => this.send('terminal:data', id, chunk))
+    pty.onData(chunk => this.send(owner, 'terminal:data', id, chunk))
     pty.onExit(({ exitCode }) => {
       this.sessions.delete(id)
-      this.send('terminal:exit', id, exitCode)
+      this.send(owner, 'terminal:exit', id, exitCode)
     })
     return { id, name }
   }

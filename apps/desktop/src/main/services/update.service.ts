@@ -132,6 +132,12 @@ export class UpdateService {
     setInterval(() => this.check(), PERIODIC_CHECK_MS).unref?.()
   }
 
+  /** GH342 — appelé juste avant `quitAndInstall` (fenêtres : saisies enregistrées, garde levée). */
+  private beforeInstall: () => Promise<void> = async () => {}
+  onBeforeInstall(fn: () => Promise<void>): void {
+    this.beforeInstall = fn
+  }
+
   getState(): UpdateState {
     return this.state
   }
@@ -175,6 +181,9 @@ export class UpdateService {
     await new Promise((resolve) => setTimeout(resolve, INSTALLING_SCREEN_MS))
     // GH293 — un serveur MCP lancé depuis l'installation ferait échouer le désinstalleur.
     stopProcesses(this.findMcpServers())
+    // GH342 — fenêtres multiples : saisies enregistrées et garde de fermeture levée avant que
+    // `quitAndInstall` ne ferme les fenêtres (sous macOS, avant `before-quit`).
+    await this.beforeInstall()
     // isSilent=false : fenêtre de progression de l'installeur NSIS en un clic, sans question ;
     // isForceRunAfter : relance l'app après installation.
     autoUpdater.quitAndInstall(false, true)

@@ -161,6 +161,9 @@ apps/desktop/
 | « Ouvrir dans draw.io » | masqué (édition dans le desktop ou remplacement du fichier) |
 | Mise à jour automatique | préférence masquée ; « À propos » affiche la version du serveur. GH302 : un onglet compare toutes les 5 min (onglet visible) et à chaque reconnexion la version servie (`web:update-state`) à celle de son code (`__POLENTA_WEB_VERSION__`) → « Recharger la page » ; l'administrateur voit la release plus récente et la commande du kit (mise à jour en un clic : #305) |
 | `Ctrl+T` / `Ctrl+W` | `Alt+T` / `Alt+W` en plus (raccourcis capturés par le navigateur) |
+| Nouvelle fenêtre (Ctrl+Shift+N, menu d'onglet, GH342) | menu d'onglet seulement : `window.open` → nouvel onglet du navigateur sur la même page (Ctrl+Shift+N appartient au navigateur) |
+| Garde de fermeture de fenêtre (GH342) | `beforeunload` (message générique du navigateur) tant qu'un onglet Polenta est non sauvegardé |
+| Démarrage sur `/` puis dernier projet | GH342 : l'URL d'entrée est suivie (lien direct, nouvel onglet, F5) si son projet existe |
 | Titre de fenêtre | `document.title` |
 | Administration du serveur | Page « Administration » pour les propriétaires (GH63, §12) — absente du desktop |
 

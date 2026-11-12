@@ -1,5 +1,5 @@
 import { Menu, BrowserWindow, app } from 'electron'
-import { createAppWindow } from './index'
+import { createAppWindow } from './host/app-windows'
 
 export function buildMenu(win: BrowserWindow): void {
   const template: Electron.MenuItemConstructorOptions[] = [

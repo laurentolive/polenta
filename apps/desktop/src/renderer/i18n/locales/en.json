@@ -39,6 +39,8 @@
     "tabBar": {
       "newTab": "New tab (Ctrl+T)",
       "allTabs": "All tabs",
+      "openInNewWindow": "Open in new window",
+      "closeTab": "Close tab",
       "back": "Back ({{shortcut}}) — right-click: history",
       "forward": "Forward ({{shortcut}}) — right-click: history"
     },
@@ -46,6 +48,11 @@
       "filterPlaceholder": "Filter tabs…",
       "noTabsOpen": "No tabs open",
       "recentlyClosed": "Recently closed"
+    },
+    "windowClose": {
+      "title": "Close this window?",
+      "message": "These tabs have unsaved changes, which will be lost:",
+      "confirm": "Close anyway"
     },
     "confirmCloseTab": {
       "title": "Close without saving?",
@@ -2914,5 +2921,11 @@
     "restricted": "The server does not give the member list to your account.",
     "removeSelf": "Remove your own administrator access? You will no longer be able to change these settings.",
     "removeSelfConfirm": "Remove my access"
+  },
+  "externalChange": {
+    "message": "Changed elsewhere while you were editing: {{fields}}.",
+    "reload": "Reload",
+    "keep": "Keep my changes",
+    "status": "Status"
   }
 }

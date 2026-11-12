@@ -458,6 +458,18 @@ export interface ApiClient {
     /** GH237 — desktop : zoom de l'interface, retourne le nouveau facteur ; tout changement (molette
      *  comprise) est aussi diffusé par 'app:zoom-changed' (window.polenta.on). */
     zoom(action: ZoomAction): Promise<number>
+    /** GH342 — ouvre une nouvelle fenêtre sur une page de l'application (`pathname?search`) ;
+     *  web : nouvel onglet du navigateur. */
+    openWindow(route: string): Promise<void>
+    /** GH342 — état de la fenêtre remonté au main : page de l'onglet actif (restauration au
+     *  lancement), onglets non sauvegardés (garde de fermeture ; web : `beforeunload`). */
+    setWindowState(patch: { route?: string; dirty?: boolean }): Promise<void>
+    /** GH342 — desktop : réponse à 'app:close-requested' (accusé de réception, fermer, annuler) et à
+     *  'app:flush-requested' (saisies enregistrées avant la sortie de l'application). */
+    closeWindow(action: 'ack' | 'close' | 'cancel' | 'flushed'): Promise<void>
+    /** GH342 — pull automatique une fois par projet : cette fenêtre le fait-elle (desktop : la plus
+     *  ancienne ouverte sur le projet ; web : toujours) ? */
+    isAutoPullOwner(): Promise<boolean>
   }
   /** GH26 — mise à jour automatique ; les changements d'état arrivent par l'événement
    *  'update:state-changed' (window.polenta.on). */

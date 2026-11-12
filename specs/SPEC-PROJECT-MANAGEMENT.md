@@ -1,6 +1,6 @@
 # SPEC-PROJECT-MANAGEMENT — Gestion de projet dans l'application desktop
 
-> Dernière révision : 2026-10-11 (GH45 S4 — repos et création sur une forge Forgejo/Gitea)  
+> Dernière révision : 2026-11-12 (GH342 — plusieurs fenêtres sur le même projet, §1, §5, §7)  
 > Dépend de : [SPEC-ELECTRON-DESKTOP.md](SPEC-ELECTRON-DESKTOP.md)
 
 ---
@@ -9,9 +9,9 @@
 
 | Règle | Détail |
 |-------|--------|
-| **1 fenêtre = 1 projet** | Une `BrowserWindow` affiche exactement un projet à la fois. Pas d'onglets, pas de split-view multi-projet. |
-| **2 projets simultanés = 2 fenêtres** | L'utilisateur ouvre une seconde instance de l'app (ou utilise "Ouvrir dans une nouvelle fenêtre"). Chaque fenêtre est indépendante. |
-| **Dernier projet utilisé** | T130 : pas de channel `workspace:mark-last-opened(id)`. Réel : `workspace:mark-recent` marque un projet comme récemment ouvert, `workspace:clear-last-opened` (sans paramètre) efface le dernier projet ouvert, `workspace:get-last-opened` le lit. Reflète le dernier projet utilisé *toutes fenêtres confondues* — cela ne pose pas de problème car au redémarrage une seule fenêtre s'ouvre et reprend ce projet. |
+| **1 fenêtre = 1 projet affiché** | Une `BrowserWindow` affiche un projet à la fois (avec ses onglets, T101). |
+| **Plusieurs fenêtres sur le même projet** | GH342 : Ctrl+Shift+N ou « Ouvrir dans une nouvelle fenêtre » (menu d'onglet) — §5. Instance unique : relancer l'exécutable ne crée pas de fenêtre. Deux projets différents dans deux fenêtres : #343. |
+| **Dernier projet utilisé** | T130 : pas de channel `workspace:mark-last-opened(id)`. Réel : `workspace:mark-recent` marque un projet comme récemment ouvert, `workspace:clear-last-opened` (sans paramètre) efface le dernier projet ouvert, `workspace:get-last-opened` le lit. Reflète le dernier projet utilisé *toutes fenêtres confondues*. Au redémarrage, les fenêtres mémorisées rouvrent sur leur page (§5) ; sans page mémorisée, l'accueil reprend ce projet. |
 
 ---
 
@@ -133,43 +133,54 @@ export function useMenuEvents(): void {
 
 ---
 
-## 5. Multi-fenêtres (plusieurs projets simultanés)
+## 5. Multi-fenêtres (GH342)
 
-```typescript
-// apps/desktop/src/main/index.ts
+Plusieurs fenêtres peuvent afficher **le même projet** (cas d'usage : exigences de composants
+différents sur deux écrans). Deux projets différents dans deux fenêtres : non garanti (#343).
 
-export function createAppWindow(): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  })
-  buildMenu(win)
+**Architecture.** Une seule instance (`app.requestSingleInstanceLock()`, GH45 : lien d'invitation
+`polenta://`) ; relancer l'exécutable sans lien met la dernière fenêtre active au premier plan. Un
+seul container de services pour toutes les fenêtres (les handlers reçoivent `repoPath` /
+`workspaceDir`, aucun état « projet courant » par fenêtre côté main) ; chaque fenêtre a son renderer :
+onglets, historique, panneau, titre (GH338). Les fenêtres sont gérées par `main/host/app-windows.ts`.
 
-  if (process.env.NODE_ENV === 'development') {
-    win.loadURL('http://localhost:5173')
-  } else {
-    win.loadFile(path.join(__dirname, '../renderer/index.html'))
-  }
+| Action | Comportement |
+|---|---|
+| **Ctrl/Cmd+Shift+N** (desktop) | nouvelle fenêtre sur la page de l'onglet actif, décalée de +30/+30 sur le même écran |
+| **Clic droit sur un onglet** → « Ouvrir dans une nouvelle fenêtre » | nouvelle fenêtre sur la page de cet onglet ; l'onglet reste (copie). Web : nouvel onglet du navigateur. « Fermer l'onglet » dans le même menu |
+| Ouverture sur une page | `index.html?__open=<route>` (même contrainte `file://` que `__print`) ; la route n'est suivie que si son projet existe encore (`workspace:resolve`), sinon démarrage habituel |
+| Données | une écriture dans une fenêtre arrive dans les autres par `repo:file-changed` (`useLiveFileSync`) |
+| Pull automatique (T155) | une seule fenêtre par projet le fait : la plus ancienne dont la route porte ce `projectId` (`app:auto-pull-owner`) ; web : chaque onglet |
+| Terminal (GH238) | sortie envoyée au seul webContents propriétaire |
+| Dialogues natifs | rattachés à la fenêtre appelante (modaux sur elle, sur son écran) |
+| Invitation `polenta://` | traitée par la dernière fenêtre active ; au lancement, par la dernière fenêtre rouverte |
+| Zoom (GH237), thème, mise à jour (GH26) | communs à toutes les fenêtres |
 
-  return win
-}
+**Fermeture d'une fenêtre.** Le main retient `close` et envoie `app:close-requested` ; le renderer
+accuse réception (`app:close-window('ack')`, sinon fermeture forcée après 3 s — renderer planté ou
+bloqué), enregistre les saisies en attente (`renderer/lib/pendingEdits.ts` : champ actif quitté,
+enregistrements temporisés lancés, appels en cours attendus ≤ 2 s), puis ferme — ou, s'il reste des
+onglets non sauvegardés, demande confirmation (`WindowCloseGuard`, liste des onglets). Fermer une
+fenêtre alors que d'autres restent ne quitte pas l'application.
 
-app.whenReady().then(async () => {
-  // Pas de requestSingleInstanceLock() — plusieurs fenêtres autorisées
-  const container = await createContainer()
-  registerIpcHandlers(container)
-  createAppWindow()
-})
-```
+**Sortie de l'application** (Cmd+Q, installation d'une mise à jour, `app.quit()`) : pas de
+confirmation (la mise à jour a la sienne, GH302) ; `before-quit` est retardé une fois, le temps que
+chaque fenêtre enregistre ses saisies (`app:flush-requested` → `app:close-window('flushed')`, ≤ 2,5 s).
 
-> **`app.requestSingleInstanceLock()` n'est pas utilisé.** Sur Windows et Linux, relancer l'exécutable crée une nouvelle fenêtre indépendante. Chaque fenêtre lance son propre flux d'initialisation (voir §16 de SPEC-ELECTRON-DESKTOP.md) de façon autonome.
+**Disposition mémorisée** — `userData/windows-state.json` :
+`{ version: 1, windows: [{ x, y, width, height, maximized?, fullScreen?, route? }] }`.
+- Écrite à la fermeture de la dernière fenêtre et à `before-quit` : les fenêtres ouvertes à ce
+  moment ; une fenêtre fermée en cours de session n'est pas rouverte.
+- `route` : page de l'onglet actif (`app:window-state`), seulement une page de projet.
+- Au lancement : une fenêtre par entrée (8 au plus). Une fenêtre reste sur l'écran qui en recouvre
+  au moins la moitié (ramenée dans son aire de travail) ; sinon (écran débranché) recentrée sur
+  l'écran principal. Sous Windows avec mise à l'échelle, la taille relue après `setBounds` est
+  compensée (sinon la fenêtre grandissait à chaque relance).
+- Aucune entrée : une fenêtre 1280×800, démarrage habituel.
 
----
+**Client web.** Mêmes appels `api.app.*` implémentés par le bridge : nouvel onglet
+(`window.open`), `beforeunload` si un onglet Polenta est non sauvegardé. Une URL de page ouverte
+directement (nouvel onglet, favori, F5) affiche cette page.
 
 ## 6. Bouton "Fermer" dans l'UI projet
 
@@ -189,7 +200,8 @@ async function handleClose() {
 
 - ❌ **Ne pas créer un canal IPC `workspace:close-project` dédié.** La fermeture de projet combine deux opérations déjà existantes : `workspace:clear-last-opened` + navigation renderer. Aucune logique côté main process n'est requise.
 - ❌ **Ne pas arrêter le `RepoWatcherService` à la fermeture.** Le watcher continue en arrière-plan tant que l'app tourne — intentionnel pour la réactivité à la réouverture du même projet.
-- ❌ **Ne pas bloquer plusieurs instances avec `requestSingleInstanceLock`.** Polenta autorise explicitement plusieurs fenêtres pour permettre le travail sur plusieurs projets simultanément.
+- ❌ **Ne pas retirer `requestSingleInstanceLock`.** Instance unique depuis GH45 (lien d'invitation) ; plusieurs fenêtres passent par la même instance (§5, GH342).
+- ❌ **Ne pas diffuser à toutes les fenêtres un événement propre à l'une d'elles** (sortie de terminal, dialogue, invitation) — GH342 §5.
 
 ---
 

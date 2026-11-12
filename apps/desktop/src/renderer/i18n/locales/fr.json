@@ -39,6 +39,8 @@
     "tabBar": {
       "newTab": "Nouvel onglet (Ctrl+T)",
       "allTabs": "Tous les onglets",
+      "openInNewWindow": "Ouvrir dans une nouvelle fenêtre",
+      "closeTab": "Fermer l'onglet",
       "back": "Précédent ({{shortcut}}) — clic droit : historique",
       "forward": "Suivant ({{shortcut}}) — clic droit : historique"
     },
@@ -46,6 +48,11 @@
       "filterPlaceholder": "Filtrer les onglets…",
       "noTabsOpen": "Aucun onglet ouvert",
       "recentlyClosed": "Récemment fermés"
+    },
+    "windowClose": {
+      "title": "Fermer la fenêtre ?",
+      "message": "Ces onglets ont des modifications non enregistrées, qui seront perdues :",
+      "confirm": "Fermer quand même"
     },
     "confirmCloseTab": {
       "title": "Fermer sans enregistrer ?",
@@ -2914,5 +2921,11 @@
     "restricted": "Le serveur ne donne pas la liste des membres à votre compte.",
     "removeSelf": "Retirer votre propre accès administrateur ? Vous ne pourrez plus modifier ces paramètres.",
     "removeSelfConfirm": "Retirer mon accès"
+  },
+  "externalChange": {
+    "message": "Modifié ailleurs pendant votre saisie : {{fields}}.",
+    "reload": "Recharger",
+    "keep": "Garder ma saisie",
+    "status": "Statut"
   }
 }

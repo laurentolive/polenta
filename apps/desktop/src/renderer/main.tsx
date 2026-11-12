@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { routeTree } from './routeTree.gen'
+import { api } from './api'
+import { isWeb } from './platform'
+import { decodeProjectId } from './lib/projectId'
+import { isValidAppRoute, routeProjectId, splitAppRoute } from '../shared/app-route'
 import './index.css'
 import './i18n'
 
@@ -37,11 +41,34 @@ declare module '@tanstack/react-router' {
 // qui garantit qu'aucun autre écran ne peut jamais apparaître même brièvement.
 const bootParams = new URLSearchParams(window.location.search)
 const printTarget = bootParams.get('__print')
+// GH342 — page d'ouverture d'une fenêtre : nouvelle fenêtre (Ctrl+Shift+N, menu d'onglet) ou
+// fenêtre rouverte au lancement (desktop, `__open`, même contrainte `file://` que `__print`) ;
+// lien direct, nouvel onglet ou F5 dans le navigateur (web : l'URL d'entrée elle-même).
+const openTarget = bootParams.get('__open')
+  ?? (isWeb && window.location.pathname !== '/' ? window.location.pathname + window.location.search : null)
+
+/** Page d'un projet : seulement si le projet est encore là (déplacé, supprimé → démarrage
+ *  habituel). Page hors projet : ouverte telle quelle. Pas de contrôle de compte comme l'accueil :
+ *  une page à rouvrir vient d'une session déjà ouverte (le premier lancement n'en a pas). */
+async function canOpen(route: string): Promise<boolean> {
+  if (!isValidAppRoute(route)) return false
+  const projectId = routeProjectId(route)
+  if (!projectId) return true
+  try {
+    await api.workspace.resolve(decodeProjectId(projectId))
+    return true
+  } catch {
+    return false
+  }
+}
 
 async function boot() {
   if (printTarget) {
     bootParams.delete('__print')
     await router.navigate({ to: printTarget as never, search: Object.fromEntries(bootParams) as never, replace: true })
+  } else if (openTarget && await canOpen(openTarget)) {
+    const { pathname, search } = splitAppRoute(openTarget)
+    await router.navigate({ to: pathname as never, search: search as never, replace: true })
   } else {
     // T114 — same file://-entry-URL quirk as above, hitting the normal (non-print) boot path too:
     // on a cold boot, TanStack Router's very first match is sometimes computed against the raw

@@ -65,8 +65,8 @@ test('E1/E2 — vue système dans l\'URL : Précédent / Suivant au clavier, lie
   await expectView('edit')
   await s.shot('gh228-e1-edition')
 
-  // E2 — l'URL suffit à réafficher l'Édition de l'élément (lien collé depuis une autre page ; un
-  // rechargement repart de l'accueil du projet, comportement de démarrage inchangé).
+  // E2 — l'URL suffit à réafficher l'Édition de l'élément (lien collé depuis une autre page ; depuis
+  // GH342, un rechargement ou un lien direct ouvre aussi cette page).
   const url = s.page.url()
   await activityBar(s.page).and(s.page.locator('[title="Version"]')).click()
   await expect.poll(() => new URL(s.page.url()).pathname).not.toBe('/product')

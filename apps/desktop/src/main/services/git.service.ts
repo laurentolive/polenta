@@ -4,6 +4,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import git from 'isomorphic-git'
+import { historyTimestamp } from '@polenta/types'
 import { safeCheckout } from './safe-checkout.util'
 
 export interface GitAuthor {
@@ -246,6 +247,72 @@ export class GitService {
       })
     }
     return out
+  }
+
+  /**
+   * GH340 — dates de création / modification des fichiers sous `prefixes`, pour la reprise (mise en
+   * conformité). Un parcours unique de **tous** les commits atteignables depuis `ref` (pas seulement
+   * les premiers parents) :
+   * - commit à un parent : fichiers différents du parent ; commit racine : tous ses fichiers. Les
+   *   commits de fusion sont écartés, pour que l'auteur soit celui qui a fait la modification et non
+   *   celui qui a fusionné ;
+   * - un fichier que seuls des commits de fusion ont touché (résolution de conflit, « Garder les
+   *   deux » de GH37) prend ses dates de ces commits (comparés au premier parent) ;
+   * - création = plus ancien commit qui touche le fichier, modification = plus récent, par **date de
+   *   commit** (comme GH77 : un rebase ou un cherry-pick garde la date d'auteur d'origine) ; auteur =
+   *   l'auteur du commit. À égalité de date, le commit le plus loin de `ref` crée, le plus proche modifie ;
+   * - dépôt superficiel (shallow) : un parent absent arrête cette branche du parcours, sans erreur.
+   * Les déplacements et renommages ne sont pas suivis (création = le commit qui crée le chemin).
+   * Fait une fois par dépôt ; à remplacer par `git log --name-only` (#337).
+   */
+  async auditDatesFromHistory(repoPath: string, prefixes: string[], ref = 'HEAD'): Promise<Map<string, FileHistory>> {
+    type Dates = { created: number; createdBy: string; updated: number; updatedBy: string }
+    const direct = new Map<string, Dates>()
+    const viaMerge = new Map<string, Dates>()
+    const record = (into: Map<string, Dates>, files: string[], at: number, by: string) => {
+      for (const file of files) {
+        const cur = into.get(file)
+        if (!cur) { into.set(file, { created: at, createdBy: by, updated: at, updatedBy: by }); continue }
+        // Parcours depuis `ref` : à date égale, le commit vu plus tard est le plus ancien.
+        if (at <= cur.created) { cur.created = at; cur.createdBy = by }
+        if (at > cur.updated) { cur.updated = at; cur.updatedBy = by }
+      }
+    }
+    let head: string
+    try {
+      head = await git.resolveRef({ fs, dir: repoPath, ref })
+    } catch {
+      return new Map() // repo sans commit
+    }
+    const subtrees = new Map<string, Promise<string | null>>()
+    const subtree = (commitOid: string, prefix: string) => {
+      const key = `${commitOid}:${prefix}`
+      if (!subtrees.has(key)) subtrees.set(key, this.readSubtreeOid(repoPath, commitOid, prefix))
+      return subtrees.get(key)!
+    }
+    const seen = new Set<string>([head])
+    const queue = [head]
+    while (queue.length > 0) {
+      const oid = queue.pop()!
+      const read = await git.readCommit({ fs, dir: repoPath, oid }).catch(() => null)
+      if (!read) continue // dépôt superficiel : parent absent
+      const { commit } = read
+      for (const p of commit.parent) if (!seen.has(p)) { seen.add(p); queue.push(p) }
+      const files: string[] = []
+      for (const prefix of prefixes) {
+        const [oidA, oidB] = await Promise.all([
+          subtree(oid, prefix),
+          commit.parent[0] ? subtree(commit.parent[0], prefix) : Promise.resolve(null),
+        ])
+        await this.diffSubtrees(repoPath, prefix, oidA, oidB, files)
+      }
+      record(commit.parent.length > 1 ? viaMerge : direct, files, commit.committer.timestamp, commit.author.name)
+    }
+    for (const [file, d] of viaMerge) if (!direct.has(file)) direct.set(file, d)
+    const at = (s: number) => historyTimestamp(new Date(s * 1000))
+    return new Map([...direct].map(([file, d]) => [file, {
+      createdAt: at(d.created), createdBy: d.createdBy, updatedAt: at(d.updated), updatedBy: d.updatedBy,
+    }]))
   }
 
   /**

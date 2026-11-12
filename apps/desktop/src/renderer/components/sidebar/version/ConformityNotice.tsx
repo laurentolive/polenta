@@ -88,7 +88,7 @@ export function ConformityNotice({ repoPath, workspaceDir, root, detached, inden
           <ul className="text-xs text-ink-2 mt-0.5 ml-5 list-disc pl-3">
             {items.map(item => (
               <li key={item.id}>
-                {t(`sidebar.version.conformity.item_${item.id}`)}
+                {t(`sidebar.version.conformity.item_${item.id}`, { count: item.files.length })}
                 {showDetails && <span className="text-ink-3"> — {item.files.join(', ')}</span>}
               </li>
             ))}

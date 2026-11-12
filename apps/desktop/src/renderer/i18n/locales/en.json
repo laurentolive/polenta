@@ -501,7 +501,9 @@
         "errorOffIntegration": "Switch to the integration branch {{branch}} first.",
         "errorDiverged": "The integration branch diverged from the server: resynchronize it first.",
         "checkFailed": "Conformity check failed: {{error}}",
-        "item_dashboards-seed": "default dashboards (Status, library)"
+        "item_dashboards-seed": "default dashboards (Status, library)",
+        "item_audit-dates_one": "creation / modification dates of {{count}} object, taken from the git history",
+        "item_audit-dates_other": "creation / modification dates of {{count}} objects, taken from the git history"
       }
     },
     "reorderable": {

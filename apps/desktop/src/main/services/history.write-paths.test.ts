@@ -20,6 +20,9 @@ const ALLOWED = new Set([
   'main/services/issues.service.ts#rewriteObjects',
   // Pose / levée de needsRevalidation : passe par `history.stampObject` (comble un trou éventuel).
   'main/services/revalidation.service.ts#writeElement',
+  // GH340 — reprise des dates (mise en conformité validée) : n'ajoute que des dates absentes, ne
+  // change aucune valeur suivie ni aucune date présente.
+  'main/services/repo-conformity.service.ts#fillAuditDates',
 ])
 
 const SRC = path.resolve(__dirname, '../..')

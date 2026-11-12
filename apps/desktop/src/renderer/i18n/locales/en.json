@@ -2919,5 +2919,11 @@
     "restricted": "The server does not give the member list to your account.",
     "removeSelf": "Remove your own administrator access? You will no longer be able to change these settings.",
     "removeSelfConfirm": "Remove my access"
+  },
+  "externalChange": {
+    "message": "Changed elsewhere while you were editing: {{fields}}.",
+    "reload": "Reload",
+    "keep": "Keep my changes",
+    "status": "Status"
   }
 }

@@ -1,7 +1,7 @@
 import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
-import { useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import { useProjectSchema, getReqTypeDef } from '../hooks/useProjectSchema'
@@ -15,6 +15,8 @@ import { ParamRefProvider } from '../contexts/ParamRefContext'
 import { decodeProjectId } from '../lib/projectId'
 import { transitionPreviewKey, useTransitionPreview } from '../hooks/useTransitionPreview'
 import { notifyTransitionResult } from '../lib/transitionNotices'
+import { draftFields, fieldKeys, useDraftForm, type Draft } from '../lib/draftSync'
+import { ExternalChangeBanner } from '../components/ExternalChangeBanner'
 
 export const Route = createFileRoute('/req/$reqId')({
   component: RequirementDetailPage,
@@ -33,9 +35,14 @@ const STATUS_CLASSES: Record<string, string> = {
   obsolete: 'bg-status-danger-bg text-status-danger',
 }
 
-function getStringField(fields: Record<string, unknown>, key: string): string {
-  const v = fields[key]
-  return fieldValueToText(v)
+/** GH342 — formulaire de l'exigence en clés `title` / `field:<nom>` (brouillon face aux
+ *  modifications faites ailleurs). */
+function requirementDraft(req: Requirement): Draft {
+  const fields: Record<string, string> = {}
+  if (req.fields && typeof req.fields === 'object') {
+    for (const [k, v] of Object.entries(req.fields as Record<string, unknown>)) fields[k] = fieldValueToText(v)
+  }
+  return { title: req.title ?? '', ...fieldKeys(fields) }
 }
 
 function RequirementDetailPage() {
@@ -44,9 +51,6 @@ function RequirementDetailPage() {
   const qc = useQueryClient()
   const { repoPath, projectId } = Route.useSearch()
 
-  const [title, setTitle] = useState('')
-  const [fields, setFields] = useState<Record<string, string>>({})
-  const [initialized, setInitialized] = useState(false)
   const [confirmObsolete, setConfirmObsolete] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [transitionError, setTransitionError] = useState<string | null>(null)
@@ -60,46 +64,41 @@ function RequirementDetailPage() {
   const { data: schema } = useProjectSchema(repoPath)
   const typeDef = getReqTypeDef(schema, req?.objectTypeRef ?? '')
 
-  useEffect(() => {
-    if (req && !initialized) {
-      setTitle(req.title ?? '')
-      const stringFields: Record<string, string> = {}
-      if (req.fields && typeof req.fields === 'object') {
-        for (const [k, v] of Object.entries(req.fields as Record<string, unknown>)) {
-          stringFields[k] = fieldValueToText(v)
-        }
-      }
-      setFields(stringFields)
-      setInitialized(true)
-    }
-  }, [req, initialized])
+  // GH342 — brouillon réconcilié avec l'objet relu : un champ changé ailleurs est adopté, sauf s'il
+  // est en cours de saisie ici (bandeau) ; l'enregistrement n'envoie que les champs modifiés ici.
+  const server = useMemo(() => (req ? requirementDraft(req) : undefined), [req])
+  const form = useDraftForm(server, `${repoPath}::${reqId}`)
+  const title = form.draft['title'] ?? ''
+  const fields = useMemo(() => draftFields(form.draft), [form.draft])
+  const setTitle = (v: string) => form.set('title', v)
+  const setField = (name: string, v: string) => form.set(`field:${name}`, v)
 
-  // Pas « modifiée » avant que le formulaire ait copié l'objet : entre l'arrivée des données et
-  // l'initialisation, un rendu compare des champs vides et ouvrait « Quitter cette page ? » (gh228 E5).
-  const hasChanges = req && initialized
-    ? title !== (req.title ?? '') ||
-      Object.keys(fields).some(k => fields[k] !== getStringField(req.fields as Record<string, unknown>, k)) ||
-      (typeDef?.fields ?? []).some(f => {
-        const reqVal = getStringField(req.fields as Record<string, unknown>, f.name)
-        return (fields[f.name] ?? '') !== reqVal
-      })
-    : false
+  // Pas « modifiée » avant que le formulaire ait copié l'objet (gh228 E5) : `changed` est vide tant
+  // que le brouillon n'est pas initialisé.
+  const hasChanges = form.changed.length > 0
   useRegisterTabDirty(hasChanges)
   useSetTabTitle(req?.title)
 
   const saveMutation = useMutation({
-    mutationFn: () => api.requirements.update(repoPath, reqId, { title, fields }),
-    onSuccess: () => {
+    mutationFn: (values: Draft) => {
+      const changedFields = draftFields(values)
+      return api.requirements.update(repoPath, reqId, {
+        ...('title' in values ? { title: values['title'] } : {}),
+        ...(Object.keys(changedFields).length > 0 ? { fields: changedFields } : {}),
+      })
+    },
+    onSuccess: (_result, values) => {
+      form.markSaved(values)
       qc.invalidateQueries({ queryKey: ['requirements', repoPath] })
       qc.invalidateQueries({ queryKey: ['requirement', repoPath, reqId] })
-      setInitialized(false)
       setSaveError(null)
     },
     onError: (err: unknown) => setSaveError(err instanceof Error ? err.message : t('common.unknownError')),
   })
 
   // Ctrl/Cmd+Entrée depuis un champ richtext → « Enregistrer » (no-op sans modification).
-  const submitEdit = () => { if (hasChanges && !saveMutation.isPending) saveMutation.mutate() }
+  const save = () => saveMutation.mutate(form.changedValues())
+  const submitEdit = () => { if (hasChanges && !saveMutation.isPending) save() }
 
   const workspaceDir = projectId ? decodeProjectId(projectId) : undefined
   // GH206 — pré-contrôle des boutons de statut ; `workspaceDir` : couverture lue sur tout le workspace.
@@ -113,7 +112,6 @@ function RequirementDetailPage() {
       qc.invalidateQueries({ queryKey: ['requirement', repoPath, reqId] })
       setConfirmObsolete(false)
       setTransitionError(null)
-      setInitialized(false)
     },
     onError: (err: unknown) => setTransitionError(err instanceof Error ? err.message : t('common.unknownError')),
   })
@@ -166,6 +164,13 @@ function RequirementDetailPage() {
             {t('system.editView.approvedLocked')}
           </p>
         )}
+        <ExternalChangeBanner
+          labels={form.conflicts.map(k => k === 'title'
+            ? t('requirementsPage.titleLabel')
+            : typeDef?.fields.find(f => `field:${f.name}` === k)?.label ?? k.replace(/^field:/, ''))}
+          onReload={() => form.reload(form.conflicts)}
+          onKeep={() => form.keep(form.conflicts)}
+        />
         <div>
           <label className="block text-sm font-medium text-ink mb-1">
             {t('requirementsPage.titleLabel')} <span className="text-status-danger">*</span>
@@ -185,7 +190,7 @@ function RequirementDetailPage() {
             field={f}
             value={fields[f.name] ?? String(f.default ?? '')}
             requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: req.status, fields: fields }))}
-            onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
+            onChange={v => setField(f.name, v)}
             disabled={locked}
             repoPath={repoPath}
             interfaceRoles={schema?.roles?.map(r => r.name)}
@@ -200,7 +205,7 @@ function RequirementDetailPage() {
               <input
                 type="text"
                 value={fields[key] ?? String(val ?? '')}
-                onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))}
+                onChange={e => setField(key, e.target.value)}
                 readOnly={locked}
                 className="input-field w-full"
               />
@@ -213,7 +218,7 @@ function RequirementDetailPage() {
         <div className="flex gap-3 items-center flex-wrap">
           <button
             type="button"
-            onClick={() => saveMutation.mutate()}
+            onClick={save}
             disabled={!hasChanges || saveMutation.isPending}
             className="btn-primary"
           >

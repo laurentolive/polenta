@@ -145,6 +145,9 @@ export function useLiveFileSync(): void {
         const singularKey = category
         const allKey = dir === 'requirements' ? 'requirements-all' : dir === 'tests' ? 'tests-all' : 'campaigns'
         qc.invalidateQueries({ queryKey: [singularKey, repoPath, id] })
+        // GH342 — fiche de la vue Édition (SystemView, même clé que les issues ci-dessus) : une
+        // modification faite ailleurs (autre fenêtre, MCP, pull) doit y arriver sans recharger.
+        qc.invalidateQueries({ queryKey: ['object', repoPath, category, id] })
         qc.invalidateQueries({ queryKey: [allKey, repoPath] })
         qc.invalidateQueries({
           predicate: (q) => q.queryKey[0] === 'objects' && q.queryKey[1] === repoPath && q.queryKey[2] === category,

@@ -2919,5 +2919,11 @@
     "restricted": "Le serveur ne donne pas la liste des membres à votre compte.",
     "removeSelf": "Retirer votre propre accès administrateur ? Vous ne pourrez plus modifier ces paramètres.",
     "removeSelfConfirm": "Retirer mon accès"
+  },
+  "externalChange": {
+    "message": "Modifié ailleurs pendant votre saisie : {{fields}}.",
+    "reload": "Recharger",
+    "keep": "Garder ma saisie",
+    "status": "Statut"
   }
 }

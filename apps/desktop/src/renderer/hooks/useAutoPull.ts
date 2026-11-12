@@ -86,7 +86,16 @@ export function useAutoPull(currentProjectId: string | null): void {
     const id = setInterval(() => {
       // GH342 — plusieurs fenêtres sur le même projet : une seule fait le pull.
       void api.app.isAutoPullOwner().catch(() => true).then(owner => {
-        if (owner) for (const repoPath of repoPaths) void autoSync(repoPath)
+        if (owner) {
+          for (const repoPath of repoPaths) void autoSync(repoPath)
+          return
+        }
+        // Une autre fenêtre fait le pull : relire l'état (avance / retard) qu'il a pu changer. Ses
+        // erreurs (accès révoqué, push refusé) ne s'affichent que dans la fenêtre qui le fait.
+        for (const repoPath of repoPaths) {
+          qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
+          qc.invalidateQueries({ queryKey: ['sync:integration-state', repoPath] })
+        }
       })
     }, intervalMinutes * 60 * 1000)
 

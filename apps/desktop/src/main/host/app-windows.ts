@@ -263,6 +263,24 @@ export function pendingInviteWindow(): BrowserWindow | undefined {
   return lastFocusedAppWindow()
 }
 
+/** L'invitation du lancement a été prise (ou une invitation arrive en cours de session) : la
+ *  dernière fenêtre active redevient la destinataire. */
+export function releaseStartupInviteWindow(): void {
+  startupInviteWindow = undefined
+}
+
+/**
+ * Sortie imposée (installation d'une mise à jour) : saisies enregistrées, disposition mémorisée, plus
+ * de garde de fermeture — sous macOS, `quitAndInstall` ferme les fenêtres avant `before-quit`.
+ */
+export async function prepareForcedQuit(): Promise<void> {
+  if (quitting) return
+  flushedForQuit = true
+  await flushAllWindows()
+  saveState()
+  quitting = true
+}
+
 /** Nouvelle fenêtre ouverte depuis une fenêtre existante (Ctrl+Shift+N, menu d'onglet). */
 export function openWindowFrom(sender: WebContents, route: string): void {
   if (!isValidAppRoute(route)) throw new Error('Page à ouvrir invalide')

@@ -9,7 +9,7 @@ import { TerminalService } from './services/terminal.service'
 import { INVITE_SCHEME, inviteFromArgv, parseInviteLink, setPendingInvite, type InviteLink } from './host/invite-link'
 import { BRAND } from '../shared/brand'
 import { initAppZoom } from './host/app-zoom'
-import { createAppWindow, lastFocusedAppWindow, restoreOrCreateWindows } from './host/app-windows'
+import { createAppWindow, lastFocusedAppWindow, prepareForcedQuit, releaseStartupInviteWindow, restoreOrCreateWindows } from './host/app-windows'
 
 // Aligne le dossier userData (auth.json, workspace.json…) entre `pnpm dev` et le build
 // packagé — sans ça, Electron retombe sur le "name" du package.json en dev (`@polenta/desktop`)
@@ -25,6 +25,7 @@ function receiveInvite(link: InviteLink | null): void {
   if (!link) return
   setPendingInvite(link)
   if (!app.isReady()) return            // la fenêtre créée au démarrage prendra l'invitation
+  releaseStartupInviteWindow()          // GH342 — en cours de session : la dernière fenêtre active
   // GH342 — plusieurs fenêtres possibles : la dernière active traite l'invitation.
   const win = lastFocusedAppWindow()
   if (!win) {
@@ -66,6 +67,7 @@ app.whenReady().then(() => {
   registerHandlers(ipcMainRegistry, container, electronPlatformHost)
   // GH26 — mise à jour automatique : propre au desktop, hors du noyau de services partagé.
   const update = new UpdateService(container.appSettings)
+  update.onBeforeInstall(prepareForcedQuit)
   // GH238 — terminal de la vue Version ; ses shells ne survivent pas à l'application.
   const terminal = new TerminalService((owner, channel, ...args) => {
     const target = webContents.fromId(owner)

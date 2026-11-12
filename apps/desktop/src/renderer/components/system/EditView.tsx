@@ -22,6 +22,7 @@ import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
 import { REFLECTION_COLUMNS, ReflectionValue, type ReflectionsData } from './ReflectionCell'
 import { registerEditFlusher } from '../../lib/pendingEdits'
 import { ExternalChangeBanner } from '../ExternalChangeBanner'
+import { externalConflicts } from '../../lib/draftSync'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,9 @@ interface FieldControlProps {
   /** GH206 — objet édité : pré-contrôle des transitions du champ statut. */
   objectId?: string
 }
+
+/** GH342 — valeurs envoyées gardées par champ (écho d'un enregistrement antérieur). */
+const SENT_HISTORY = 5
 
 function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPath, interfaceRoles, objectId }: FieldControlProps) {
   const { t } = useTranslation()
@@ -453,7 +457,19 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
   // tant que l'utilisateur n'a pas choisi (sinon la valeur extérieure serait écrasée sans bandeau).
   const conflictsRef = useRef<string[]>([])
   conflictsRef.current = conflicts
-  const sentRef = useRef<Record<string, string>>({})
+  // Dernières valeurs envoyées par champ (plusieurs : l'écho d'un enregistrement antérieur peut
+  // arriver après l'envoi suivant, pendant la frappe).
+  const sentRef = useRef<Record<string, string[]>>({})
+  const recordSent = (k: string, v: string) => {
+    const list = sentRef.current[k] ?? []
+    sentRef.current[k] = [...list.filter(x => x !== v), v].slice(-SENT_HISTORY)
+  }
+  /** Valeurs à envoyer : un champ en conflit garde la valeur de base (pas envoyé avant le choix). */
+  const withoutConflicts = (values: Record<string, string>, baseline: Record<string, string>) => {
+    const out = { ...values }
+    for (const k of conflictsRef.current) out[k] = baseline[k] ?? ''
+    return out
+  }
   const [reloadGen, setReloadGen] = useState<Record<string, number>>({})
 
   const onFlushValuesRef = useRef(onFlushValues)
@@ -475,9 +491,8 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
     dirtyRef.current = false
     // Snapshot des valeurs de CET objet : en cas d'échec on doit pouvoir retenter même si
     // le miroir a entre-temps été repointé sur un autre objet (branche switch).
-    const values = { ...localValuesRef.current }
-    for (const k of conflictsRef.current) values[k] = baseline[k] ?? ''
-    Object.assign(sentRef.current, values)
+    const values = withoutConflicts(localValuesRef.current, baseline)
+    for (const [k, v] of Object.entries(values)) if (v !== (baseline[k] ?? '')) recordSent(k, v)
     void Promise.resolve(onFlushValuesRef.current(values, { objectId, category, baseline }))
       .then(ok => {
         if (ok) return
@@ -541,11 +556,11 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
     } else if (objectData) {
       const prevServer = serverSnapshotRef.current
       const mirror = localValuesRef.current
-      const changedElsewhere: string[] = []
+      // GH342 — saisie en cours sur un champ changé ailleurs (pas l'écho de nos envois) : conflit.
+      const changedElsewhere = externalConflicts(prevServer, mirror, objectData)
+        .filter(k => !(sentRef.current[k] ?? []).includes(objectData[k] ?? ''))
       for (const [k, v] of Object.entries(objectData)) {
         if ((mirror[k] ?? '') === (prevServer[k] ?? '')) mirror[k] = v
-        // GH342 — saisie en cours sur un champ changé ailleurs (et pas par nous) : conflit.
-        else if (v !== (prevServer[k] ?? '') && v !== (mirror[k] ?? '') && v !== sentRef.current[k]) changedElsewhere.push(k)
       }
       serverSnapshotRef.current = { ...objectData }
       setConflicts(prev => {
@@ -603,7 +618,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
       if (!dirtyRef.current) return
       const prev = prevObjectDataRef.current
       const p = prev
-        ? onFlushValuesRef.current(localValuesRef.current, {
+        ? onFlushValuesRef.current(withoutConflicts(localValuesRef.current, serverSnapshotRef.current), {
             objectId: prev.id, category: prev.category, baseline: serverSnapshotRef.current,
           })
         : onFlushValuesRef.current(localValuesRef.current)
@@ -781,7 +796,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                     // prochain déclencheur) pour garder un seul write en vol.
                     cancelAutosave()
                     if (conflictsRef.current.includes(f.name)) return
-                    sentRef.current[f.name] = v
+                    recordSent(f.name, v)
                     if (f.name === 'status') {
                       // GH163 — le commentaire accompagne le changement de statut, puis est vidé.
                       const comment = statusComment.trim() || undefined

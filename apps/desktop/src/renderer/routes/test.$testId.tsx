@@ -83,7 +83,8 @@ function TestCaseDetailPage() {
   const status = d['status'] ?? ''
   const preconditions = d['preconditions'] ?? ''
   const postconditions = d['postconditions'] ?? ''
-  const steps = useMemo<StepDraft[]>(() => (d['steps'] ? JSON.parse(d['steps']) as StepDraft[] : []), [d])
+  const stepsJson = d['steps']
+  const steps = useMemo<StepDraft[]>(() => (stepsJson ? JSON.parse(stepsJson) as StepDraft[] : []), [stepsJson])
   const fields = useMemo(() => draftFields(d), [d])
   const setTitle = (v: string) => form.set('title', v)
   const setType = (v: string) => form.set('type', v)
@@ -102,6 +103,8 @@ function TestCaseDetailPage() {
   useSetTabTitle(tc?.title)
 
   const saveMutation = useMutation({
+    // GH342 — base posée dès l'envoi : l'écho de notre écriture n'est pas un conflit.
+    onMutate: (values: Draft) => form.markSaved(values),
     mutationFn: (values: Draft) => {
       const changedFields = draftFields(values)
       const sentSteps = 'steps' in values ? JSON.parse(values['steps']) as StepDraft[] : null
@@ -116,7 +119,6 @@ function TestCaseDetailPage() {
       }, projectId ? decodeProjectId(projectId) : undefined)
     },
     onSuccess: (result, values) => {
-      form.markSaved(values)
       // GH206 — passage de statut notifié : motifs affichés, sans confirmation.
       notifyTransitionResult(result, testId)
       qc.invalidateQueries({ queryKey: transitionPreviewKey(repoPath) })
@@ -124,7 +126,10 @@ function TestCaseDetailPage() {
       qc.invalidateQueries({ queryKey: ['test', repoPath, testId] })
       setSaveError(null)
     },
-    onError: (err: unknown) => setSaveError(err instanceof Error ? err.message : t('common.unknownError')),
+    onError: (err: unknown, _values, previous) => {
+      if (previous) form.restoreBase(previous)
+      setSaveError(err instanceof Error ? err.message : t('common.unknownError'))
+    },
   })
 
   const handleSave = () => {

@@ -1,7 +1,7 @@
 import { app, ipcMain, dialog, shell, BrowserWindow, type IpcMainInvokeEvent, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { takePendingInvite } from '../host/invite-link'
 import { applyZoom } from '../host/app-zoom'
-import { isAutoPullOwner, openWindowFrom, pendingInviteWindow, respondToClose, setWindowState, type CloseWindowAction, type WindowStatePatch } from '../host/app-windows'
+import { isAutoPullOwner, openWindowFrom, pendingInviteWindow, releaseStartupInviteWindow, respondToClose, setWindowState, type CloseWindowAction, type WindowStatePatch } from '../host/app-windows'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { isAcceptedLinkUrl, isHttpLinkUrl } from '@polenta/types'
@@ -89,7 +89,9 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   // les autres la laissent en attente.
   handle('app:take-pending-invite', (e) => {
     const win = BrowserWindow.fromWebContents((e as IpcMainInvokeEvent).sender)
-    return win && win !== pendingInviteWindow() ? null : takePendingInvite()
+    if (win && win !== pendingInviteWindow()) return null
+    releaseStartupInviteWindow()
+    return takePendingInvite()
   })
 
   // ── App ───────────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { api } from '../api'
 import { useTabs } from '../contexts/TabsContext'
 import { hrefOf } from '../lib/tabHistory'
+import { isWeb } from '../platform'
 
 /**
  * GH342 — remonte au main l'état de la fenêtre : la page de l'onglet actif (rouverte au lancement
@@ -18,7 +19,9 @@ export function useWindowState(): void {
     void api.app.setWindowState({ route }).catch(() => {})
   }, [route])
 
+  // Desktop : la garde de fermeture est décidée dans le renderer (WindowCloseGuard), le main n'en a
+  // pas besoin ; web : `beforeunload`.
   useEffect(() => {
-    void api.app.setWindowState({ dirty }).catch(() => {})
+    if (isWeb) void api.app.setWindowState({ dirty }).catch(() => {})
   }, [dirty])
 }

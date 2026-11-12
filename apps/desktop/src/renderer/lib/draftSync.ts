@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /**
  * GH342 — brouillon d'un formulaire d'édition face aux modifications faites ailleurs (autre fenêtre,
@@ -74,8 +74,11 @@ export interface DraftForm {
   keep(keys: string[]): void
   /** Valeurs des clés modifiées ici, à envoyer. */
   changedValues(): Draft
-  /** Après un enregistrement réussi : ces valeurs (celles envoyées) sont désormais celles du serveur. */
-  markSaved(values: Draft): void
+  /** Au lancement d'un enregistrement : ces valeurs (celles envoyées) deviennent la base — l'écho de
+   *  notre écriture, relu avant la réponse, n'est pas un changement extérieur. Retourne l'ancienne
+   *  base de ces clés, à rendre par `restoreBase` si l'enregistrement échoue. */
+  markSaved(values: Draft): Draft
+  restoreBase(previous: Draft): void
 }
 
 /**
@@ -85,7 +88,9 @@ export interface DraftForm {
 export function useDraftForm(server: Draft | undefined, resetKey: string): DraftForm {
   const [state, setState] = useState<FormState | null>(null)
   const seededFor = useRef<string | null>(null)
-  const serverJson = server ? JSON.stringify(server) : null
+  const serverJson = useMemo(() => (server ? JSON.stringify(server) : null), [server])
+  const stateRef = useRef<FormState | null>(null)
+  stateRef.current = state
 
   useEffect(() => {
     if (!server) return
@@ -128,10 +133,14 @@ export function useDraftForm(server: Draft | undefined, resetKey: string): Draft
     return { ...s, base, conflicts: s.conflicts.filter(k => !keys.includes(k)) }
   }), [update])
 
-  const markSaved = useCallback((values: Draft) => update(s => {
-    const base = { ...s.base, ...values }
-    return { ...s, base, conflicts: s.conflicts.filter(k => !(k in values)) }
-  }), [update])
+  const markSaved = useCallback((values: Draft): Draft => {
+    const before = stateRef.current?.base ?? {}
+    const previous: Draft = Object.fromEntries(Object.keys(values).map(k => [k, at(before, k)]))
+    update(s => ({ ...s, base: { ...s.base, ...values }, conflicts: s.conflicts.filter(k => !(k in values)) }))
+    return previous
+  }, [update])
+
+  const restoreBase = useCallback((previous: Draft) => update(s => ({ ...s, base: { ...s.base, ...previous } })), [update])
 
   const draft = state?.draft ?? {}
   return {
@@ -145,6 +154,7 @@ export function useDraftForm(server: Draft | undefined, resetKey: string): Draft
     keep,
     changedValues: () => Object.fromEntries((state ? changedKeys(state.base, state.draft) : []).map(k => [k, at(draft, k)])),
     markSaved,
+    restoreBase,
   }
 }
 

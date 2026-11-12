@@ -80,6 +80,8 @@ function RequirementDetailPage() {
   useSetTabTitle(req?.title)
 
   const saveMutation = useMutation({
+    // GH342 — base posée dès l'envoi : l'écho de notre écriture n'est pas un conflit.
+    onMutate: (values: Draft) => form.markSaved(values),
     mutationFn: (values: Draft) => {
       const changedFields = draftFields(values)
       return api.requirements.update(repoPath, reqId, {
@@ -88,12 +90,14 @@ function RequirementDetailPage() {
       })
     },
     onSuccess: (_result, values) => {
-      form.markSaved(values)
       qc.invalidateQueries({ queryKey: ['requirements', repoPath] })
       qc.invalidateQueries({ queryKey: ['requirement', repoPath, reqId] })
       setSaveError(null)
     },
-    onError: (err: unknown) => setSaveError(err instanceof Error ? err.message : t('common.unknownError')),
+    onError: (err: unknown, _values, previous) => {
+      if (previous) form.restoreBase(previous)
+      setSaveError(err instanceof Error ? err.message : t('common.unknownError'))
+    },
   })
 
   // Ctrl/Cmd+Entrée depuis un champ richtext → « Enregistrer » (no-op sans modification).

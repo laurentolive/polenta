@@ -174,11 +174,15 @@ Helper `parentOf(e) = BrowserWindow.fromWebContents(e.sender) ?? undefined` ; to
   déjà sa propre confirmation (GH302).
 
 ### 2.5 Pull automatique une fois par projet
-Coalescence dans `SyncService.autoSync` (main, donc aussi pour plusieurs onglets web d'un même
-utilisateur) : par `repoPath + branche`, un appel en cours est partagé, et un résultat de moins de
-30 s est renvoyé tel quel (l'intervalle minimal est 1 min). Les fenêtres gardent leur minuterie ;
-seul le réseau est dédoublonné. Alternative rejetée : élire une fenêtre « maîtresse » côté
-renderer — plus de code, fragile à la fermeture de la fenêtre élue.
+**Révisé au sprint 2 (revue de code).** Fenêtre responsable par projet : `app:auto-pull-owner`
+répond vrai pour la plus ancienne fenêtre ouverte dont la route porte le même `projectId` ; les
+autres passent leur tick. Fenêtre fermée → la suivante prend le relais à son prochain tick (aucune
+élection à maintenir). Web : toujours vrai (pas de coordination entre onglets du navigateur).
+
+Alternative d'abord retenue puis rejetée : partager dans le main les appels `sync:auto-sync` et
+réutiliser un résultat de moins de 30 s — le résultat réutilisé sautait les effets du pull
+(rangement des modifications hors de l'intégration, nouvel essai de push) et pouvait être périmé
+(accès révoqué puis reconnecté, publication entre-temps).
 
 ### 2.6 Fichiers sprint 2
 `main/services/terminal.service.ts`, `main/index.ts`, `main/ipc/desktop-only.handlers.ts`,

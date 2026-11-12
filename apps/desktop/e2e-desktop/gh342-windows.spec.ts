@@ -144,6 +144,12 @@ test('GH342 D1 — une modification enregistrée dans une fenêtre apparaît dan
   await expect(tabs(w3).first()).toContainText('Exigence modifiée ailleurs', { timeout: 3_000 })
 })
 
+test('GH342 CA9 — une seule fenêtre par projet fait le pull automatique', async () => {
+  expect(await invoke<boolean>(w2, 'app:auto-pull-owner')).toBe(true)    // la plus ancienne sur le projet
+  expect(await invoke<boolean>(w3, 'app:auto-pull-owner')).toBe(false)
+  expect(await invoke<boolean>(first, 'app:auto-pull-owner')).toBe(true) // hors projet : sans objet
+})
+
 const windowId = (page: Page) => app.browserWindow(page).then(w => w.evaluate(bw => bw.id))
 
 test('GH342 P2 — un dialogue natif est rattaché à la fenêtre qui le demande', async () => {
@@ -239,6 +245,8 @@ test('GH342 R1/R2/R4 — relance : fenêtres ouvertes à la fermeture, positions
 
   ;({ app } = await launch(profile))
   const windows = await waitForWindowCount(2)
+  // Le renderer rouvert navigue vers sa page au démarrage (`__open`) : attendre la navigation.
+  await expect.poll(() => windows.some(p => onPath(p, `/req/${reqId}`)), { timeout: 15_000 }).toBe(true)
   const onReq = windows.find(p => onPath(p, `/req/${reqId}`))
   const other = windows.find(p => p !== onReq)
   expect(onReq).toBeDefined()
@@ -270,4 +278,18 @@ test('GH342 R3/R5 — projet disparu et fenêtre hors écran : démarrage habitu
   expect(b.y).toBeGreaterThanOrEqual(work.y)
   expect(b.x + b.width).toBeLessThanOrEqual(work.x + work.width)
   expect(b.y + b.height).toBeLessThanOrEqual(work.y + work.height)
+})
+
+test('GH342 P8 — quitter l’application pendant une saisie de la vue Édition l’enregistre', async () => {
+  const [win] = await appWindows()
+  const editRoute = `/product?projectId=${projectId}&node=root&type=exigence&view=edit&item=${reqId}`
+  const edit = await newWindowAfter(() => invoke(win, 'app:open-window', editRoute))
+  const note = edit.locator('div.flex.flex-col.gap-1', { has: edit.locator('label', { hasText: /^Note/ }) }).locator('input, textarea').first()
+  await expect(note).toBeVisible({ timeout: 20_000 })
+  await note.click()
+  await note.press('End')
+  await edit.keyboard.type(' — avant la sortie')
+  await quitApp()   // app.quit() : pas de garde, mais les saisies sont enregistrées
+  expect(fs.readFileSync(path.join(repo, 'requirements', `${reqId}.yaml`), 'utf8')).toContain('avant la sortie')
+  ;({ app } = await launch(profile))   // pour afterAll
 })

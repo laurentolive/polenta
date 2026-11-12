@@ -4,6 +4,7 @@ import * as path from 'path'
 import { BRAND } from '../../shared/brand'
 import { attachContextMenu } from './context-menu'
 import { attachAppZoom, currentZoomFactor } from './app-zoom'
+import { routeProjectId } from '../../shared/app-route'
 import {
   fitToDisplays, isRestorableRoute, isValidAppRoute, offsetPlacement, parseSavedWindows,
   type SavedWindow, type WindowPlacement,
@@ -28,18 +29,26 @@ interface WindowEntry {
   closePending: boolean
   /** Délai d'accusé de réception du renderer (renderer bloqué → fermeture forcée). */
   closeTimer?: ReturnType<typeof setTimeout>
+  /** Sortie de l'application : saisies en attente enregistrées par le renderer. */
+  flushed?: () => void
 }
 
 const DEFAULT_SIZE = { width: 1280, height: 800 }
 const STATE_FILE = 'windows-state.json'
 /** Délai d'accusé de réception d'une demande de fermeture par le renderer. */
 const CLOSE_ACK_TIMEOUT_MS = 3000
+/** Sortie de l'application : délai max d'enregistrement des saisies en attente de toutes les fenêtres. */
+const QUIT_FLUSH_TIMEOUT_MS = 2500
 
 const registry = new Map<BrowserWindow, WindowEntry>()
 /** Ordre d'activation : la dernière fenêtre active en fin de liste. */
 let focusOrder: BrowserWindow[] = []
 /** `before-quit` reçu : la disposition est déjà enregistrée, plus aucune écriture. */
 let quitting = false
+/** Sortie déjà retardée une fois pour enregistrer les saisies en attente. */
+let flushedForQuit = false
+/** Fenêtre qui prend une invitation reçue au lancement (dernière rouverte, au premier plan). */
+let startupInviteWindow: BrowserWindow | undefined
 
 function stateFile(): string {
   return path.join(app.getPath('userData'), STATE_FILE)
@@ -82,15 +91,38 @@ function readState(): SavedWindow[] {
   }
 }
 
-app.on('before-quit', () => {
-  // Cmd+Q, installation d'une mise à jour, `app.quit()` : toutes les fenêtres encore ouvertes. Sous
-  // Windows, fermer la dernière fenêtre passe par `close` (ci-dessous) avant d'arriver ici, sans
-  // fenêtre : `saveState` n'écrit rien dans ce cas.
-  // `quitting` n'est jamais remis à faux : aucune garde de Polenta n'annule une sortie (la garde de
+app.on('before-quit', event => {
+  if (quitting) return
+  // Cmd+Q, installation d'une mise à jour, `app.quit()` avec des fenêtres ouvertes : les fenêtres
+  // seront détruites sans démonter les vues. Sortie retardée une fois, le temps que chaque renderer
+  // enregistre ses saisies en attente (pas de confirmation : la mise à jour a la sienne).
+  if (!flushedForQuit && liveWindows().length > 0) {
+    event.preventDefault()
+    flushedForQuit = true
+    void flushAllWindows().then(() => app.quit())
+    return
+  }
+  // Disposition de toutes les fenêtres encore ouvertes. Sous Windows, fermer la dernière fenêtre
+  // passe par `close` (ci-dessous) avant d'arriver ici, sans fenêtre : `saveState` n'écrit rien.
+  // `quitting` n'est jamais remis à faux : plus rien n'annule la sortie à ce stade (la garde de
   // fermeture ne s'applique pas pendant `quitting`).
-  if (!quitting) saveState()
+  saveState()
   quitting = true
 })
+
+function flushAllWindows(): Promise<void> {
+  const done = liveWindows().map(win => new Promise<void>(resolve => {
+    const entry = registry.get(win)
+    if (!entry) return resolve()
+    entry.flushed = resolve
+    win.webContents.send('app:flush-requested')
+  }))
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    Promise.all(done).then(() => undefined),
+    new Promise<void>(resolve => { timer = setTimeout(resolve, QUIT_FLUSH_TIMEOUT_MS) }),
+  ]).finally(() => clearTimeout(timer))
+}
 
 /**
  * Sous Windows avec mise à l'échelle (125 %…), la taille demandée et celle relue par
@@ -162,6 +194,8 @@ export function createAppWindow(opts: CreateWindowOptions = {}): BrowserWindow {
   win.webContents.on('render-process-gone', () => { entry.forceClose = true })
   win.on('unresponsive', () => { entry.forceClose = true })
   win.on('responsive', () => { if (!entry.closePending) entry.forceClose = false })
+  // Renderer rechargé après un plantage : il répond de nouveau, la garde revient.
+  win.webContents.on('did-finish-load', () => { if (!entry.closePending) entry.forceClose = false })
   win.on('closed', () => {
     clearTimeout(entry.closeTimer)
     registry.delete(win)
@@ -217,8 +251,16 @@ export function restoreOrCreateWindows(): void {
   const displays = screen.getAllDisplays()
   const primary = screen.getPrimaryDisplay()
   for (const w of saved) {
-    createAppWindow({ route: w.route, placement: fitToDisplays(w, displays, primary) })
+    startupInviteWindow = createAppWindow({ route: w.route, placement: fitToDisplays(w, displays, primary) })
   }
+}
+
+/** Fenêtre qui prend une invitation reçue avant que l'interface ne soit prête : fixée au lancement
+ *  (la dernière rouverte, au premier plan) — l'ordre d'activation change pendant l'affichage des
+ *  fenêtres rouvertes ; ensuite, la dernière fenêtre active. */
+export function pendingInviteWindow(): BrowserWindow | undefined {
+  if (startupInviteWindow && !startupInviteWindow.isDestroyed()) return startupInviteWindow
+  return lastFocusedAppWindow()
 }
 
 /** Nouvelle fenêtre ouverte depuis une fenêtre existante (Ctrl+Shift+N, menu d'onglet). */
@@ -259,11 +301,12 @@ function forceClose(win: BrowserWindow): void {
   win.close()
 }
 
-export type CloseWindowAction = 'ack' | 'close' | 'cancel'
+export type CloseWindowAction = 'ack' | 'close' | 'cancel' | 'flushed'
 
 /**
  * Réponse du renderer à 'app:close-requested' : `ack` (demande reçue, vidage des saisies en cours —
- * plus de fermeture forcée), `close` (fermer), `cancel` (l'utilisateur garde la fenêtre).
+ * plus de fermeture forcée), `close` (fermer), `cancel` (l'utilisateur garde la fenêtre) ; à
+ * 'app:flush-requested' (sortie de l'application) : `flushed`.
  */
 export function respondToClose(sender: WebContents, action: CloseWindowAction): void {
   const win = BrowserWindow.fromWebContents(sender)
@@ -276,5 +319,26 @@ export function respondToClose(sender: WebContents, action: CloseWindowAction): 
   } else if (action === 'cancel') {
     clearTimeout(entry.closeTimer)
     entry.closePending = false
+  } else if (action === 'flushed') {
+    entry.flushed?.()
+    entry.flushed = undefined
   }
+}
+
+/**
+ * GH342 — pull automatique une seule fois par projet : chaque fenêtre garde sa minuterie, mais seule
+ * la plus ancienne fenêtre ouverte sur ce projet le fait (les autres passent leur tour). Fenêtre
+ * fermée → la suivante prend le relais à son prochain tick. Aucun résultat mis en cache : chaque pull
+ * fait ses effets (rangement des modifications, nouvel essai de push).
+ */
+export function isAutoPullOwner(sender: WebContents): boolean {
+  const win = BrowserWindow.fromWebContents(sender)
+  const route = win ? registry.get(win)?.route : undefined
+  const project = route ? routeProjectId(route) : null
+  if (!win || !project) return true
+  for (const [w, e] of registry) {   // ordre d'insertion = ordre de création
+    if (w.isDestroyed() || !e.route) continue
+    if (routeProjectId(e.route) === project) return w === win
+  }
+  return true
 }

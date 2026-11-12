@@ -37,6 +37,11 @@ export function WindowCloseGuard() {
     })
   }), [])
 
+  // Sortie de l'application (Cmd+Q, installation d'une mise à jour) : enregistrer, sans confirmation.
+  useEffect(() => window.polenta.on('app:flush-requested', () => {
+    void flushPendingEdits().then(() => api.app.closeWindow('flushed'))
+  }), [])
+
   const cancel = () => {
     setAsking(false)
     busy.current = false

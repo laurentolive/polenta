@@ -1,7 +1,7 @@
 import { app, ipcMain, dialog, shell, BrowserWindow, type IpcMainInvokeEvent, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { takePendingInvite } from '../host/invite-link'
 import { applyZoom } from '../host/app-zoom'
-import { lastFocusedAppWindow, openWindowFrom, respondToClose, setWindowState, type CloseWindowAction, type WindowStatePatch } from '../host/app-windows'
+import { isAutoPullOwner, openWindowFrom, pendingInviteWindow, respondToClose, setWindowState, type CloseWindowAction, type WindowStatePatch } from '../host/app-windows'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { isAcceptedLinkUrl, isHttpLinkUrl } from '@polenta/types'
@@ -85,11 +85,11 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   handle('auth:logout', () => c.auth.logout())
   handle('auth:open-password-change', () => c.auth.openPasswordChange())
   // GH45 S2b — lien d'invitation reçu avant que l'interface ne soit prête (spec §3ter).
-  // GH342 — plusieurs fenêtres rouvertes au lancement : seule la dernière active (la dernière
-  // créée, au premier plan) la prend ; les autres la laissent en attente.
+  // GH342 — plusieurs fenêtres rouvertes au lancement : une seule la prend (fixée au lancement) ;
+  // les autres la laissent en attente.
   handle('app:take-pending-invite', (e) => {
     const win = BrowserWindow.fromWebContents((e as IpcMainInvokeEvent).sender)
-    return win && win !== lastFocusedAppWindow() ? null : takePendingInvite()
+    return win && win !== pendingInviteWindow() ? null : takePendingInvite()
   })
 
   // ── App ───────────────────────────────────────────────────────────────────────
@@ -147,8 +147,9 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   handle('app:window-state', (e, patch: WindowStatePatch) => {
     if (patch && typeof patch === 'object') setWindowState((e as IpcMainInvokeEvent).sender, patch)
   })
+  handle('app:auto-pull-owner', (e) => isAutoPullOwner((e as IpcMainInvokeEvent).sender))
   handle('app:close-window', (e, action: CloseWindowAction) => {
-    if (action === 'ack' || action === 'close' || action === 'cancel') respondToClose((e as IpcMainInvokeEvent).sender, action)
+    if (['ack', 'close', 'cancel', 'flushed'].includes(action)) respondToClose((e as IpcMainInvokeEvent).sender, action)
   })
 
   // ── Update (GH26) ─────────────────────────────────────────────────────────────

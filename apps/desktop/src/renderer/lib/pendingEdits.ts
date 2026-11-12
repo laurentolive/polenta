@@ -26,6 +26,10 @@ export function trackInflight<T>(p: Promise<T>): Promise<T> {
   return p
 }
 
+function nextTask(): Promise<void> {
+  return new Promise(resolve => { setTimeout(resolve, 0) })
+}
+
 function isEditable(el: Element | null): el is HTMLElement {
   if (!el) return false
   const tag = el.tagName
@@ -35,14 +39,15 @@ function isEditable(el: Element | null): el is HTMLElement {
 /** Quitte le champ actif (son enregistrement « au blur »), lance les enregistrements temporisés,
  *  puis attend les appels en cours (au plus `timeoutMs`). */
 export async function flushPendingEdits(timeoutMs = 2000): Promise<void> {
-  const active = document.activeElement
+  const active = typeof document !== 'undefined' ? document.activeElement : null
   if (isEditable(active)) active.blur()
   for (const flush of flushers) {
     try { flush() } catch (err) { console.error('[GH342] flush des saisies', err) }
   }
-  // Les enregistrements lancés ci-dessus partent dans la même tâche : une micro-tâche pour qu'ils
-  // soient suivis avant d'attendre.
-  await Promise.resolve()
+  // Les enregistrements lancés ci-dessus ou par le blur passent souvent par `mutate()` (TanStack
+  // Query), qui n'appelle le main qu'après plusieurs étapes asynchrones : une tâche complète (toutes
+  // les micro-tâches écoulées) pour qu'ils soient suivis avant d'attendre.
+  await nextTask()
   if (inflight.size === 0) return
   let timer: ReturnType<typeof setTimeout> | undefined
   await Promise.race([

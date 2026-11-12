@@ -164,6 +164,8 @@ const adapters: Record<string, (...args: unknown[]) => Promise<unknown>> = {
   'app:open-window': async (route) => {
     if (isValidAppRoute(route)) window.open(route, '_blank', 'noopener')
   },
+  // GH342 — chaque onglet du navigateur fait son pull automatique (pas de coordination entre onglets).
+  'app:auto-pull-owner': async () => true,
   // GH342 — onglet Polenta non sauvegardé : confirmation générique du navigateur à la fermeture.
   'app:window-state': async (patch) => {
     const dirty = (patch as { dirty?: unknown } | null)?.dirty

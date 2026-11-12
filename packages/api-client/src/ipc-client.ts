@@ -57,6 +57,7 @@ export function createIpcClient(
       openWindow: (route) => invoke('app:open-window', route),
       setWindowState: (patch) => invoke('app:window-state', patch),
       closeWindow: (action) => invoke('app:close-window', action),
+      isAutoPullOwner: () => invoke('app:auto-pull-owner') as Promise<boolean>,
     },
     update: {
       getState: () => invoke('update:get-state'),

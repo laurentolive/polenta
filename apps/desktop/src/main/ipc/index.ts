@@ -1,5 +1,4 @@
 import type { IntegrationCreateFrom } from '@polenta/types'
-import { coalesceRecent } from '../services/coalesce.util'
 import type { SavedViewsService } from '../services/saved-views.service'
 import type { SavedViewRef, SavedViewScope } from '@polenta/types'
 import { registerPrefHandlers } from './pref.handlers'
@@ -105,9 +104,6 @@ import type { IntegrationBranchService } from '../services/integration-branch.se
 import type { ExportTemplateLibrary } from '../services/export-template-library'
 import { parseDrawioPages } from '../drawio-xml'
 import { readFileAt } from '../services/read-file-at.util'
-
-/** GH342 — fenêtre de partage d'un pull automatique entre fenêtres / onglets. */
-const AUTO_SYNC_SHARE_MS = 30_000
 
 export interface Container {
   auth: AuthService
@@ -350,14 +346,7 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.sync.canMergeRemoteIntoIntegration(repoPath, branch))
   r.handle('sync:resync-integration', (_e, repoPath: string, branch: string) =>
     c.sync.resyncIntegration(repoPath, branch))
-  // GH342 — pull automatique : chaque fenêtre (ou onglet web) a sa minuterie ; un appel en cours ou
-  // de moins de 30 s pour le même repo est partagé (intervalle minimal : 1 min), donc un seul fetch.
-  const sharedAutoSync = coalesceRecent(
-    (repoPath: string, branch: string) => c.sync.autoSync(repoPath, branch),
-    (repoPath, branch) => JSON.stringify([repoPath, branch]),
-    AUTO_SYNC_SHARE_MS,
-  )
-  r.handle('sync:auto-sync', (_e, repoPath: string, branch: string) => sharedAutoSync(repoPath, branch))
+  r.handle('sync:auto-sync', (_e, repoPath: string, branch: string) => c.sync.autoSync(repoPath, branch))
   r.handle('sync:settle-auto-branch', (_e, repoPath: string, branch: string) =>
     c.sync.settleAutoBranch(repoPath, branch))
   r.handle('sync:is-merged', (_e, repoPath: string, branch: string, into: string) =>

@@ -49,6 +49,11 @@
       "noTabsOpen": "No tabs open",
       "recentlyClosed": "Recently closed"
     },
+    "windowClose": {
+      "title": "Close this window?",
+      "message": "These tabs have unsaved changes, which will be lost:",
+      "confirm": "Close anyway"
+    },
     "confirmCloseTab": {
       "title": "Close without saving?",
       "message": "This tab has unsaved changes. They will be lost.",

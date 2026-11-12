@@ -56,6 +56,7 @@ export function createIpcClient(
       zoom: (action) => invoke('app:zoom', action),
       openWindow: (route) => invoke('app:open-window', route),
       setWindowState: (patch) => invoke('app:window-state', patch),
+      closeWindow: (action) => invoke('app:close-window', action),
     },
     update: {
       getState: () => invoke('update:get-state'),

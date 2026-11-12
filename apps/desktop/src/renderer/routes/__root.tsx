@@ -1,6 +1,7 @@
 import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { AppLayout } from '../components/layout/AppLayout'
 import { TabBar } from '../components/layout/TabBar'
+import { WindowCloseGuard } from '../components/layout/WindowCloseGuard'
 import { ZoomIndicator } from '../components/layout/ZoomIndicator'
 import { TransitionNoticeHost } from '../components/transitions/TransitionNoticeHost'
 import { capabilities } from '../platform'
@@ -27,6 +28,8 @@ function AppChrome() {
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <TabBar />
+      {/* GH342 — garde de fermeture (desktop : 'app:close-requested' n'est jamais émis sur le web). */}
+      <WindowCloseGuard />
       <div className="flex-1 min-h-0">
         <AppLayout />
       </div>
@@ -47,7 +50,9 @@ function RootLayout() {
       {!isPrint && <AppEffects enabled={pathname !== '/login'} />}
       {/* GH237 — zoom de l'interface, aussi sur /login ; jamais dans une fenêtre d'export. */}
       {!isPrint && capabilities.appZoom && <ZoomIndicator />}
-      {isBareRoute ? <Outlet /> : <TabsProvider><AppChrome /></TabsProvider>}
+      {isBareRoute
+        ? <>{!isPrint && <WindowCloseGuard />}<Outlet /></>
+        : <TabsProvider><AppChrome /></TabsProvider>}
       {/* GH206 — notifications des contraintes de transition (passage notifié, refus). */}
       {!isBareRoute && <TransitionNoticeHost />}
     </ThemeProvider>

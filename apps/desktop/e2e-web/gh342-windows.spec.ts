@@ -44,6 +44,34 @@ test('W2 — URL d’une page collée dans un nouvel onglet : la page s’affich
   await other.close()
 })
 
+test('W4 — onglet navigateur fermé avec un onglet Polenta non sauvegardé : confirmation du navigateur', async () => {
+  // Exigence en brouillon : une exigence approuvée est verrouillée (champs en lecture seule).
+  const reqs = await s.invoke<{ id: string; status: string }[]>('requirements:list', s.project.localPath)
+  const draft = reqs.find(r => r.status === 'draft') ?? reqs[0]
+  const route = `/req/${draft.id}?${new URLSearchParams({ repoPath: s.project.localPath, projectId: new URL(s.page.url()).searchParams.get('projectId') ?? '' })}`
+  const other = await s.context.newPage()
+  await other.goto(route)
+  await other.waitForLoadState('networkidle')
+  const title = other.locator('main input.input-field[type="text"]:not([readonly])').first()
+  await expect(title).toBeVisible()
+  await title.fill(`${await title.inputValue()} (brouillon)`)
+  await expect(other.getByTestId('tab').first().locator('span.rounded-full')).toBeVisible()   // point « modifié »
+
+  const dialogs: string[] = []
+  other.on('dialog', d => { dialogs.push(d.type()); void d.dismiss() })
+  await other.close({ runBeforeUnload: true })
+  await expect.poll(() => dialogs).toEqual(['beforeunload'])
+  expect(other.isClosed()).toBe(false)
+
+  // Modification annulée : plus de confirmation.
+  other.removeAllListeners('dialog')
+  await title.fill(await title.inputValue().then(v => v.replace(' (brouillon)', '')))
+  await expect(other.getByTestId('tab').first().locator('span.rounded-full')).toBeHidden()
+  const closed = other.waitForEvent('close')
+  await other.close({ runBeforeUnload: true })
+  await closed
+})
+
 test('W3 — F5 : même page après rechargement', async () => {
   await s.openView('Tests')
   const before = pageOf(s.page.url())

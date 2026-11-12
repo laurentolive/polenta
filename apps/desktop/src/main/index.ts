@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, webContents } from 'electron'
 import { createContainer } from './container'
 import { registerHandlers } from './ipc/index'
 import { ipcMainRegistry, electronPlatformHost, registerDesktopOnlyHandlers } from './ipc/desktop-only.handlers'
@@ -67,7 +67,10 @@ app.whenReady().then(() => {
   // GH26 — mise à jour automatique : propre au desktop, hors du noyau de services partagé.
   const update = new UpdateService(container.appSettings)
   // GH238 — terminal de la vue Version ; ses shells ne survivent pas à l'application.
-  const terminal = new TerminalService(electronPlatformHost.broadcast)
+  const terminal = new TerminalService((owner, channel, ...args) => {
+    const target = webContents.fromId(owner)
+    if (target && !target.isDestroyed()) target.send(channel, ...args)
+  })
   app.on('will-quit', () => terminal.killAll())
   registerDesktopOnlyHandlers(container, update, terminal)
   initAppZoom(container.appSettings)

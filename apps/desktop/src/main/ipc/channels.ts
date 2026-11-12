@@ -16,6 +16,7 @@ export const DESKTOP_ONLY_CHANNELS = [
   'app:zoom',
   'app:open-window',
   'app:window-state',
+  'app:close-window',
   'update:get-state',
   'update:download',
   'update:prepare-install',

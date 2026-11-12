@@ -49,6 +49,11 @@
       "noTabsOpen": "Aucun onglet ouvert",
       "recentlyClosed": "Récemment fermés"
     },
+    "windowClose": {
+      "title": "Fermer la fenêtre ?",
+      "message": "Ces onglets ont des modifications non enregistrées, qui seront perdues :",
+      "confirm": "Fermer quand même"
+    },
     "confirmCloseTab": {
       "title": "Fermer sans enregistrer ?",
       "message": "Cet onglet a des modifications non enregistrées. Elles seront perdues.",

@@ -14,22 +14,26 @@ import {
  * draw.io, qui ne passent pas par ici). Plusieurs fenêtres peuvent afficher le même projet : le
  * container de services est commun, chaque fenêtre a son renderer (onglets, historique, panneau).
  *
- * Ce module tient le registre des fenêtres ouvertes (route de l'onglet actif, état « non
- * sauvegardé » remonté par le renderer, ordre d'activation) et la disposition mémorisée
+ * Ce module tient le registre des fenêtres ouvertes (route de l'onglet actif remontée par le
+ * renderer, garde de fermeture, ordre d'activation) et la disposition mémorisée
  * (`userData/windows-state.json`), rouverte au lancement suivant.
  */
 
 interface WindowEntry {
   /** Page de l'onglet actif (`pathname?search`), remontée par le renderer (`app:window-state`). */
   route?: string
-  /** Un onglet au moins a des modifications non sauvegardées. */
-  dirty: boolean
-  /** Fermeture confirmée par le renderer : plus de garde. */
+  /** Fermeture confirmée par le renderer (ou renderer hors d'état de répondre) : plus de garde. */
   forceClose: boolean
+  /** Fermeture demandée au renderer, en attente de sa réponse. */
+  closePending: boolean
+  /** Délai d'accusé de réception du renderer (renderer bloqué → fermeture forcée). */
+  closeTimer?: ReturnType<typeof setTimeout>
 }
 
 const DEFAULT_SIZE = { width: 1280, height: 800 }
 const STATE_FILE = 'windows-state.json'
+/** Délai d'accusé de réception d'une demande de fermeture par le renderer. */
+const CLOSE_ACK_TIMEOUT_MS = 3000
 
 const registry = new Map<BrowserWindow, WindowEntry>()
 /** Ordre d'activation : la dernière fenêtre active en fin de liste. */
@@ -130,17 +134,36 @@ export function createAppWindow(opts: CreateWindowOptions = {}): BrowserWindow {
 
   if (placement) applyBounds(win, placement)
 
-  registry.set(win, { route, dirty: false, forceClose: false })
+  const entry: WindowEntry = { route, forceClose: false, closePending: false }
+  registry.set(win, entry)
   focusOrder.push(win)
   win.on('focus', () => {
     focusOrder = [...focusOrder.filter(w => w !== win), win]
   })
-  win.on('close', () => {
+  win.on('close', event => {
+    // GH342 — garde de fermeture : la fenêtre est détruite sans démonter les vues. Le renderer vide
+    // d'abord les saisies en attente, puis ferme, ou demande confirmation s'il reste des onglets non
+    // sauvegardés. Pas de garde pendant une sortie de l'application (`quitting` : Cmd+Q,
+    // installation d'une mise à jour, qui a sa propre confirmation).
+    if (!quitting && !entry.forceClose) {
+      event.preventDefault()
+      if (!entry.closePending) {
+        entry.closePending = true
+        win.webContents.send('app:close-requested')
+        entry.closeTimer = setTimeout(() => forceClose(win), CLOSE_ACK_TIMEOUT_MS)
+      }
+      return
+    }
     // Dernière fenêtre fermée (chemin de sortie habituel sous Windows) : sa disposition est
     // mémorisée. Une fenêtre fermée alors que d'autres restent ne l'est pas (D3).
     if (!quitting && liveWindows().length === 1) saveState()
   })
+  // Renderer planté ou bloqué : il ne répondra pas à la demande de fermeture.
+  win.webContents.on('render-process-gone', () => { entry.forceClose = true })
+  win.on('unresponsive', () => { entry.forceClose = true })
+  win.on('responsive', () => { if (!entry.closePending) entry.forceClose = false })
   win.on('closed', () => {
+    clearTimeout(entry.closeTimer)
     registry.delete(win)
     focusOrder = focusOrder.filter(w => w !== win)
   })
@@ -215,14 +238,43 @@ export function lastFocusedAppWindow(): BrowserWindow | undefined {
 
 export interface WindowStatePatch {
   route?: string
+  /** Onglets non sauvegardés : utilisé par le web (`beforeunload`) ; sur le desktop, la garde de
+   *  fermeture est décidée par le renderer (WindowCloseGuard). */
   dirty?: boolean
 }
 
-/** Remontée du renderer : page de l'onglet actif, onglets non sauvegardés. */
+/** Remontée du renderer : page de l'onglet actif. */
 export function setWindowState(sender: WebContents, patch: WindowStatePatch): void {
   const win = BrowserWindow.fromWebContents(sender)
   const entry = win ? registry.get(win) : undefined
   if (!entry) return
   if (patch.route !== undefined && isValidAppRoute(patch.route)) entry.route = patch.route
-  if (typeof patch.dirty === 'boolean') entry.dirty = patch.dirty
+}
+
+function forceClose(win: BrowserWindow): void {
+  const entry = registry.get(win)
+  if (!entry || win.isDestroyed()) return
+  clearTimeout(entry.closeTimer)
+  entry.forceClose = true
+  win.close()
+}
+
+export type CloseWindowAction = 'ack' | 'close' | 'cancel'
+
+/**
+ * Réponse du renderer à 'app:close-requested' : `ack` (demande reçue, vidage des saisies en cours —
+ * plus de fermeture forcée), `close` (fermer), `cancel` (l'utilisateur garde la fenêtre).
+ */
+export function respondToClose(sender: WebContents, action: CloseWindowAction): void {
+  const win = BrowserWindow.fromWebContents(sender)
+  const entry = win ? registry.get(win) : undefined
+  if (!win || !entry) return
+  if (action === 'ack') {
+    clearTimeout(entry.closeTimer)
+  } else if (action === 'close') {
+    forceClose(win)
+  } else if (action === 'cancel') {
+    clearTimeout(entry.closeTimer)
+    entry.closePending = false
+  }
 }

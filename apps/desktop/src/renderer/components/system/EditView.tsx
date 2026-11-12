@@ -20,6 +20,7 @@ import { LinkEditor } from '../links/LinkEditor'
 import { LinkList } from '../links/LinkList'
 import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
 import { REFLECTION_COLUMNS, ReflectionValue, type ReflectionsData } from './ReflectionCell'
+import { registerEditFlusher } from '../../lib/pendingEdits'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -569,6 +570,15 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // GH342 — fermeture de la fenêtre : détruite sans démontage, l'effet ci-dessus ne tourne pas. Même
+  // envoi, à la demande (pendingEdits), pour un objet existant ; le miroir reste en place.
+  useEffect(() => registerEditFlusher(() => {
+    cancelAutosave()
+    const prev = prevObjectDataRef.current
+    if (prev) flushMirror(prev.id, prev.category, serverSnapshotRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [])
 
   // ── Keyboard: Escape → back ; Ctrl+Enter → blur active field ─────────────
   useEffect(() => {

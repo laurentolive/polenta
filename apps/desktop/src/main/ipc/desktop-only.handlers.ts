@@ -1,7 +1,7 @@
-import { app, ipcMain, dialog, shell, BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { app, ipcMain, dialog, shell, BrowserWindow, type IpcMainInvokeEvent, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { takePendingInvite } from '../host/invite-link'
 import { applyZoom } from '../host/app-zoom'
-import { lastFocusedAppWindow, openWindowFrom, setWindowState, type WindowStatePatch } from '../host/app-windows'
+import { lastFocusedAppWindow, openWindowFrom, respondToClose, setWindowState, type CloseWindowAction, type WindowStatePatch } from '../host/app-windows'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { isAcceptedLinkUrl, isHttpLinkUrl } from '@polenta/types'
@@ -49,6 +49,29 @@ const EXPORT_DIALOG_FILTERS: Record<ExportFormat, { name: string; extensions: st
   pdf: { name: 'PDF', extensions: ['pdf'] },
 }
 
+/** GH342 — fenêtre qui a fait l'appel : parente des dialogues natifs (modaux sur elle, sur son écran). */
+function parentOf(e: unknown): BrowserWindow | null {
+  const win = BrowserWindow.fromWebContents((e as IpcMainInvokeEvent).sender)
+  return win && !win.isDestroyed() ? win : null
+}
+
+function showOpen(e: unknown, options: OpenDialogOptions) {
+  const win = parentOf(e)
+  return win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)
+}
+
+function showSave(e: unknown, options: SaveDialogOptions) {
+  const win = parentOf(e)
+  return win ? dialog.showSaveDialog(win, options) : dialog.showSaveDialog(options)
+}
+
+function showError(e: unknown, title: string, content: string): void {
+  const win = parentOf(e)
+  // `showErrorBox` n'a pas de parent : boîte de message d'erreur modale sur la fenêtre appelante.
+  if (win) void dialog.showMessageBox(win, { type: 'error', title, message: title, detail: content })
+  else dialog.showErrorBox(title, content)
+}
+
 export function registerDesktopOnlyHandlers(c: Container, update: UpdateService, terminal: TerminalService): void {
   // Typé sur `DESKTOP_ONLY_CHANNELS` : un channel ajouté ici sans y figurer ne compile pas, et le
   // serveur web s'appuie sur cette liste (channels.ts).
@@ -87,11 +110,11 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   })
   // GH195 — lien d'un champ `link`. Le schéma est revalidé ici (le renderer n'est pas cru sur
   // parole) ; hors http(s), l'utilisateur confirme. Chemin UNC : `openPath` (application du poste).
-  handle('app:open-link', async (_e, raw: string): Promise<boolean> => {
+  handle('app:open-link', async (e, raw: string): Promise<boolean> => {
     const url = typeof raw === 'string' ? raw.trim() : ''
     if (!isAcceptedLinkUrl(url)) return false
     if (!isHttpLinkUrl(url)) {
-      const win = BrowserWindow.getFocusedWindow()
+      const win = parentOf(e)
       const options = {
         type: 'question' as const,
         buttons: ['Ouvrir', 'Annuler'],
@@ -112,7 +135,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
       }
       return true
     } catch (err) {
-      dialog.showErrorBox('Lien inaccessible', `${url}\n\n${err instanceof Error ? err.message : String(err)}`)
+      showError(e, 'Lien inaccessible', `${url}\n\n${err instanceof Error ? err.message : String(err)}`)
       return false
     }
   })
@@ -123,6 +146,9 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   handle('app:open-window', (e, route: string) => openWindowFrom((e as IpcMainInvokeEvent).sender, route))
   handle('app:window-state', (e, patch: WindowStatePatch) => {
     if (patch && typeof patch === 'object') setWindowState((e as IpcMainInvokeEvent).sender, patch)
+  })
+  handle('app:close-window', (e, action: CloseWindowAction) => {
+    if (action === 'ack' || action === 'close' || action === 'cancel') respondToClose((e as IpcMainInvokeEvent).sender, action)
   })
 
   // ── Update (GH26) ─────────────────────────────────────────────────────────────
@@ -138,14 +164,14 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   // Dialogue d'enregistrement ici (comme `export:save`), contenu construit côté main à partir de
   // la campagne.
   handle('campaigns:execution-sheet-export', async (
-    _e,
+    e,
     repoPath: string,
     campaignId: string,
     locale: ExecutionSheetLocale,
     workspaceDir?: string,
   ): Promise<ExportResult> => {
     const today = new Date().toISOString().slice(0, 10)
-    const saveResult = await dialog.showSaveDialog({
+    const saveResult = await showSave(e, {
       title: 'Exporter le classeur d’exécution',
       defaultPath: `${campaignId}_execution_${today}.xlsx`,
       filters: [EXPORT_DIALOG_FILTERS.xlsx],
@@ -156,12 +182,12 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   // GH36 sprint 2 — import : choix du fichier puis aperçu (aucune écriture) ; l'application relit
   // le fichier et revalide contre l'état courant de la campagne.
   handle('campaigns:execution-sheet-preview', async (
-    _e,
+    e,
     repoPath: string,
     campaignId: string,
     workspaceDir?: string,
   ): Promise<ExecutionImportPreview | { canceled: true }> => {
-    const result = await dialog.showOpenDialog({
+    const result = await showOpen(e, {
       title: 'Importer des résultats d’exécution',
       filters: [EXPORT_DIALOG_FILTERS.xlsx],
       properties: ['openFile'],
@@ -171,16 +197,16 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   })
 
   // ── Dialog ───────────────────────────────────────────────────────────────────
-  handle('dialog:pick-folder', async (_event, title?: string) => {
-    const result = await dialog.showOpenDialog({
+  handle('dialog:pick-folder', async (e, title?: string) => {
+    const result = await showOpen(e, {
       title: title ?? 'Sélectionner un dossier',
       properties: ['openDirectory', 'createDirectory'],
     })
     return result.canceled ? null : result.filePaths[0]
   })
 
-  handle('dialog:pick-image-file', async () => {
-    const result = await dialog.showOpenDialog({
+  handle('dialog:pick-image-file', async (e) => {
+    const result = await showOpen(e, {
       title: 'Insérer une image',
       properties: ['openFile'],
       filters: IMAGE_DIALOG_FILTERS,
@@ -193,8 +219,8 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
     return { mimeType, base64: data }
   })
 
-  handle('dialog:pick-drawio-file', async (_e, repoPath: string) => {
-    const result = await dialog.showOpenDialog({
+  handle('dialog:pick-drawio-file', async (e, repoPath: string) => {
+    const result = await showOpen(e, {
       title: 'Sélectionner un diagramme draw.io',
       properties: ['openFile'],
       filters: [{ name: 'draw.io', extensions: ['drawio'] }],
@@ -209,8 +235,8 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   })
 
   // ── Image (T76) ──────────────────────────────────────────────────────────────
-  handle('image:pick-file', async (_e, repoPath: string) => {
-    const result = await dialog.showOpenDialog({
+  handle('image:pick-file', async (e, repoPath: string) => {
+    const result = await showOpen(e, {
       title: 'Insérer une image',
       properties: ['openFile'],
       filters: IMAGE_DIALOG_FILTERS,
@@ -221,7 +247,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
 
   // ── Export (T43) ─────────────────────────────────────────────────────────────
   handle('export:save', async (
-    _e,
+    e,
     repoPath: string,
     kind: ExportKind,
     format: ExportFormat,
@@ -233,7 +259,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
     const filter = EXPORT_DIALOG_FILTERS[format]
     if (!filter) return { status: 'error' as const, message: `Format d'export inconnu : "${format}"` }
 
-    const saveResult = await dialog.showSaveDialog({
+    const saveResult = await showSave(e, {
       title: 'Exporter',
       defaultPath: suggestedName,
       filters: [filter],

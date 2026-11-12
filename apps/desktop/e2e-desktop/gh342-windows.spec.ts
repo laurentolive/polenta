@@ -79,7 +79,11 @@ test.beforeAll(async () => {
     linkTypes: [],
     nodes: [{
       name: 'root', label: 'Produit', readonly: false,
-      objectTypes: [{ name: 'exigence', label: 'Exigence GH342', prefix: 'SYS', category: 'requirement', fields: [], statuses: [{ name: 'draft', label: 'Brouillon' }] }],
+      objectTypes: [{
+        name: 'exigence', label: 'Exigence GH342', prefix: 'SYS', category: 'requirement',
+        fields: [{ name: 'note', label: 'Note', type: 'text' }],
+        statuses: [{ name: 'draft', label: 'Brouillon' }],
+      }],
     }],
   })
   reqId = (await invoke<{ id: string }>(first, 'requirements:create', repo, { title: 'Exigence fenêtres', objectTypeRef: 'root::exigence', fields: {} }, repo)).id
@@ -140,14 +144,94 @@ test('GH342 D1 — une modification enregistrée dans une fenêtre apparaît dan
   await expect(tabs(w3).first()).toContainText('Exigence modifiée ailleurs', { timeout: 3_000 })
 })
 
+const windowId = (page: Page) => app.browserWindow(page).then(w => w.evaluate(bw => bw.id))
+
+test('GH342 P2 — un dialogue natif est rattaché à la fenêtre qui le demande', async () => {
+  await app.evaluate(({ dialog }) => {
+    const g = globalThis as unknown as { __gh342Parent?: number | null }
+    dialog.showOpenDialog = (async (...args: unknown[]) => {
+      const parent = args.length > 1 ? args[0] as { id: number } : null
+      g.__gh342Parent = parent ? parent.id : null
+      return { canceled: true, filePaths: [] }
+    }) as typeof dialog.showOpenDialog
+  })
+  await invoke(w3, 'dialog:pick-folder')
+  const parent = await app.evaluate(() => (globalThis as unknown as { __gh342Parent?: number | null }).__gh342Parent)
+  expect(parent).toBe(await windowId(w3))
+})
+
+test('GH342 P1 — la sortie d’un terminal n’arrive qu’à sa fenêtre', async () => {
+  test.skip(process.platform !== 'win32', 'Git Bash : Windows seulement')
+  const detected = await invoke<{ status: string }>(w2, 'terminal:detect')
+  test.skip(detected.status !== 'found', 'Git Bash non installé')
+  for (const p of [w2, w3]) {
+    await p.evaluate(() => {
+      const w = window as unknown as { __gh342Data: string; polenta: { on: (c: string, cb: (...a: unknown[]) => void) => void } }
+      w.__gh342Data = ''
+      w.polenta.on('terminal:data', (_id, chunk) => { w.__gh342Data += String(chunk) })
+    })
+  }
+  const session = await invoke<{ id: string }>(w2, 'terminal:start', 'shell', repo, 80, 24)
+  await invoke(w2, 'terminal:write', session.id, 'echo gh342-marqueur\r')
+  await expect.poll(() => w2.evaluate(() => (window as unknown as { __gh342Data: string }).__gh342Data), { timeout: 15_000 }).toContain('gh342-marqueur')
+  expect(await w3.evaluate(() => (window as unknown as { __gh342Data: string }).__gh342Data)).toBe('')
+  await invoke(w2, 'terminal:kill', session.id)
+})
+
+test('GH342 P4 — fermer une fenêtre avec un onglet non sauvegardé demande confirmation', async () => {
+  const w5 = await newWindowAfter(() => invoke(first, 'app:open-window', reqRoute()))
+  const title = w5.locator('main input.input-field[type="text"]:not([readonly])').first()
+  await expect(title).toHaveValue('Exigence modifiée ailleurs')
+  await title.fill('Saisie non enregistrée')
+  const close = () => app.browserWindow(w5).then(w => w.evaluate(bw => bw.close()))
+
+  await close()
+  const guard = w5.getByTestId('window-close-guard')
+  await expect(guard).toBeVisible()
+  await expect(guard).toContainText('Exigence modifiée ailleurs')
+  await guard.getByRole('button', { name: 'Annuler' }).click()
+  await expect(guard).toBeHidden()
+  await w5.waitForTimeout(3_500)   // au-delà du délai d'accusé de réception : pas de fermeture forcée
+  expect(w5.isClosed()).toBe(false)
+
+  await close()
+  await expect(guard).toBeVisible()
+  const gone = w5.waitForEvent('close')
+  await guard.getByRole('button', { name: 'Fermer quand même' }).click()
+  await gone
+  expect(fs.readFileSync(path.join(repo, 'requirements', `${reqId}.yaml`), 'utf8')).not.toContain('Saisie non enregistrée')
+})
+
+test('GH342 P5 — fermer une fenêtre pendant une saisie de la vue Édition l’enregistre', async () => {
+  const editRoute = `/product?projectId=${projectId}&node=root&type=exigence&view=edit&item=${reqId}`
+  const w6 = await newWindowAfter(() => invoke(first, 'app:open-window', editRoute))
+  const note = w6.locator('div.flex.flex-col.gap-1', { has: w6.locator('label', { hasText: /^Note/ }) }).locator('input, textarea').first()
+  await expect(note).toBeVisible({ timeout: 20_000 })
+  await note.click()
+  await w6.keyboard.type('saisie en cours')
+  const gone = w6.waitForEvent('close')
+  await app.browserWindow(w6).then(w => w.evaluate(bw => bw.close()))   // sans quitter le champ
+  await gone
+  await expect.poll(() => fs.readFileSync(path.join(repo, 'requirements', `${reqId}.yaml`), 'utf8')).toContain('saisie en cours')
+})
+
+test('GH342 P7 — fermer le projet dans une fenêtre le laisse ouvert dans l’autre', async () => {
+  const before = w3.url()
+  await w2.locator('button[title="Projet"]').first().click()
+  await w2.getByTitle('Fermer le projet').click()
+  await expect.poll(() => onPath(w2, `/req/${reqId}`)).toBe(false)
+  await w3.waitForTimeout(1_000)
+  expect(w3.url()).toBe(before)
+  await expect(tabs(w3).first()).toContainText('Exigence modifiée ailleurs')
+})
+
 test('GH342 R1/R2/R4 — relance : fenêtres ouvertes à la fermeture, positions, page, maximisation', async () => {
-  // R2 : la fenêtre 3, fermée en cours de session, ne sera pas rouverte.
-  await app.browserWindow(w3).then(w => w.evaluate(bw => bw.close()))
+  // R2 : la fenêtre 2, fermée en cours de session, ne sera pas rouverte.
+  await app.browserWindow(w2).then(w => w.evaluate(bw => bw.close()))
   await waitForWindowCount(2)
-  await app.browserWindow(w2).then(w => w.evaluate(bw => bw.setBounds({ x: 120, y: 90, width: 900, height: 640 })))
+  await app.browserWindow(w3).then(w => w.evaluate(bw => bw.setBounds({ x: 120, y: 90, width: 900, height: 640 })))
   await app.browserWindow(first).then(w => w.evaluate(bw => bw.maximize()))
   await expect.poll(() => bounds(first).then(b => b.maximized)).toBe(true)
-  await w2.waitForTimeout(500)   // route de l'onglet actif remontée au main (débounce 300 ms)
   await quitApp()
 
   const saved = JSON.parse(fs.readFileSync(stateFile(), 'utf8'))

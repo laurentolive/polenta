@@ -7,6 +7,7 @@ import { capabilities } from '../platform'
 import { useMenuEvents } from '../hooks/useMenuEvents'
 import { useLiveFileSync } from '../hooks/useLiveFileSync'
 import { useTabShortcuts } from '../hooks/useTabShortcuts'
+import { useWindowState } from '../hooks/useWindowState'
 import { ThemeProvider } from '../contexts/ThemeContext'
 import { TabsProvider } from '../contexts/TabsContext'
 import { useInviteLinks } from '../hooks/useInviteLinks'
@@ -22,6 +23,7 @@ function AppEffects({ enabled }: { enabled: boolean }) {
 // T101 — owns h-screen; AppLayout's own root div is h-full, sized by the flex-1 wrapper below.
 function AppChrome() {
   useTabShortcuts()
+  useWindowState()
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <TabBar />

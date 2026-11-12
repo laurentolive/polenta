@@ -6,11 +6,17 @@ import { TabListMenu } from './TabListMenu'
 import { ConfirmCloseTabModal } from './ConfirmCloseTabModal'
 import { ConfirmLeavePageModal } from './ConfirmLeavePageModal'
 import { HistoryNavButtons } from './HistoryNavButtons'
+import { NodeContextMenu } from '../../tiptap/NodeContextMenu'
+import { api } from '../../api'
+import { hrefOf } from '../../lib/tabHistory'
 
 export function TabBar() {
   const { t } = useTranslation()
   const { tabs, activeTabId, dirtyTabIds, openTab, attemptCloseTab, activateTab } = useTabs()
   const [showMenu, setShowMenu] = useState(false)
+  // GH342 — menu contextuel d'un onglet (clic droit).
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
+  const menuTab = tabMenu ? tabs.find(tab => tab.id === tabMenu.tabId) : undefined
 
   return (
     <div className="relative flex items-center h-8 shrink-0 bg-surface border-b border-edge">
@@ -35,6 +41,8 @@ export function TabBar() {
               onClick={() => !active && activateTab(tab.id)}
               onMouseDown={e => { if (e.button === 1) e.preventDefault() }}
               onAuxClick={e => { if (e.button === 1) attemptCloseTab(tab.id) }}
+              onContextMenu={e => { e.preventDefault(); setTabMenu({ x: e.clientX, y: e.clientY, tabId: tab.id }) }}
+              data-testid="tab"
               className={[
                 'group flex items-center gap-1.5 h-8 px-3 max-w-[200px] shrink-0 text-xs border-r border-edge transition-colors',
                 active ? 'bg-canvas text-ink' : 'text-ink-3 hover:bg-hover hover:text-ink',
@@ -65,6 +73,18 @@ export function TabBar() {
       </div>
 
       {showMenu && <TabListMenu onClose={() => setShowMenu(false)} />}
+      {tabMenu && menuTab && (
+        <NodeContextMenu
+          x={tabMenu.x}
+          y={tabMenu.y}
+          onClose={() => setTabMenu(null)}
+          items={[
+            { id: 'open-window', label: t('layout.tabBar.openInNewWindow'), onSelect: () => { void api.app.openWindow(hrefOf(menuTab)) } },
+            'separator',
+            { id: 'close', label: t('layout.tabBar.closeTab'), onSelect: () => attemptCloseTab(menuTab.id) },
+          ]}
+        />
+      )}
       <ConfirmCloseTabModal />
       <ConfirmLeavePageModal />
     </div>

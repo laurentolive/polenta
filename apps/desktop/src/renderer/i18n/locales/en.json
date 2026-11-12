@@ -39,6 +39,8 @@
     "tabBar": {
       "newTab": "New tab (Ctrl+T)",
       "allTabs": "All tabs",
+      "openInNewWindow": "Open in new window",
+      "closeTab": "Close tab",
       "back": "Back ({{shortcut}}) — right-click: history",
       "forward": "Forward ({{shortcut}}) — right-click: history"
     },

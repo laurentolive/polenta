@@ -39,6 +39,8 @@
     "tabBar": {
       "newTab": "Nouvel onglet (Ctrl+T)",
       "allTabs": "Tous les onglets",
+      "openInNewWindow": "Ouvrir dans une nouvelle fenêtre",
+      "closeTab": "Fermer l'onglet",
       "back": "Précédent ({{shortcut}}) — clic droit : historique",
       "forward": "Suivant ({{shortcut}}) — clic droit : historique"
     },

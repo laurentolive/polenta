@@ -17,6 +17,12 @@ export interface TabHistory {
 export const HISTORY_LIMIT = 50
 export const HISTORY_MENU_LIMIT = 15
 
+/** GH342 — URL interne d'une page (`pathname?search`) : nouvelle fenêtre, restauration. */
+export function hrefOf(page: Pick<TabHistoryEntry, 'pathname' | 'searchParams'>): string {
+  const qs = new URLSearchParams(page.searchParams).toString()
+  return qs ? `${page.pathname}?${qs}` : page.pathname
+}
+
 export function sameDestination(
   a: Pick<TabHistoryEntry, 'pathname' | 'searchParams'>,
   b: Pick<TabHistoryEntry, 'pathname' | 'searchParams'>,

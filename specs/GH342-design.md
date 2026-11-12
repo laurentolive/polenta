@@ -97,13 +97,14 @@ Nouvelle branche entre `__print` et la navigation forcée vers `/` :
 
 ```ts
 const openTarget = bootParams.get('__open')        // desktop : route d'une nouvelle fenêtre
-if (openTarget && await routeProjectExists(openTarget)) navigate(openTarget, replace)
+if (openTarget && await canOpen(openTarget)) navigate(openTarget, replace)
 else if (isWeb && location.pathname !== '/') navigate(location.pathname + location.search, replace)   // lien direct web (D4)
 else navigate('/', replace)
 ```
 
-- `routeProjectExists` : pas de `projectId` → faux ; sinon `api.workspace.resolve(decodeProjectId)`
-  sans erreur → vrai (projet déplacé ou supprimé → démarrage habituel).
+- `canOpen` : pas de `projectId` → page ouverte telle quelle ; sinon `api.workspace.resolve(decodeProjectId)`
+  sans erreur → vrai (projet déplacé ou supprimé → démarrage habituel). Pas de contrôle de compte
+  (contrairement à l'accueil) : une page à rouvrir vient d'une session déjà ouverte.
 - Le quirk `file://` (T114) ne concerne que le desktop : la branche web garde l'URL d'entrée telle
   quelle, la navigation explicite suffit à forcer le bon premier match.
 - Le `__open` est retiré de l'URL (comme `__print`) : la route ouverte devient la première entrée

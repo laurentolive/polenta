@@ -54,6 +54,8 @@ export function createIpcClient(
       teamProjects: () => invoke('app:team-projects'),
       takePendingInvite: () => invoke('app:take-pending-invite'),
       zoom: (action) => invoke('app:zoom', action),
+      openWindow: (route) => invoke('app:open-window', route),
+      setWindowState: (patch) => invoke('app:window-state', patch),
     },
     update: {
       getState: () => invoke('update:get-state'),

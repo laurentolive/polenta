@@ -1,6 +1,7 @@
 import { app, ipcMain, dialog, shell, BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { takePendingInvite } from '../host/invite-link'
 import { applyZoom } from '../host/app-zoom'
+import { openWindowFrom, setWindowState, type WindowStatePatch } from '../host/app-windows'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { isAcceptedLinkUrl, isHttpLinkUrl } from '@polenta/types'
@@ -112,6 +113,12 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   })
   // GH237 — raccourcis clavier de zoom (Ctrl+molette arrive par `zoom-changed`, host/app-zoom.ts).
   handle('app:zoom', (_e, action: ZoomAction) => applyZoom(action))
+  // GH342 — plusieurs fenêtres sur le même projet : ouverture sur une page, état remonté par
+  // chaque fenêtre (page de l'onglet actif pour la restauration, onglets non sauvegardés).
+  handle('app:open-window', (e, route: string) => openWindowFrom((e as IpcMainInvokeEvent).sender, route))
+  handle('app:window-state', (e, patch: WindowStatePatch) => {
+    if (patch && typeof patch === 'object') setWindowState((e as IpcMainInvokeEvent).sender, patch)
+  })
 
   // ── Update (GH26) ─────────────────────────────────────────────────────────────
   // État poussé aux fenêtres par 'update:state-changed' ; get-state couvre une fenêtre

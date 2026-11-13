@@ -16,6 +16,7 @@ import {
 } from '../../lib/publishWorkspace'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
 import { primeMergeSession } from '../merge/useMergeSession'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 /** Popover anchored under its trigger (T92 — replaces the old full-screen centered `Overlay`).
  *  GH39: also used by `SyncIndicator`, the other header control.
@@ -34,7 +35,7 @@ export function PublishPopover({ children, onClose }: { children: ReactNode; onC
 
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-40" {...backdropDismiss(onClose)} />
       <div
         className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-6 w-96"
         onClick={e => e.stopPropagation()}

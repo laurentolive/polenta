@@ -6,6 +6,7 @@ import type { ComputedColumn, ComputedColumnPanelEntry } from '../../hooks/useCo
 import { getRelevantLinkTypes, isLinkTypeValid, linkColumnKeys, linkColumnLabel, parseLinkColumn } from './linkUtils'
 import { defaultVisibleFields } from '../../lib/exportColumns'
 import { toggleVisibleField } from './fieldToggle'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 // ── FieldConfig modal (⚙) — onglets Tableau / Document indépendants ─────────
 
@@ -148,7 +149,7 @@ export function FieldConfigModal({
   const panel = (
     <div
       className={`fixed inset-0 ${layer === 'modal' ? 'z-[60]' : 'z-50'} flex items-start justify-end pt-12 pr-4`}
-      onClick={onClose}
+      {...backdropDismiss(onClose)}
       data-testid="field-config-panel"
     >
       <div

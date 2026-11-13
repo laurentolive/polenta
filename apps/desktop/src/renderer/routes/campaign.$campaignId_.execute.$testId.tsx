@@ -22,6 +22,7 @@ import { IssueProposalDialog, useHasIssueType } from '../components/issues/Issue
 import { TestedVersionPicker } from '../components/executions/TestedVersionPicker'
 import { isFieldRequiredNow, runFieldReader, selectableVersions } from '@polenta/types'
 import type { SchemaField, TestCase, TestRunResult, StepResultValue, TestedConfigChoice } from '@polenta/types'
+import { backdropDismiss } from '../lib/backdropDismiss'
 
 export const Route = createFileRoute('/campaign/$campaignId_/execute/$testId')({
   component: ExecuteTestPage,
@@ -503,7 +504,7 @@ function ExecuteEntryPage() {
         </div>
       </div>
       {confirmingUnapproved && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={cancelUnapproved}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(cancelUnapproved)}>
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <h2 className="text-sm font-semibold text-ink mb-2">{t('campaignPage.executeNotApprovedConfirmTitle')}</h2>
             <p className="text-xs text-ink-2 mb-5">

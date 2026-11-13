@@ -14,6 +14,7 @@ import { useModalHotkeys } from '../hooks/useModalHotkeys'
 import { ValidationGrid } from '../components/validation/ValidationGrid'
 import { useInvalidateValidations, useValidationPage, validationErrorText, VALIDATION_STATE_BADGE } from '../components/validation/useValidations'
 import { STATE_BADGE, useInvalidateVersions } from '../components/versions/useVersions'
+import { backdropDismiss } from '../lib/backdropDismiss'
 
 /** GH204 §7 — page d'une validation. URL : /validation/<ID>?projectId=…&repoPath=… */
 export const Route = createFileRoute('/validation/$validationId')({
@@ -198,7 +199,7 @@ function ConfirmDialog({ action, problems, versionTitle, signed, onConfirm, onCl
   const blocked = problems.length > 0
   useModalHotkeys(onClose, blocked ? undefined : onConfirm)
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div role="dialog" aria-label={t(`validation.confirmDialog.${action}.title`)} className="bg-surface border border-edge rounded-lg shadow-xl w-[30rem] max-w-[95vw] p-4 flex flex-col gap-3" onClick={e => e.stopPropagation()} data-testid="validation-confirm-dialog">
         <h2 className="text-sm font-semibold text-ink">{t(`validation.confirmDialog.${action}.title`)}</h2>
         {blocked ? (

@@ -10,6 +10,7 @@ import { api } from '../../api'
 import { toIntlLocale } from '../../i18n/useLocale'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { IssueProposalDialog, useHasIssueType } from '../issues/IssueProposalDialog'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface ExecutionImportModalProps {
   repoPath: string
@@ -61,7 +62,7 @@ export function ExecutionImportModal({ repoPath, campaignId, workspaceDir, previ
     new Date(iso).toLocaleString(toIntlLocale(i18n.language), { dateStyle: 'short', timeStyle: 'short' })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => !applyMutation.isPending && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(() => !applyMutation.isPending && onClose())}>
       <div
         className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-4xl w-full mx-4 max-h-[85vh] flex flex-col gap-4"
         onClick={e => e.stopPropagation()}

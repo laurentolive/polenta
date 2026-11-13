@@ -7,6 +7,7 @@ import { useBaselines } from '../../../hooks/useBaselines'
 import { useModalHotkeys } from '../../../hooks/useModalHotkeys'
 import { toIntlLocale } from '../../../i18n/useLocale'
 import type { BaselineRecord } from '@polenta/api-client'
+import { backdropDismiss } from '../../../lib/backdropDismiss'
 
 // ── BaselineItem (collapsible) ────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ function DeleteBaselineModal({
   const { t } = useTranslation()
   useModalHotkeys(onClose, onConfirm, isDeleting)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3 border-b border-edge">
           <h2 className="text-sm font-semibold text-ink">{t('baselinePage.deleteBaselineConfirmTitle', { tag: baseline.tag })}</h2>

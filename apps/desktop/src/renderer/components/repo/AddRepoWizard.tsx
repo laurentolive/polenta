@@ -9,6 +9,7 @@ import {
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { RepoMembersEditor } from './RepoMembersEditor'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 /** Nom accepté par Forgejo et GitHub sans transformation (même règle que `assertRepoName`). */
 const REPO_NAME = /^[A-Za-z0-9._-]{1,100}$/
@@ -98,7 +99,7 @@ export function AddRepoWizard({ mode, accounts, initialName = '', existing, onSu
   if (result) return <ProvisionResult result={result} mode={mode} onContinue={() => onDone(result)} onClose={onCancel} />
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={busy ? undefined : onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(busy ? undefined : onCancel)}>
       <form onSubmit={e => { e.preventDefault(); void submit() }} onClick={e => e.stopPropagation()} aria-label={t('repoWizard.title')}
         className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 space-y-3 max-h-[90vh] overflow-y-auto">
         <h2 className="text-sm font-semibold text-ink">
@@ -230,7 +231,7 @@ export function ProvisionResult({ result, mode, onContinue, onClose }: {
   useModalHotkeys(onClose)
   const steps = useMemo(() => result.steps, [result])
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div onClick={e => e.stopPropagation()} role="dialog" aria-label={incomplete ? t('repoWizard.result.title') : t('repoWizard.result.titleTodo')}
         className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 space-y-3">
         <h2 className="text-sm font-semibold text-ink">{incomplete ? t('repoWizard.result.title') : t('repoWizard.result.titleTodo')}</h2>

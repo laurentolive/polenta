@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   repoLabel: string
@@ -17,7 +18,7 @@ export function RemoveDependencyModal({ repoLabel, isRemoving, error, onConfirm,
   useModalHotkeys(onClose, () => onConfirm(deleteLocalFolder), isRemoving)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3 border-b border-edge">
           <h2 className="text-sm font-semibold text-ink">{t('schema.removeDependency.title', { repoLabel })}</h2>

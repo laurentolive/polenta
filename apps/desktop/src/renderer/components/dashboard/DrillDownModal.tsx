@@ -15,6 +15,7 @@ import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import { runOptions, scriptErrorText } from '../../hooks/useScriptRun'
 import { toLabel } from './widgets/numeric'
 import { ElementLink } from '../element/ElementLink'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   widgetTitle: string
@@ -71,7 +72,7 @@ export function DrillDownModal({ widgetTitle, row, request, repoPath, workspaceD
   // Portail : la carte du widget est `draggable` (réordonnancement) — rendue dedans, la popup
   // déclencherait un glisser de la carte à la moindre sélection de texte.
   return createPortal(
-    <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-30 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-30 p-4" {...backdropDismiss(onClose)}>
       <div
         role="dialog"
         aria-label={t('dashboardPage.drillDown.title')}

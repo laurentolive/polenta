@@ -4,6 +4,7 @@ import type { ClearRevalidationResult } from '@polenta/types'
 import { useFlaggedElements } from '../../hooks/useFlaggedElements'
 import { useClearRevalidation } from '../../hooks/useClearRevalidation'
 import type { RevalidationTreeState } from './ImpactTrees'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 // Levée du flag needsRevalidation (SPEC-TRACEABILITY §4.8) : état live des éléments marqués,
 // sélection multiple, levée et échecs — partagé par l'analyse d'un change, l'analyse locale et la
@@ -71,7 +72,7 @@ export function ClearSelectionButton({ state }: { state: RevalidationTree }) {
         {t('impactAnalysisPage.revalidation.clearSelection', { count: state.selected.size })}
       </button>
       {confirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setConfirm(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(() => setConfirm(false))}>
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <h2 className="text-sm font-semibold text-ink mb-2">{t('impactAnalysisPage.revalidation.confirmTitle')}</h2>
             <p className="text-xs text-ink-2 mb-5">{t('impactAnalysisPage.revalidation.confirmBody', { count: state.selected.size })}</p>

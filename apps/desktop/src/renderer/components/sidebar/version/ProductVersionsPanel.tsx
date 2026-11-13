@@ -12,6 +12,7 @@ import { ComponentTypeCombobox } from '../../system/ComponentTypeCombobox'
 import type { ComponentTypeOption } from '../../../contexts/SystemViewContext'
 import { NewVersionDialog } from '../../versions/NewVersionDialog'
 import { STATE_BADGE, isProductVersionsPath, useInvalidateVersions, useVersionTree, versionErrorText } from '../../versions/useVersions'
+import { backdropDismiss } from '../../../lib/backdropDismiss'
 
 interface FlatNode { node: VersionComponentNode; label: string }
 
@@ -344,7 +345,7 @@ function DeleteVersionDialog({ version, onConfirm, onClose }: { version: Version
   const { t } = useTranslation()
   useModalHotkeys(onClose, onConfirm)
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div role="dialog" aria-label={t('versions.delete.title')} className="bg-surface border border-edge rounded-lg shadow-xl w-[26rem] max-w-[95vw]" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-edge">
           <h2 className="text-sm font-semibold text-ink">{t('versions.delete.title')}</h2>

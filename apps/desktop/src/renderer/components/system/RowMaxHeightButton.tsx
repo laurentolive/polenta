@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 export const ROW_MAX_LINES_MIN = 1
 export const ROW_MAX_LINES_MAX = 20
@@ -56,7 +57,7 @@ export function RowMaxHeightButton({
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setOpen(false))} />
           <div className="absolute right-0 top-full mt-2 z-50 w-56 bg-surface border border-edge rounded-lg shadow-xl p-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-ink-2">{t('system.excelView.rowMaxHeight')}</span>

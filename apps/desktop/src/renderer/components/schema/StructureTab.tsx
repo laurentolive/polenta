@@ -33,6 +33,7 @@ import {
   findSystemNode, flattenSystemNodes, mapSystemNode,
   reorderByKey, reorderSystemNodes, isDescendant, moveSystemNode,
 } from '@polenta/types'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   workspaceDir: string
@@ -903,7 +904,7 @@ function NodeEditModal({ target, onSave, onClose, resolveInterfaceRoles, resolve
   useModalHotkeys(onClose, () => label.trim() && onSave(label, description, roles, implementsList))
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3 border-b border-edge">
           <h2 className="text-sm font-semibold text-ink">{t('schema.structureTab.editNodeTitle')}</h2>

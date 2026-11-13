@@ -4,6 +4,7 @@ import { api } from '../../api'
 import { useOptionalTabs } from '../../contexts/TabsContext'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { flushPendingEdits } from '../../lib/pendingEdits'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 const NO_DIRTY: ReadonlySet<string> = new Set()
 
@@ -60,7 +61,7 @@ export function WindowCloseGuard() {
   const dirtyTitles = tabs.filter(tab => dirtyTabIds.has(tab.id)).map(tab => tab.title)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={cancel} data-testid="window-close-guard">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(cancel)} data-testid="window-close-guard">
       <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
         <h2 className="text-sm font-semibold text-ink mb-2">{t('layout.windowClose.title')}</h2>
         <p className="text-xs text-ink-2 mb-2">{t('layout.windowClose.message')}</p>

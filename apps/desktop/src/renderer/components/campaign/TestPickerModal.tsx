@@ -25,6 +25,7 @@ import {
   withCarryPrecedence,
   type CarryEligibility, type CarryState, type PickedCarry,
 } from '../../lib/carryOver'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 export interface PickerResult {
   testIds: string[]
@@ -319,7 +320,7 @@ export function TestPickerModal({
   // Portail : la modale peut être ouverte depuis un <form> (création de campagne) — rendue dans
   // ce formulaire, `Entrée` dans un de ses champs le soumettrait.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={requestCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(requestCancel)}>
       <div
         className="bg-surface border border-edge rounded-lg shadow-xl w-[95vw] h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
@@ -563,7 +564,7 @@ export function TestPickerModal({
       </div>
 
       {confirmAbandon && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay/40" onClick={e => { e.stopPropagation(); setConfirmAbandon(false) }}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay/40" {...backdropDismiss(() => setConfirmAbandon(false), { stopPropagation: true })}>
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <h2 className="text-sm font-semibold text-ink mb-5">{t('campaignPage.picker.abandonTitle')}</h2>
             <div className="flex justify-end gap-2">

@@ -7,6 +7,7 @@ import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { getObjectTypeRefs, useProjectSchema } from '../../hooks/useProjectSchema'
 import { parseLinkError } from '../system/linkUtils'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 /** Vrai si le composant a un type issue : sinon, rien à proposer. */
 export function useHasIssueType(repoPath: string): boolean {
@@ -110,7 +111,7 @@ export function IssueProposalDialog({ repoPath, workspaceDir, origin, onClose }:
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div role="dialog" aria-label={origin.kind === 'run' ? t('issues.proposal.title') : t('issues.proposal.decisionTitle')} className="bg-surface border border-edge rounded-lg shadow-xl w-[32rem] max-w-[95vw] p-4 flex flex-col gap-3" onClick={e => e.stopPropagation()} data-testid="issue-proposal">
         <div>
           <h2 className="text-sm font-semibold text-ink">{origin.kind === 'run' ? t('issues.proposal.title') : t('issues.proposal.decisionTitle')}</h2>

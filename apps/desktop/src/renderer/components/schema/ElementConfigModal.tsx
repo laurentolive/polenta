@@ -11,6 +11,7 @@ import {
   CancelConfirmModal,
 } from './objectTypeEditor'
 import { TransitionRulesEditor } from './TransitionRulesEditor'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   /** Repo this element belongs to (for display only — saving is handled by the caller). */
@@ -130,7 +131,7 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
   }, [showCancelConfirm, isSaving, handleSave, requestClose, hotkeysSuspended])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={requestClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(requestClose)}>
       <div
         className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-5xl mx-4 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}

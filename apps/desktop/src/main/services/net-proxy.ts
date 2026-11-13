@@ -17,8 +17,11 @@ export async function resolveProxyDispatcher(targetUrl: string): Promise<Dispatc
   const envProxy =
     process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy
   let proxyUrl = envProxy ? normalizeProxyUrl(envProxy) : undefined
+  // GH347 — une cible exclue par NO_PROXY (forge interne, 127.0.0.1…) est contactée en direct.
+  const bypassed = !!proxyUrl && matchesNoProxy(targetUrl, process.env.NO_PROXY ?? process.env.no_proxy)
+  if (bypassed) proxyUrl = undefined
 
-  if (!proxyUrl) {
+  if (!proxyUrl && !bypassed) {
     try {
       const proxyString = await session.defaultSession.resolveProxy(targetUrl)
       proxyUrl = parseChromiumProxyString(proxyString)
@@ -37,6 +40,48 @@ export async function resolveProxyDispatcher(targetUrl: string): Promise<Dispatc
     dispatcherCache.set(key, agent)
   }
   return agent
+}
+
+/**
+ * GH347 — la cible est-elle exclue du proxy par `NO_PROXY` ? Même lecture que curl / git : entrées
+ * séparées par des virgules ou des espaces, insensibles à la casse ; `*` exclut tout ; une entrée
+ * (avec ou sans `.` ou `*.` en tête) exclut l'hôte lui-même et ses sous-domaines ; `hôte:port` ne
+ * vaut que pour ce port ; une adresse IP se compare telle quelle (IPv6 avec ou sans crochets). Les
+ * plages CIDR ne sont pas reconnues.
+ */
+export function matchesNoProxy(targetUrl: string, noProxy: string | undefined): boolean {
+  if (!noProxy?.trim()) return false
+  let host: string
+  let port: string
+  try {
+    const url = new URL(targetUrl)
+    host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+    port = url.port || (url.protocol === 'http:' ? '80' : url.protocol === 'https:' ? '443' : '')
+  } catch {
+    return false
+  }
+  for (const raw of noProxy.split(/[\s,]+/)) {
+    let entry = raw.trim().toLowerCase()
+    if (!entry) continue
+    if (entry === '*') return true
+    let entryPort: string | undefined
+    const bracketed = entry.match(/^\[([^\]]+)\](?::(\d+))?$/)
+    if (bracketed) {
+      entry = bracketed[1]!
+      entryPort = bracketed[2]
+    } else {
+      const withPort = entry.match(/^([^:]+):(\d+)$/)
+      if (withPort) {
+        entry = withPort[1]!
+        entryPort = withPort[2]
+      }
+    }
+    if (entryPort && entryPort !== port) continue
+    entry = entry.replace(/^\*?\./, '')
+    if (!entry) continue
+    if (host === entry || host.endsWith(`.${entry}`)) return true
+  }
+  return false
 }
 
 function normalizeProxyUrl(raw: string): string {

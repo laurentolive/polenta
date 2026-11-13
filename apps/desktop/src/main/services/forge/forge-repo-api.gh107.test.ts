@@ -6,6 +6,7 @@ import {
   InvalidRepoNameError, OwnerCreateForbiddenError, RepoNameTakenError, ScopeMissingError, UnknownAccountError, VisibilityChangeError,
 } from './forge-provider'
 import { startFakeForge, type FakeForge } from './fake-forge.test-util'
+import { ForgeHttpError } from './forge-http'
 
 /**
  * GH107 sprint 1 — providers Forgejo et GitHub : création, réglages, collaborateurs, équipes. Chaque
@@ -144,7 +145,7 @@ describe('GitHub', () => {
     forge.route('GET', `${G}/orgs/silent`, () => ({ status: 200, json: { login: 'silent', members_can_create_repositories: null } }))
     expect(await githubProvider.listOwners!(forge.baseUrl, 'gh', 'octo')).toEqual({
       owners: [
-        { name: 'octo', label: '', kind: 'user', canCreate: true },
+        { name: 'octo', label: '', kind: 'user', canCreate: true, fixedCollaboratorLevel: 'write' },
         { name: 'mine', label: '', kind: 'org', canCreate: true },
         { name: 'open', label: '', kind: 'org', canCreate: true },
         { name: 'silent', label: '', kind: 'org', canCreate: 'unknown' },
@@ -158,7 +159,7 @@ describe('GitHub', () => {
     forge.route('GET', `${G}/user/orgs`, () => ({ status: 200, json: [{ login: 'pub' }] }))
     forge.route('GET', `${G}/orgs/pub`, () => ({ status: 200, json: { login: 'pub' } }))
     expect(await githubProvider.listOwners!(forge.baseUrl, 'gh', 'octo')).toEqual({
-      owners: [{ name: 'octo', label: '', kind: 'user', canCreate: true }, { name: 'pub', label: '', kind: 'org', canCreate: 'unknown' }],
+      owners: [{ name: 'octo', label: '', kind: 'user', canCreate: true, fixedCollaboratorLevel: 'write' }, { name: 'pub', label: '', kind: 'org', canCreate: 'unknown' }],
       scopeMissing: true,
     })
   })
@@ -220,6 +221,33 @@ describe('GitHub', () => {
     forge.route('GET', `${G}/repos/acme/proj/invitations`, () => ({ status: 200, json: [] }))
     forge.route('PUT', `${G}/repos/acme/proj/collaborators/nobody`, () => ({ status: 404, json: { message: 'Not Found' } }))
     await expect(githubProvider.setCollaborator!(forge.baseUrl, 'gh', 'acme', 'proj', 'nobody', 'read')).rejects.toBeInstanceOf(UnknownAccountError)
+  })
+
+  it('GH356 — repo personnel : PUT sans niveau, invitation en attente laissée telle quelle', async () => {
+    forge.route('GET', `${G}/repos/octo/proj`, () => ({ status: 200, json: repo('octo/proj', { owner: { login: 'octo', type: 'User' } }) }))
+    forge.route('GET', `${G}/repos/octo/proj/invitations`, () => ({ status: 200, json: [] }))
+    forge.route('PUT', `${G}/repos/octo/proj/collaborators/seb`, () => ({ status: 201, json: { id: 7 } }))
+    expect(await githubProvider.setCollaborator!(forge.baseUrl, 'gh', 'octo', 'proj', 'seb', 'admin')).toBe('invited')
+    expect(body()).toEqual({})
+    forge.route('GET', `${G}/repos/octo/proj/invitations`, () => ({ status: 200, json: [{ id: 7, invitee: { login: 'seb' }, permissions: 'write' }] }))
+    const before = forge.requests.length
+    expect(await githubProvider.setCollaborator!(forge.baseUrl, 'gh', 'octo', 'proj', 'seb', 'read')).toBe('invited')
+    expect(forge.requests.slice(before).map(r => r.method)).toEqual(['GET', 'GET'])
+    // Organisation : le niveau reste envoyé.
+    forge.route('GET', `${G}/repos/acme/proj`, () => ({ status: 200, json: repo('acme/proj', { owner: { login: 'acme', type: 'Organization' } }) }))
+    forge.route('GET', `${G}/repos/acme/proj/invitations`, () => ({ status: 200, json: [] }))
+    forge.route('PUT', `${G}/repos/acme/proj/collaborators/seb`, () => ({ status: 204, text: '' }))
+    expect(await githubProvider.setCollaborator!(forge.baseUrl, 'gh', 'acme', 'proj', 'seb', 'admin')).toBe('added')
+    expect(body()).toEqual({ permission: 'admin' })
+  })
+
+  it('GH356 — refus 422 : le détail de errors[] accompagne « Validation Failed »', async () => {
+    forge.route('GET', `${G}/repos/acme/proj/invitations`, () => ({ status: 200, json: [] }))
+    forge.route('PUT', `${G}/repos/acme/proj/collaborators/seb`, () => ({ status: 422, json: {
+      message: 'Validation Failed', errors: [{ resource: 'Repository', code: 'custom', message: 'raison détaillée' }, { resource: 'Repository', field: 'permission', code: 'invalid' }],
+    } }))
+    const err = await githubProvider.setCollaborator!(forge.baseUrl, 'gh', 'acme', 'proj', 'seb', 'admin').catch((e: Error) => e)
+    expect((err as ForgeHttpError).forgeMessage).toBe('Validation Failed — raison détaillée ; Repository.permission : invalid')
   })
 
   it('invitations : liste, annulation, 404 à la seconde annulation = succès', async () => {

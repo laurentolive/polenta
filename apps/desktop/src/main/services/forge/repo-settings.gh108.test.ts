@@ -141,6 +141,19 @@ describe('repoSettings', () => {
     })
   })
 
+  it('GH356 — GitHub, repo personnel : niveau des collaborateurs imposé (écriture) ; organisation : libre', async () => {
+    await setup('github')
+    const G = '/api/v3'
+    forge.route('GET', `${G}/user`, () => ({ status: 200, json: { login: 'bob' }, headers: { 'X-OAuth-Scopes': 'repo, read:org' } }))
+    forge.route('GET', `${G}/repos/acme/proj`, () => ({ status: 200, json: details(true, { owner: { login: 'acme', type: 'User' } }) }))
+    forge.route('GET', `${G}/orgs/acme/members`, () => ({ status: 404, json: { message: 'Not Found' } }))
+    forge.route('GET', `${G}/repos/acme/proj/collaborators`, () => ({ status: 200, json: [{ login: 'seb', role_name: 'write' }] }))
+    forge.route('GET', `${G}/repos/acme/proj/invitations`, () => ({ status: 200, json: [] }))
+    expect(await service.repoSettings(repo)).toMatchObject({ available: true, isOrg: false, fixedCollaboratorLevel: 'write' })
+    forge.route('GET', `${G}/repos/acme/proj`, () => ({ status: 200, json: details(true, { owner: { login: 'acme', type: 'Organization' } }) }))
+    expect(await service.repoSettings(repo)).not.toHaveProperty('fixedCollaboratorLevel')
+  })
+
   it('S-11 — lecteur : la forge refuse les listes, aucune erreur, pas d\'appel aux invitations', async () => {
     await setup('forgejo')
     forge.route('GET', '/api/v1/repos/acme/proj', () => ({ status: 200, json: details(false) }))

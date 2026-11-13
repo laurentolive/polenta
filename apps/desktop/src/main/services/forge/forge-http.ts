@@ -56,14 +56,30 @@ export interface ForgeResponse<T> {
   url: string
 }
 
+/**
+ * `message`, suivi du détail de `errors[]` quand la forge en donne (GH356) : sur un 422, GitHub ne met
+ * que « Validation Failed » dans `message`, la raison est dans `errors[]` (`message`, ou `code` du champ).
+ */
 function extractMessage(text: string): string {
   try {
-    const json = JSON.parse(text) as { message?: unknown }
-    if (typeof json.message === 'string') return json.message
+    const json = JSON.parse(text) as { message?: unknown; errors?: unknown }
+    if (typeof json.message === 'string') {
+      const details = Array.isArray(json.errors) ? json.errors.map(errorDetail).filter(d => d && d !== json.message) : []
+      return details.length ? `${json.message} — ${details.join(' ; ')}` : json.message
+    }
   } catch {
     // pas du JSON
   }
   return text.replace(/\s+/g, ' ').trim().slice(0, 200)
+}
+
+function errorDetail(e: unknown): string {
+  if (typeof e === 'string') return e
+  if (!e || typeof e !== 'object') return ''
+  const { message, resource, field, code } = e as Record<string, unknown>
+  if (typeof message === 'string' && message) return message
+  const where = [resource, field].filter(s => typeof s === 'string' && s).join('.')
+  return [where, typeof code === 'string' ? code : ''].filter(Boolean).join(' : ')
 }
 
 const MAX_REDIRECTS = 3

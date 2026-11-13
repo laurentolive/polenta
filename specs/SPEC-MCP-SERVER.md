@@ -65,8 +65,8 @@ CLI prioritaire si les deux mécanismes sont fournis pour un même paramètre.
 ### 2.3 Mode mono-repo (workspace absent)
 
 Sans `--workspace`, `resolveComponentRepoPath()` ne route jamais vers un vrai
-composant **submodule** (nœud avec `url`) — seuls `root` et les composants
-**locaux** (T113/T123, sans `url`, même repo, imbriqués ou non) sont correctement gérés. Avec
+composant **en repo séparé** (nom de montage d'une dépendance de `polenta-repo.yaml`) — seuls `root`
+et les composants **locaux** (T113/T123, même repo, imbriqués ou non) sont correctement gérés. Avec
 `--workspace`, le serveur lit le cache existant
 (`<workspaceDir>/.polenta/tree.cache.yaml`) **sans jamais appeler
 `buildTree()`/`openWorkspace()`** (qui peuvent déclencher un clone réseau implicite) —
@@ -256,8 +256,8 @@ ou modification par un tool porte `source: mcp`.
      implicite, pas une erreur (une entrée sans `objectTypeRef` du tout, ex.
      campagne non typée, saute directement à "valide").
   2. Le nœud propriétaire du type n'est pas `readonly: true` — vérifié même quand le
-     TYPE lui-même est `'unresolvable'` (forme normale d'un nœud submodule non
-     inliné localement — cf. bug corrigé en revue au sprint 2, `T122-sprint2.md`).
+     TYPE lui-même est `'unresolvable'` (forme normale d'un nœud de composant en
+     repo séparé, sans `objectTypes` dans le schéma local — cf. bug corrigé en revue au sprint 2, `T122-sprint2.md`).
   3. Tous les champs `required: true` du type sont présents et non vides.
   4. Tout champ `validator: EARS` respecte l'un des 5 patterns EARS (réutilise
      `maturity.util.ts::isEarsCompliant`, même heuristique que le dashboard de
@@ -365,7 +365,7 @@ par entrée, première règle en échec retenue :
    recherche refaite **une fois** (objet créé par l'app après la construction de l'index).
 4. Compatibilité : **catégorie = dossier de stockage** (`requirements/` → `requirement`,
    `tests/` → `test`, `campaigns/` → `campaign`), pas le schéma — un type de composant
-   submodule `'unresolvable'` dans le schéma produit a donc une catégorie fiable. Une ref
+   en repo séparé `'unresolvable'` dans le schéma produit a donc une catégorie fiable. Une ref
    `nœud::type` est comparée à l'`objectTypeRef` stocké, sinon à la catégorie ; liste vide
    = tout accepté (même règle que `renderer/.../linkUtils.ts::matchesRefs`, dupliquée).
    Valide si l'un des deux sens est compatible ; le sens fourni est **conservé** (pas de
@@ -613,8 +613,8 @@ Deux catégories (cf. §4) :
 ## 7. Limitations connues
 
 - **Mode mono-repo par défaut** (§2.3) : sans `--workspace`, un `objectTypeRef` vers un
-  vrai composant submodule (nœud avec `url`) retombe silencieusement sur le repo
-  produit — pas une erreur, mais pas le comportement attendu pour un vrai submodule.
+  composant en repo séparé (nom de montage) retombe silencieusement sur le repo
+  produit — pas une erreur, mais pas le comportement attendu pour un tel composant.
   Pour `create_links` (GH16), un objet vivant dans un repo composant n'est pas trouvé
   sans `--workspace` → `OBJECT_NOT_FOUND`.
 - **Liens : fenêtre de course inter-process résiduelle** (GH16) — le verrou de
@@ -623,8 +623,8 @@ Deux catégories (cf. §4) :
   perdue. Même niveau de risque que les autres écritures YAML read-modify-write.
 - **`add_object_type.prefix` : scan mono-repo, pas workspace-wide** — le contrôle
   d'unicité (règle 10 CLAUDE.md) ne porte que sur `schema.nodes` du repo COURANT ;
-  les prefixes d'un vrai composant submodule (schéma vivant dans un autre repo, non
-  chargé) ne sont pas visibles. Sur un produit avec de vrais submodules git,
+  les prefixes d'un composant en repo séparé (schéma vivant dans un autre repo, non
+  chargé) ne sont pas visibles. Sur un produit avec des composants en repo séparé,
   `add_object_type` peut donc accepter un prefix qui collisionne avec un composant
   externe non chargé.
 - **`readonly` non vérifié dans `RequirementsService.create`/`TestsService.create`/

@@ -4,7 +4,7 @@ import type { GitService } from './git.service'
 import { findObjectTypeDef } from './schema-lookup.util'
 
 /**
- * Type d'un objet : dans le schéma du repo ouvert, sinon (nœud submodule sans `objectTypes`) dans
+ * Type d'un objet : dans le schéma du repo ouvert, sinon (nœud de composant en repo séparé sans `objectTypes`) dans
  * celui du repo propriétaire, par nom de type. Lu sur disque à chaque écriture : un processus long
  * (serveur MCP) voit le schéma enregistré par l'application. Introuvable : null.
  */

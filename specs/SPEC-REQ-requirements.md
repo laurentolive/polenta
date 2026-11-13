@@ -652,8 +652,8 @@ statuts non approuvés ne déclenchent rien. T171 réutilise le même point d'en
 le sens et le type du lien, dans tous les repos du workspace (même agrégation que la matrice) ;
 le flag est écrit dans le YAML de l'élément, dans son propre repo. Un seul niveau (pas de
 cascade). Non marqués : X lui-même, les éléments en statut terminal (`isTerminal`), ceux d'un
-nœud `readonly` (nœud local du repo ouvert, ou repo composant monté sous un nœud submodule
-`readonly`), les liens orphelins. Le statut, la version et le verrouillage des éléments marqués
+nœud `readonly` (nœud local du repo ouvert, ou repo composant dont le nom de montage est un nœud
+`readonly` du schéma du repo ouvert), les liens orphelins. Le statut, la version et le verrouillage des éléments marqués
 ne changent pas (un élément `approved` peut être marqué).
 
 **Notification** — icône ⚠ à côté du statut (vues Excel, Word, Édition), infobulle « Impact à

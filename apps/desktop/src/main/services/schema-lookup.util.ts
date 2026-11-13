@@ -10,8 +10,8 @@ export type ResolvedObjectType = ObjectTypeDefinition | null | 'unresolvable'
  * - the ObjectTypeDefinition if found locally,
  * - `null` if the node is known locally but doesn't declare that type (i.e. it was
  *   genuinely removed from the schema),
- * - `'unresolvable'` when the ref points at a submodule node whose objectTypes aren't
- *   declared in the local schema.yaml (per CLAUDE.md, a submodule node with no
+ * - `'unresolvable'` when the ref points at a component node (mount name of a separate repo, T69 — not a git submodule) whose objectTypes aren't
+ *   declared in the local schema.yaml (per CLAUDE.md, such a node with no
  *   `objectTypes` delegates to the component's own schema.yaml, which this lookup
  *   has no access to) — callers should treat this as "can't verify" rather than
  *   "invalid", to avoid false-positive purges/rejections on cross-component refs.
@@ -111,7 +111,7 @@ export function findOwningNode(
 
 /**
  * Retrouve le `SystemNode` LOCAL désigné par le préfixe `<nodeName>::` d'un
- * `objectTypeRef` dont le TYPE est `'unresolvable'` (nœud submodule sans
+ * `objectTypeRef` dont le TYPE est `'unresolvable'` (nœud de composant en repo séparé sans
  * `objectTypes` inlinés, ou nœud carrément absent de `schema.nodes`). Contrairement à
  * `findOwningNode`, ne peut pas s'appuyer sur une égalité de référence avec un
  * `ObjectTypeDefinition` déjà résolu (il n'y en a pas) — se contente donc de retrouver
@@ -130,7 +130,7 @@ export function findLocalNodeByRefPrefix(schema: ProjectSchema, objectTypeRef: s
  * T172 — l'`objectTypeRef` appartient-il à un nœud déclaré `readonly: true` dans `schema` ?
  * Même résolution que la validation bulk-import (`bulk-import-validation.util.ts`) : nœud
  * propriétaire du type résolu, sinon nœud local désigné par le préfixe quand le type est
- * `'unresolvable'` (nœud submodule sans `objectTypes` inlinés).
+ * `'unresolvable'` (nœud de composant en repo séparé sans `objectTypes` inlinés).
  */
 export function isRefInReadonlyNode(schema: ProjectSchema, objectTypeRef: string): boolean {
   const resolved = findObjectTypeDef(schema, objectTypeRef)

@@ -34,7 +34,7 @@ export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
   repoPath: string
   /** Racine du workspace multi-repo, si fournie (cf. specs/T122-design.md §2.3 — mode
-   *  mono-repo si absente : les objectTypeRef pointant vers un vrai composant submodule
+   *  mono-repo si absente : les objectTypeRef pointant vers un composant en repo séparé
    *  retombent silencieusement sur `repoPath`). */
   workspaceDir?: string
   git: GitService

@@ -248,7 +248,7 @@ export class RevalidationService {
   }
 
   /**
-   * Repos composants (mode workspace) montés sous un nœud submodule déclaré `readonly: true`
+   * Repos composants (mode workspace) dont le nom de montage est un nœud déclaré `readonly: true`
    * dans le schéma du repo ouvert. Un élément stocké dans un tel repo a un `objectTypeRef`
    * exprimé dans le schéma du composant, pas dans celui du repo ouvert : le readonly se lit
    * donc sur le repo, via le nom de montage (même correspondance nom de nœud ↔ nœud de l'arbre
@@ -295,7 +295,7 @@ export class RevalidationService {
   private isReadonly(p: string, existing: Requirement | TestCase, ctx: MarkContext): boolean {
     if (ctx.readonlyRepoPaths.has(p)) return true
     // Élément du repo ouvert : son `objectTypeRef` se résout dans le schéma ouvert, qui peut
-    // déclarer `readonly` sur le nœud (local ou submodule) propriétaire. Les éléments des
+    // déclarer `readonly` sur le nœud (local ou nom de montage d'un composant) propriétaire. Les éléments des
     // autres repos sont couverts par `readonlyRepoPaths` ci-dessus.
     return p === ctx.openedRepoPath && !!ctx.openedSchema
       && isRefInReadonlyNode(ctx.openedSchema, existing.objectTypeRef)

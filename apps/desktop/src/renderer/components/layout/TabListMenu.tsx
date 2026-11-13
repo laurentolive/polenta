@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTabs } from '../../contexts/TabsContext'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   onClose: () => void
@@ -27,7 +28,7 @@ export function TabListMenu({ onClose }: Props) {
 
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-40" {...backdropDismiss(onClose)} />
       <div
         className="absolute left-0 top-full mt-1 z-50 bg-surface border border-edge rounded-lg shadow-xl w-72 max-h-[70vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}

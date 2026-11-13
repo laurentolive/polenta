@@ -8,6 +8,7 @@ import { DynamicField } from '../DynamicField'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 import type { TestCase } from '@polenta/types'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   repoPath: string
@@ -41,7 +42,7 @@ export function TestCaseEditModal({ repoPath, testId, onClose }: Props) {
     .map(s => ({ action: s.action, expectedResult: s.expectedResult }))
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div
         className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-3xl mx-4 max-h-[85vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}

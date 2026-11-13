@@ -5,6 +5,7 @@ import { Bookmark, Check } from 'lucide-react'
 import type { SavedView, SavedViewRef, SavedViewScope } from '@polenta/types'
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 export interface SavedViewsMenuProps {
   repoPath: string
@@ -124,7 +125,7 @@ export function SavedViewsMenu({ repoPath, username, typeKey, workspaceDir, sett
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setOpen(false))} />
           <div data-testid="saved-views-menu" className="absolute right-0 top-full mt-2 z-50 w-64 max-h-96 overflow-y-auto bg-surface border border-edge rounded-lg shadow-xl py-1">
             {listFailed && <p className="px-3 py-1 text-xs text-status-error" data-testid="saved-views-list-error">{t('system.savedViews.errorList')}</p>}
             {!listFailed && groups.map(({ scope, label }) => (
@@ -254,7 +255,7 @@ function ViewNameDialog({ title, initialName, confirmLabel, withScope, teamAllow
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onCancel)}>
       <form onSubmit={e => void submit(e)} onClick={e => e.stopPropagation()} data-testid="saved-view-dialog"
         className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-md w-full mx-4 space-y-4">
         <h2 className="text-sm font-semibold text-ink">{title}</h2>
@@ -291,7 +292,7 @@ function DeleteViewDialog({ name, onCancel, onConfirm }: { name: string; onCance
   const [error, setError] = useState<string | null>(null)
   useModalHotkeys(onCancel)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onCancel)}>
       <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()} data-testid="saved-view-delete-dialog">
         <h2 className="text-sm font-semibold text-ink mb-2">{t('system.savedViews.deleteTitle')}</h2>
         <p className="text-xs text-ink-2 mb-5">{t('system.savedViews.deleteMessage', { name })}</p>

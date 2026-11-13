@@ -5,6 +5,7 @@ import { isValidIntegrationSuffix, type AdoptRepoRequest, type CreateRepoResult,
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { AddRepoWizard, ProvisionResult } from './AddRepoWizard'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 export interface ExistingRepoTarget {
   accountKey: string
@@ -105,7 +106,7 @@ export function AddExistingRepo({ mode, accounts, repo, onAdopt, onAsIs, onDone,
   const adminNotes = !!found && !found.details.permissions.admin && canPush
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={busy ? undefined : onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(busy ? undefined : onCancel)}>
       <form aria-label={t('repoWizard.existing.title')} onClick={e => e.stopPropagation()}
         onSubmit={e => {
           e.preventDefault()

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { ForgeAccount, ForgeRepo } from '@polenta/types'
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   /** Comptes GitHub et Forgejo connectés (au moins un), compte par défaut en tête. */
@@ -36,7 +37,7 @@ export function RepoPickerModal({ accounts, onPick, onEnterUrl, onCancel }: Prop
   }, [repos, filter])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onCancel)}>
       <div onClick={e => e.stopPropagation()}
         className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 space-y-3 flex flex-col max-h-[80vh]">
         <h2 className="text-sm font-semibold text-ink">{t('home.openFromRepo')}</h2>

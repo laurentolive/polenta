@@ -14,6 +14,7 @@ import {
   treeDeepCopyWithNewIds,
   treeIsAncestorOrSelf,
 } from '../../hooks/useTreeState'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -905,7 +906,7 @@ export function ElementTree({
     >
       {/* Delete confirmation modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setDeleteConfirm(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(() => setDeleteConfirm(null))}>
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <h2 className="text-sm font-semibold text-ink mb-2">{t('system.shared.deleteTitle')}</h2>
             <p className="text-xs text-ink-2 mb-5">

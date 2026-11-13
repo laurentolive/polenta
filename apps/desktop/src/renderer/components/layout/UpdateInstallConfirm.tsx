@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { UpdateInstallPlan } from '@polenta/types'
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 /**
  * GH302 — confirmation de l'installation : annonce tout ce qui va être fermé (onglets non
@@ -42,7 +43,7 @@ export function UpdateInstallConfirm({ version, dirtyTabs, onClose }: {
   ].filter((x): x is string => !!x) : []
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={installing ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(installing ? undefined : onClose)}>
       <div
         role="dialog"
         aria-modal="true"

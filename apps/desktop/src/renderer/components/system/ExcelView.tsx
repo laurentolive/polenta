@@ -34,6 +34,7 @@ import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../l
 import { rowClick, checkboxClick, groupState, toggleGroup, type GroupState } from '../../lib/gridSelection'
 import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
 import { isReflectionColumn, ReflectionValue, reflectionText, type ReflectionsData } from './ReflectionCell'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -2269,7 +2270,7 @@ function ExcelViewInner({
       )}
       {/* Delete confirmation modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setDeleteConfirm(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(() => setDeleteConfirm(null))}>
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <h2 className="text-sm font-semibold text-ink mb-2">{t('system.shared.deleteTitle')}</h2>
             <p className="text-xs text-ink-2 mb-5">

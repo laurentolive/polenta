@@ -15,6 +15,7 @@ import { DynamicField } from '../DynamicField'
 import { flattenVersionTree } from './version/ProductVersionsPanel'
 import { useVersionTree } from '../versions/useVersions'
 import { isValidationPath, useInvalidateValidations, useValidationVersions, validationErrorText, VALIDATION_STATE_BADGE } from '../validation/useValidations'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 const LAST_COMPONENT_KEY = 'polenta:validationComponent:'
 
@@ -137,7 +138,7 @@ function NewValidationDialog({ repoPath, workspaceDir, version, typeDef, onCreat
   }
   useModalHotkeys(onClose)
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div role="dialog" aria-label={t('validation.newTitle')} className="bg-surface border border-edge rounded-lg shadow-xl w-[34rem] max-w-[95vw] max-h-[85vh] overflow-y-auto p-4 flex flex-col gap-3" onClick={e => e.stopPropagation()} data-testid="new-validation-dialog">
         <h2 className="text-sm font-semibold text-ink">{t('validation.newTitle')}</h2>
         <p className="text-xs text-ink-3">{t('validation.newHint', { version: version.title })}</p>

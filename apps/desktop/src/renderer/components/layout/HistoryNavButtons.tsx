@@ -5,6 +5,7 @@ import { useTabs } from '../../contexts/TabsContext'
 import { useHistoryNavigation } from '../../hooks/useHistoryNavigation'
 import { historyMenuEntries, stepHistory } from '../../lib/tabHistory'
 import { IS_MAC } from './sidebarCollapse'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 const LONG_PRESS_MS = 500
 const SHORTCUTS = IS_MAC ? { back: '⌘[', forward: '⌘]' } : { back: 'Alt+←', forward: 'Alt+→' }
@@ -111,7 +112,7 @@ function HistoryMenu({ direction, entries, onSelect, onClose }: HistoryMenuProps
 
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} onContextMenu={e => { e.preventDefault(); onClose() }} />
+      <div className="fixed inset-0 z-40" {...backdropDismiss(onClose)} onContextMenu={e => { e.preventDefault(); onClose() }} />
       <div
         role="menu"
         data-testid={`history-menu-${direction < 0 ? 'back' : 'forward'}`}

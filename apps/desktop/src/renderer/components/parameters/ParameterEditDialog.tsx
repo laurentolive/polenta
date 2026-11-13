@@ -7,6 +7,7 @@ import type { Parameter, ParameterUsage } from '@polenta/types'
 import { PARAM_NAME_RE } from '@polenta/types'
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   /** Repo qui porte la base du paramètre. */
@@ -109,7 +110,7 @@ export function ParameterEditDialog({ repoPath, workspaceDir, projectId, paramet
   useModalHotkeys(pending ? () => setPending(null) : onClose, undefined, busy)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h2 className="text-sm font-semibold text-ink mb-4">
           {isCreate ? t('parameters.dialog.createTitle') : t('parameters.dialog.editTitle', { name: parameter!.name })}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface TextPromptModalProps {
   title: string
@@ -28,7 +29,7 @@ export function TextPromptModal({ title, label, placeholder, confirmLabel, onCon
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onCancel)}>
       <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()}
         className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-md w-full mx-4 space-y-4">
         <h2 className="text-sm font-semibold text-ink">{title}</h2>

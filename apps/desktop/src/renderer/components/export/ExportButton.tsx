@@ -7,6 +7,7 @@ import { capabilities } from '../../platform'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { TEMPLATE_FORMATS_BY_KIND, templateKey } from '../../lib/exportTemplates'
 import type { ExportFormat, ExportKind, ExportResult, TemplateExportFormat } from '@polenta/types'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 const FORMAT_META: Record<ExportFormat, { label: string; icon: typeof Download; extension: string }> = {
   xlsx: { label: 'Excel', icon: FileSpreadsheet, extension: 'xlsx' },
@@ -84,7 +85,7 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setOpen(false))} />
           <div
             className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-2 flex flex-col gap-2"
             onClick={e => e.stopPropagation()}
@@ -124,7 +125,7 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
 
       {error && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setError(null)} />
+          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setError(null))} />
           <div
             className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-72"
             onClick={e => e.stopPropagation()}
@@ -139,7 +140,7 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
 
       {savedPath && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setSavedPath(null)} />
+          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setSavedPath(null))} />
           <div
             className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-96"
             onClick={e => e.stopPropagation()}

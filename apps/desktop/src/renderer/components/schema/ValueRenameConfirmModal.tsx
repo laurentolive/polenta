@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import type { ValueRename, ValueRenamePreview } from '@polenta/types'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   previews: ValueRenamePreview[]
@@ -25,7 +26,7 @@ export function ValueRenameConfirmModal({ previews, fieldLabel, onConfirm, onCan
   useModalHotkeys(onCancel, confirm)
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay/40" onClick={onCancel}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay/40" {...backdropDismiss(onCancel)}>
       <div
         role="dialog"
         aria-label={t('schema.valueRename.title')}

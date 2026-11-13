@@ -6,6 +6,7 @@ import type { ExecutionImportPreview, ExecutionSheetLocale, ExportResult } from 
 import { api } from '../../api'
 import { capabilities } from '../../platform'
 import { ExecutionImportModal } from './ExecutionImportModal'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface ExecutionSheetMenuProps {
   repoPath: string
@@ -71,7 +72,7 @@ export function ExecutionSheetMenu({ repoPath, campaignId, workspaceDir }: Execu
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setOpen(false))} />
           <div
             className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-1 w-64 flex flex-col"
             onClick={e => e.stopPropagation()}
@@ -106,7 +107,7 @@ export function ExecutionSheetMenu({ repoPath, campaignId, workspaceDir }: Execu
 
       {error && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setError(null)} />
+          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setError(null))} />
           <div
             className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-72"
             onClick={e => e.stopPropagation()}
@@ -121,7 +122,7 @@ export function ExecutionSheetMenu({ repoPath, campaignId, workspaceDir }: Execu
 
       {savedPath && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setSavedPath(null)} />
+          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setSavedPath(null))} />
           <div
             className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-96"
             onClick={e => e.stopPropagation()}

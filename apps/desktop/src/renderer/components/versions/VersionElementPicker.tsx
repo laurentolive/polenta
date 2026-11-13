@@ -9,6 +9,7 @@ import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { FilterOptionsToggle } from '../FilterOptionsToggle'
 import { TestPickerGrid } from '../campaign/TestPickerGrid'
 import { NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 /**
  * GH201 §5 — « Ajouter » : n'importe quelle exigence ou n'importe quel test du repo de la version,
@@ -62,7 +63,7 @@ export function VersionElementPicker({ repoPath, workspaceDir, excluded, onAdd, 
   useModalHotkeys(onClose, undefined, columnsOpen)
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div role="dialog" aria-label={t('versions.page.add')} className="bg-surface border border-edge rounded-lg shadow-xl w-[95vw] h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-edge">
           <h2 className="text-sm font-semibold text-ink">{t('versions.page.add')}</h2>

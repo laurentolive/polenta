@@ -10,6 +10,7 @@ import type {
   TransitionRule, TypeRenameDto, TypeRenamePlan, TypeRenameResult, ValueRename,
 } from '@polenta/types'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 // ── Editable state types ──────────────────────────────────────────────────────
 // Shared between routes/schema.tsx (Liens/Interfaces tabs) and the Structure
@@ -492,7 +493,7 @@ export function ConfirmDelete({ onConfirm, className, label, disabled, body }: {
     <>
       <button type="button" onClick={() => setPending(true)} disabled={disabled} className={className ?? 'px-1 text-status-danger hover:opacity-80'}>{label ?? '×'}</button>
       {pending && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setPending(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(() => setPending(false))}>
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <h2 className="text-sm font-semibold text-ink mb-2">{t('schema.editor.deleteElementTitle')}</h2>
             <p className="text-xs text-ink-2 mb-5">{body ?? t('schema.editor.deleteElementBody')}</p>
@@ -519,7 +520,7 @@ export function CancelConfirmModal({ onConfirm, onClose }: { onConfirm: () => vo
   const { t } = useTranslation()
   useModalHotkeys(onClose, onConfirm)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
         <h2 className="text-sm font-semibold text-ink mb-2">{t('schema.editor.cancelChangesTitle')}</h2>
         <p className="text-xs text-ink-2 mb-5">{t('schema.editor.cancelChangesBody')}</p>

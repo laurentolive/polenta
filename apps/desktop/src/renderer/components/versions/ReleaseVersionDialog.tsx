@@ -7,6 +7,7 @@ import { isValidTagName } from '@polenta/types'
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { useInvalidateVersions, versionErrorText } from './useVersions'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 /**
  * GH201 §3 — passage released : tag pré-rempli `<projet>-<label>` (modifiable), contrôles du main
@@ -61,7 +62,7 @@ export function ReleaseVersionDialog({ repoPath, version, workspaceDir, onClose 
   useModalHotkeys(onClose, () => void submit())
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div role="dialog" aria-label={t('versions.release.title')} className="bg-surface border border-edge rounded-lg shadow-xl w-[32rem] max-w-[95vw] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-edge">
           <h2 className="text-sm font-semibold text-ink">{t('versions.release.title')}</h2>

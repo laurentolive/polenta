@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import type { SchemaDeletePlan, SchemaDeleteTarget } from '@polenta/types'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   target: SchemaDeleteTarget
@@ -38,7 +39,7 @@ export function SchemaDeleteConfirmModal({ target, label, plan, repoLabel, isDel
   const linkTypeLabel = (l: SchemaDeletePlan['linkTypes'][number]) => `${l.name} (${repoLabel(l.repoPath)})`
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay/40" onClick={() => { if (!isDeleting) onCancel() }}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay/40" {...backdropDismiss(() => { if (!isDeleting) onCancel() })}>
       <div
         role="dialog"
         aria-label={title}

@@ -10,6 +10,7 @@ import { platform } from '../../platform'
 import { UpdateInstallConfirm } from './UpdateInstallConfirm'
 import { WebReleaseUpdate, WebUpdateProgress } from './WebReleaseUpdate'
 import { updateView, type UpdateView } from './updateView'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 function BadgeIcon({ view }: { view: UpdateView }) {
   switch (view.kind) {
@@ -84,7 +85,7 @@ export function UpdateBadge() {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={close} />
+          <div className="fixed inset-0 z-40" {...backdropDismiss(close)} />
           <div
             role="dialog"
             aria-label={title}

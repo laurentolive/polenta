@@ -6,6 +6,7 @@ import { useProjectSchema, getReqTypeDef } from '../../hooks/useProjectSchema'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { DynamicField } from '../DynamicField'
 import type { Requirement } from '@polenta/types'
+import { backdropDismiss } from '../../lib/backdropDismiss'
 
 interface Props {
   repoPath: string
@@ -45,7 +46,7 @@ export function RequirementEditModal({ repoPath, reqId, onClose }: Props) {
   const fields = (req?.fields ?? {}) as Record<string, unknown>
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
       <div
         className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}

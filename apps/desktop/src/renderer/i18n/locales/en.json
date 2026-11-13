@@ -775,11 +775,9 @@
       "objectsUnknown": "Number of affected objects unavailable"
     },
     "integrationIndicator": {
-      "label": "Integration: <mono>{{branch}}</mono>",
       "designate": "Designate {{branch}} as integration",
       "incoherentHint": "{{branch}} is not the designated integration branch (the file says {{configured}}).",
-      "detachedHint": "Pinned on commit {{commit}}, on no branch.",
-      "otherHint": "The current branch {{branch}} is not the integration branch."
+      "detachedHint": "Pinned on commit {{commit}}, on no branch."
     }
   },
   "system": {

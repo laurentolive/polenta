@@ -25,9 +25,15 @@ describe('isTerminalToggleShortcut', () => {
 })
 
 describe('isVersionRoute', () => {
-  it('les 4 routes Version seulement', () => {
+  it('les routes du panneau Version seulement', () => {
     for (const r of ['/graph', '/diff', '/version-diff', '/baseline']) expect(isVersionRoute(r)).toBe(true)
-    for (const r of ['/requirements', '/graph-x', '/', '/versioning']) expect(isVersionRoute(r)).toBe(false)
+    for (const r of ['/requirements', '/graph-x', '/', '/versioning', '/versionsx']) expect(isVersionRoute(r)).toBe(false)
+  })
+
+  it('GH345 — Version produit (accueil par défaut du panneau, backlog, page de version) et vues GH243', () => {
+    for (const r of ['/versions', '/versions/backlog', '/version/PRV-0001', '/local-impact', '/revalidation']) {
+      expect(isVersionRoute(r)).toBe(true)
+    }
   })
 })
 

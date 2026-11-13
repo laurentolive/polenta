@@ -3,11 +3,15 @@
  * l'interface après une commande. Logique pure (pas de DOM réel) pour être testée par vitest.
  */
 
-/** Routes du panneau Version (même liste que `deducePanel` ; `/versioning` redirige vers `/graph`). */
-const VERSION_ROUTES = new Set(['/graph', '/diff', '/version-diff', '/baseline'])
+/** Routes du panneau Version (même liste que `deducePanel` ; `/versioning` redirige vers `/graph`).
+ *  GH345 — dont le sous-panneau « Version produit » (GH201), ouvert par défaut depuis GH289, et les
+ *  vues rattachées au panneau par GH243 : le bouton « Terminal » de l'en-tête y est affiché. */
+const VERSION_ROUTES = new Set(['/graph', '/diff', '/version-diff', '/baseline', '/local-impact', '/revalidation'])
 
 export function isVersionRoute(pathname: string): boolean {
   return VERSION_ROUTES.has(pathname)
+    // Même règle que `isProductVersionsPath` (useVersions.ts), recopiée : ce module reste sans React.
+    || pathname === '/versions' || pathname.startsWith('/versions/') || pathname.startsWith('/version/')
 }
 
 /** Ctrl+ù (AZERTY) ou Ctrl+` (QWERTY) — la même touche physique que le terminal de VS Code.

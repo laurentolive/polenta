@@ -124,4 +124,12 @@ test('C-13 — composant depuis Structure : repo créé, URL et pin int-x dans p
   await expect.poll(() => {
     try { return fs.readFileSync(path.join(project.localPath, 'polenta-repo.yaml'), 'utf-8') } catch { return '' }
   }, { timeout: 30_000 }).toMatch(new RegExp(`url: ${E2E.gitBaseUrl.replace(/[.:/]/g, '\\$&')}/${E2E_ORG}/${comp}\\.git[\\s\\S]*pin: int-${comp}|pin: int-${comp}[\\s\\S]*${comp}\\.git`))
+
+  // GH355 — « Label affiché » laissé vide (placeholder = nom) : le composant prend son nom, pas le
+  // « Produit » du schéma par défaut d'un repo neuf.
+  const compSchemaPath = path.join(path.dirname(project.localPath), comp, '.polenta', 'schema.yaml')
+  await expect.poll(() => {
+    try { return fs.readFileSync(compSchemaPath, 'utf-8') } catch { return '' }
+  }, { timeout: 30_000 }).toMatch(new RegExp(`\\blabel: ${comp}\\b`))
+  expect(fs.readFileSync(compSchemaPath, 'utf-8')).not.toMatch(/label: Produit/)
 })

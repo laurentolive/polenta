@@ -1624,10 +1624,16 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         // T177 — label/description saisis à l'ajout, écrits sur le node `root` du schéma propre
         // de la dépendance (comme en édition). Seulement s'ils sont renseignés : un repo existant
         // qui a déjà son propre label ne doit pas le perdre parce que le champ a été laissé vide.
-        const label = values.label.trim()
+        const typedLabel = values.label.trim()
         const description = values.description.trim()
-        const newRepoPath = result.tree.nodes.find(n => n.name === values.name)?.repoPath
-        if (newRepoPath && (categories.length > 0 || label || description)) {
+        const newTreeNode = result.tree.nodes.find(n => n.name === values.name)
+        const newRepoPath = newTreeNode?.repoPath
+        if (newRepoPath && (categories.length > 0 || typedLabel || description)) {
+          // GH355 — label laissé vide sur un repo sans label propre (repo neuf, sans schema.yaml :
+          // l'arbre n'en a lu aucun) : on écrit le nom du composant, que le champ montrait en
+          // placeholder. Sans ça, le schéma par défaut renvoyé par schema.get (root « Produit »)
+          // était enregistré tel quel par l'amorçage des types.
+          const label = typedLabel || (newTreeNode?.label ? '' : values.name)
           try {
             let nextSchema = await api.schema.get(newRepoPath)
             // Only seed an empty/fresh component's own schema — never override an existing

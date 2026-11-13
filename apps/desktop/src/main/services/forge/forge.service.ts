@@ -183,6 +183,8 @@ export class ForgeService {
           invitations, orgTeams, orgMembers: orgMembers ?? [], isOrg, scopeMissing, membersRestricted: restricted,
           teamsUrl: provider.kind === 'github' ? `${baseUrl}/orgs/${owner}/teams` : `${baseUrl}/org/${owner}/teams`,
           teamLevelEditable: provider.kind === 'github',
+          // GH356 — repo personnel GitHub : écriture pour tout collaborateur, pas de choix de niveau.
+          ...(provider.kind === 'github' && details.ownerKind === 'user' ? { fixedCollaboratorLevel: 'write' as const } : {}),
         }
       } catch (err) {
         if (isNetworkUnreachable(err)) return { available: false, reason: 'offline' }

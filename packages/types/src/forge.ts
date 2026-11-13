@@ -142,6 +142,8 @@ export interface ForgeOwner {
    * est proposée et un refus est expliqué (critère 7 amendé de GH103 §2.4).
    */
   canCreate: true | 'unknown'
+  /** GH356 — niveau unique d'un collaborateur (repo personnel GitHub : écriture), pas de choix proposé. */
+  fixedCollaboratorLevel?: RepoAccessLevel
 }
 
 export interface ForgeOwners {
@@ -166,6 +168,8 @@ export interface ForgeRepoDetails {
   visibility: RepoVisibility
   defaultBranch: string
   permissions: { pull: boolean; push: boolean; admin: boolean }
+  /** GH356 — propriétaire : compte (repo personnel) ou organisation, quand la forge le dit (GitHub). */
+  ownerKind?: 'user' | 'org'
 }
 
 export interface ForgeCollaborator {
@@ -254,6 +258,8 @@ export type RepoSettings =
     teamsUrl: string
     /** Forgejo : le niveau d'une équipe se règle sur l'équipe, pas par repo. */
     teamLevelEditable: boolean
+    /** GH356 — repo personnel GitHub : tout collaborateur a l'écriture, le niveau ne se choisit pas. */
+    fixedCollaboratorLevel?: RepoAccessLevel
   }
 
 /** GH108 — forme du `README.md` de l'intégration, avant de proposer de le mettre à jour. */

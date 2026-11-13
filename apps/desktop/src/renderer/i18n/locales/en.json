@@ -2831,6 +2831,7 @@
       "addTeam": "Add team",
       "remove": "Remove {{name}}",
       "levelOf": "Level of {{name}}",
+      "fixedLevel": "Write access for every member: the only level on a personal GitHub repository.",
       "level": {
         "label": "Level",
         "read": "Read",

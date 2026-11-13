@@ -2831,6 +2831,7 @@
       "addTeam": "Ajouter l'équipe",
       "remove": "Retirer {{name}}",
       "levelOf": "Niveau de {{name}}",
+      "fixedLevel": "Écriture pour tout membre : seul niveau possible sur un repo personnel GitHub.",
       "level": {
         "label": "Niveau",
         "read": "Lecture",

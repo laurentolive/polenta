@@ -12,7 +12,8 @@ export interface ProjectInfo {
 }
 
 export interface SessionOptions {
-  /** Projet à cloner depuis la forge locale et à ouvrir avant les tests (défaut : la démo). `null` : aucun. */
+  /** Projet à cloner depuis la forge locale et à ouvrir avant les tests (défaut : la démo). `null` :
+   *  aucun, et `/` mène à l'accueil (dernier projet ouvert oublié, GH328). */
   project?: { repo: string; name?: string } | null
   /** Contrôle « aucune erreur console » après chaque test (défaut : true). */
   checkConsole?: boolean
@@ -54,6 +55,9 @@ export function setupSession(options: SessionOptions = {}) {
     await page.goto('/auth/login')
     await page.waitForLoadState('networkidle')
     if (projectSpec) project = await cloneAndOpen(page, projectSpec.repo, projectSpec.name ?? projectSpec.repo)
+    // GH328 — sans projet : `/` rouvrirait le dernier projet ouvert par la spec précédente (mémorisé
+    // côté serveur pour l'utilisateur e2e) au lieu de l'accueil.
+    else await invoke(page, 'workspace:clear-last-opened')
   })
 
   test.afterEach(async () => {

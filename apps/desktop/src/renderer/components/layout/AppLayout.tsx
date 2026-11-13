@@ -261,7 +261,7 @@ export function AppLayout() {
         // entry always did): with three tabs now sharing this reset, clearing repo on every click
         // sends SystemViewContext down its `!urlRepo` branch each time — which waits on every
         // workspace repo's schema (`allSchemasLoaded`) before it can even pick a default node/type.
-        // Cheap for a mono-repo project, but on a workspace with several submodule dependencies
+        // Cheap for a mono-repo project, but on a workspace with several component repos (polenta-repo.yaml dependencies)
         // that's real git/disk I/O on the main process, repeated on every tab switch — the
         // multi-second freeze reported after this change. Only node/type are tab-specific and need
         // clearing; the selected component stays valid across Exigences/Tests/Campagnes.

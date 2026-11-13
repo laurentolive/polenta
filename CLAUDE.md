@@ -27,17 +27,33 @@ Ce projet gère les spécifications d'un produit électroménager sur batterie
 
 ## Structure du projet
 
-Un projet Polenta peut être un **repo produit autonome** ou un **repo produit avec composants réutilisables** (git submodules). Dans tous les cas, le repo produit est la source de vérité de l'arbre de traçabilité complet.
+Un projet Polenta peut être un **repo produit autonome** ou un **repo produit avec composants réutilisables**,
+chacun dans son propre repo git. Dans tous les cas, le repo produit est la source de vérité de l'arbre de traçabilité complet.
+
+**Les composants ne sont pas des submodules git** (abandonnés en T69, #333) : Polenta clone lui-même chaque
+repo **à plat**, côte à côte, dans le dossier du workspace. Chaque repo déclare ses dépendances directes
+(`name`, `url`, `pin` = branche, tag ou commit, `localParent` facultatif) dans `polenta-repo.yaml` à sa racine ;
+Polenta reconstruit l'arbre complet en parcourant ces fichiers. Pas de `.gitmodules`, pas de dossier
+`components/`, et pas de git CLI requis chez le client.
+
+### Workspace (dossier choisi à la création, hors de tout repo)
+
+```
+workspace/
+├── .polenta/                        ← marqueur du workspace, NON versionné
+│   ├── workspace.yaml               ← repo racine (rootRepo), noms de montage en cas de conflit
+│   └── tree.cache.yaml              ← arbre calculé, régénéré à l'ouverture
+├── product-aspirateur-v1/           ← repo produit (racine)
+├── comp-motor-control/              ← cloné par Polenta (dépendance du produit)
+├── comp-bms/
+└── iface-can-bus/                   ← interface (dépendance de comp-motor-control)
+```
 
 ### Repo produit (avec composants)
 
 ```
 product-aspirateur-v1/               ← repo produit principal
-├── .gitmodules                      ← déclare les submodules composants (GÉNÉRÉ)
-├── components/
-│   ├── motor-control/               ← submodule (repo composant autonome)
-│   ├── bms/                         ← submodule
-│   └── filtration/                  ← submodule
+├── polenta-repo.yaml                ← dépendances directes : name, url, pin (branche/tag/commit), localParent
 ├── requirements/
 │   └── SYS/                         ← exigences système propres au produit
 ├── tests/
@@ -48,8 +64,7 @@ product-aspirateur-v1/               ← repo produit principal
 │   ├── check.py                     ← lint des exigences/tests
 │   └── export.py                    ← export PDF/HTML
 └── .polenta/
-    ├── workspace.yaml                ← marque le dossier comme projet Polenta ouvrable
-    ├── schema.yaml                   ← modèle de données du projet (nodes + objectTypes + linkTypes)
+    ├── schema.yaml                   ← modèle de données du repo (nodes + objectTypes + linkTypes)
     ├── tombstones/                   ← un fichier vide par ID supprimé physiquement (GH20), jamais supprimé
     ├── views/<nœud>/<type>.yaml      ← vues enregistrées d'équipe du ⚙️ (GH203), maintenu par l'app — ne pas éditer à la main
     └── trees/
@@ -62,6 +77,7 @@ product-aspirateur-v1/               ← repo produit principal
 
 ```
 comp-motor-control/
+├── polenta-repo.yaml                ← seulement s'il a lui-même des dépendances (ex. une interface)
 ├── .polenta/
 │   └── schema.yaml                  ← schéma propre au composant (autonome)
 ├── requirements/
@@ -121,10 +137,10 @@ specs/
 version: 1
 
 preferences:
-  autoPropagatePin: false   # si true, le pin (branche/tag/commit) est propagé automatiquement dans le manifeste du repo parent dès qu'un sous-repo (submodule) reçoit un commit ; si false, la propagation attend une approbation manuelle de l'intégrateur
+  autoPropagatePin: false   # si true, le pin (branche/tag/commit) d'une dépendance est mis à jour automatiquement dans le polenta-repo.yaml du repo parent dès que le repo du composant reçoit un commit ; si false, la mise à jour attend une approbation manuelle de l'intégrateur
 
 nodes:
-  - name: root               # nœud local (pas de url) = composant propre au repo produit
+  - name: root               # le repo lui-même
     label: Produit
     readonly: false
     objectTypes:
@@ -157,11 +173,18 @@ nodes:
             isTerminal: true   # masqué des listes par défaut
         # trackStatusHistory: false   # GH77 — statut historisé par défaut (history.status) ; écrit seulement pour le désactiver
 
-  - name: motor-control      # nœud submodule (url présente) = repo git externe
+    children:                # composants locaux (T123), dans ce même repo, profondeur non limitée
+      - name: firmware-moteur
+        label: Firmware moteur
+        readonly: false
+        objectTypes: []      # ses propres types (objectTypeRef firmware-moteur::<type>)
+
+  # Composant en repo séparé : déclaré dans polenta-repo.yaml (url, pin), avec son propre
+  # .polenta/schema.yaml. Un nœud n'a jamais d'`url` ni de `branch`. Facultatif : un nœud portant
+  # le NOM DE MONTAGE de la dépendance règle son accès depuis ce repo.
+  - name: comp-motor-control # = name de la dépendance dans polenta-repo.yaml
     label: Contrôle moteur
-    url: git@github.com:org/motor-control.git
-    branch: main
-    readonly: true
+    readonly: true           # composant en lecture seule depuis le produit
     # objectTypes absent → le schéma du composant fait foi
 
 linkTypes:
@@ -187,7 +210,7 @@ volontairement (l'utilisateur crée le lien depuis l'éditeur du test ou celui d
 l'exigence, selon ce qui lui semble naturel, et n'a pas à connaître cette contrainte
 technique). Aucune convention de sens à respecter, donc, pour ce type de lien.
 
-**Préférences projet** (`preferences: {}`) : options globales au niveau du projet, indépendantes des `nodes`/`objectTypes`/`linkTypes`. Portent sur le comportement de l'outil plutôt que sur le modèle de données métier. Ex. `autoPropagatePin` — case à cocher qui contrôle si la mise à jour du `pin` d'un sous-repo (submodule) dans le manifeste du repo parent, suite à un commit reçu sur ce sous-repo, se fait automatiquement ou attend une approbation manuelle de l'intégrateur.
+**Préférences projet** (`preferences: {}`) : options globales au niveau du projet, indépendantes des `nodes`/`objectTypes`/`linkTypes`. Portent sur le comportement de l'outil plutôt que sur le modèle de données métier. Ex. `autoPropagatePin` — case à cocher qui contrôle si la mise à jour du `pin` d'une dépendance dans le `polenta-repo.yaml` du repo parent, suite à un commit reçu sur le repo du composant, se fait automatiquement ou attend une approbation manuelle de l'intégrateur.
 
 ---
 
@@ -290,8 +313,12 @@ THEN THE <système> SHALL <action>
 4. Le champ `objectTypeRef` référence un type existant dans `schema.yaml`
 5. Les exigences à caractère sécurité ont `priority: high` dans leurs champs
 6. Pas d'élément `needsRevalidation: true` laissé sans analyse d'impact (le flag est porté par les exigences/tests, plus par les liens — T172)
-7. **Dans un repo composant** : `schema.yaml` ne déclare pas de `url` sur ses propres nœuds — un composant est autonome
-8. **Dans un repo produit** : les `objectTypeRef` cross-composant utilisent le nom du nœud submodule (ex: `motor-control::exigence-fw`)
+7. Un repo de composant est autonome : son `schema.yaml` décrit ses propres types, et il ne connaît que ses
+   dépendances directes (`polenta-repo.yaml`), jamais ses parents
+8. `objectTypeRef` = `<nœud>::<type>`, où le nœud est un nœud du schéma du repo (`root`, composant local :
+   `firmware-moteur::exigence-fw-moteur`) ou, en mode workspace, le **nom de montage** d'un composant en repo
+   séparé (`name` de sa dépendance dans `polenta-repo.yaml`) — l'objet est alors rangé dans le repo de ce
+   composant et son type lu dans le schéma du composant (`SchemaService.resolveComponentRepoPath`)
 9. `.polenta/trees/<nœud>/<type>.yaml` est maintenu par l'application — ne jamais l'éditer à la main en dehors d'un projet d'exemple/fixture.
    Il ne contient que le rangement curaté (GH180) : un objet absent est affiché « non classé » en fin de liste, et un élément
    ne porte pas de `name` (le libellé est le `title` de l'objet) — créer un objet n'écrit pas ce fichier
@@ -376,9 +403,9 @@ Ne pas définir la variable d'environnement `CLAUDE_CODE_SUBAGENT_MODEL` : elle 
 - Ne pas supprimer une pierre tombale `.polenta/tombstones/<ID>`, ni supprimer à la main le fichier d'un objet (passer par l'application, qui pose la pierre tombale)
 - Ne pas éditer `.polenta/trees/<nœud>/<type>.yaml` manuellement dans un vrai projet — c'est l'application qui le maintient au fil des actions dans l'UI, pas un script
 - Ne pas éditer `.polenta/views/<nœud>/<type>.yaml` à la main (GH203) : même règle ; un fichier invalide bloque toutes les vues d'équipe du type
-- **Ne pas éditer `.gitmodules` manuellement** — il est généré par Polenta depuis `schema.nodes` (nœuds avec `url`) via `schema:save`
-- **Ne pas ajouter de `url` dans `schema.yaml` d'un repo composant** — un composant ne se référence pas lui-même comme submodule
-- **Ne pas utiliser de `objectTypeRef` cross-composant dans un repo composant** — uniquement dans le repo produit
+- **Ne pas traiter les composants comme des submodules git** (#333) : pas de `.gitmodules`, pas de `git submodule`,
+  pas de `url` dans un nœud de `schema.yaml` ; un composant en repo séparé se déclare dans `polenta-repo.yaml`
+  (par l'application : ajout de repo, pin) et Polenta le clone à plat dans le workspace
 
 ---
 

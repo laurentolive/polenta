@@ -47,7 +47,7 @@ export interface ParamRef {
   raw: string
   /** `req` : champ de l'exigence liée (T179, `name` = le champ) ; `param` : base de paramètres. */
   kind: 'param' | 'req'
-  /** Nœud submodule visé (forme `{<nœud>::nom}`), absent pour une référence locale. */
+  /** Composant visé — nom de montage d'une dépendance de `polenta-repo.yaml` (forme `{<nœud>::nom}`), absent pour une référence locale. */
   node?: string
   name: string
   /** Clé de la référence : `nom` ou `<nœud>::nom`. */

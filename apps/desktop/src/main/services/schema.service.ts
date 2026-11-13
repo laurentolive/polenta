@@ -404,7 +404,7 @@ export class SchemaService {
    * fourni) doit être unique sur l'ensemble du projet, tous nœuds confondus — règle
    * 10 de CLAUDE.md. Limite connue (cf. `specs/T122-sprint3.md`) : ce scan ne porte
    * que sur `schema.nodes` DU REPO COURANT — les prefixes utilisés par un vrai
-   * composant submodule (nœud avec `url`, dont le `schema.yaml` vit dans un autre
+   * composant en repo séparé (nom de montage, dont le `schema.yaml` vit dans un autre
    * repo, non chargé ici) ne sont pas visibles, exactement comme le reste du serveur
    * MCP de ce ticket (mode mono-repo par défaut, cf. specs/T122-design.md §2.3).
    */

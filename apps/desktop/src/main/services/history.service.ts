@@ -107,7 +107,7 @@ export class HistoryService {
   }
 
   /**
-   * Type de l'objet : dans le schéma du repo ouvert, sinon (nœud submodule sans `objectTypes`) dans
+   * Type de l'objet : dans le schéma du repo ouvert, sinon (nœud de composant en repo séparé sans `objectTypes`) dans
    * celui du repo propriétaire, par nom de type. Lu sur disque à chaque écriture, comme
    * `readTypeDef` des services : un processus long (serveur MCP) voit le schéma enregistré par
    * l'application. Introuvable : null, seul le statut est alors suivi.

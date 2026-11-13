@@ -24,7 +24,7 @@ export interface RepoParameters {
   repoName: string
   /** Libellé d'affichage (nœud `root` du schéma du repo), si configuré. */
   label?: string
-  /** Repo monté sous un nœud submodule `readonly: true` du repo ouvert. */
+  /** Repo de composant dont le nom de montage est un nœud `readonly: true` du repo ouvert. */
   readonly: boolean
   parameters: Parameter[]
   /** Nombre d'éléments (exigences + tests, tous repos) qui référencent chaque paramètre. */

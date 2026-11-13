@@ -24,7 +24,7 @@ function DiffPage() {
   const { projectId, repoPath: searchRepoPath, filepath, commitSha, element, baseSha, toSha } = Route.useSearch()
   const navigate = useNavigate()
 
-  // `repoPath` identifies which repo the file lives in (root or a submodule component) — passed
+  // `repoPath` identifies which repo the file lives in (root or a component repo of the workspace) — passed
   // by the caller (sidebar/graph) since that's the only place that knows it. Falls back to the
   // root workspace path for older links that don't carry it (e.g. a stale bookmark/history entry).
   const { data: project } = useQuery({

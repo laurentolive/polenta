@@ -12,8 +12,8 @@ export type MergeSide = 'left' | 'right'
  *  n'écrit pas, `keys`). */
 /**
  * GH222 — fichiers que la vue de diff ne modifie pas : ceux que l'app maintient elle-même
- * (`.git/`, schéma — `.gitmodules` en est dérivé —, arbres d'affichage, pierres tombales,
- * `.gitmodules`), à modifier par leurs écrans.
+ * (`.git/`, schéma, arbres d'affichage, vues, pierres tombales), à modifier par leurs écrans.
+ * `.gitmodules` reste exclu par prudence : Polenta n'en crée pas (composants ≠ submodules, #333).
  */
 export function isAppMaintainedFile(filepath: string): boolean {
   const p = filepath.replace(/\\/g, '/').replace(/^\.\//, '')

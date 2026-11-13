@@ -13,7 +13,7 @@ Trois concepts couverts par cette spec :
 |---------|-------------|-------|
 | **Branche** | `git branch` | Travail parallèle dans un même projet (feature, variante, review) |
 | **Fork** | `git clone` / fork | Nouveau projet dérivé (variante produit, reconception) |
-| **Composant** | `git submodule` | Bloc de spécifications réutilisable entre plusieurs produits |
+| **Composant** | repo séparé déclaré dans `polenta-repo.yaml` (pas un `git submodule`, T69) | Bloc de spécifications réutilisable entre plusieurs produits |
 | **Baseline** | `git tag` | Snapshot immuable à un jalon (release, audit, certification) |
 
 ---
@@ -508,15 +508,17 @@ L'utilisateur valide → les changements sont commités sur le projet cible.
 
 ### 4.1 Principe
 
-Un **composant** est un projet Polenta autonome dont les exigences (et tests) peuvent être **inclus par référence** dans d'autres projets. Analogue aux submodules git.
+Un **composant** est un projet Polenta autonome dont les exigences (et tests) peuvent être **inclus par référence** dans d'autres projets. Ce n'est **pas** un submodule git : le repo du composant est
+déclaré (`name`, `url`, `pin`) dans le `polenta-repo.yaml` du repo parent et cloné à plat par Polenta dans le
+dossier du workspace (T69, `SPEC-ELECTRON-DESKTOP.md` §22, #333).
 
 > **T123** : un composant peut aussi être **local** (vivre dans le `schema.yaml` du repo courant,
-> sans submodule séparé — cf. `SPEC-TEMPLATES.md` §3) et imbriqué sous un autre composant local à
+> sans repo séparé — cf. `SPEC-TEMPLATES.md` §3) et imbriqué sous un autre composant local à
 > n'importe quelle profondeur. Ce mécanisme reste entièrement distinct du modèle "composant = repo
 > séparé" décrit dans cette section — un composant en repo séparé ne peut jamais être imbriqué sous
-> un composant local, pour une raison technique (un submodule est déclaré dans
+> un composant local, pour une raison technique (un composant en repo séparé est déclaré dans
 > `polenta-repo.yaml`, un fichier par repo, jamais au niveau d'un `SystemNode` particulier),
-> pas fonctionnelle.
+> pas fonctionnelle — seul son affichage peut être rangé sous un composant local (`localParent`).
 
 **Exemples :**
 - `component-battery-bms` — Spécifications BMS réutilisées dans 3 produits
@@ -551,11 +553,12 @@ La référence `sourceRef` **pointe toujours vers une baseline ou un tag** — j
 
 > **Spec caduque (constatée T87) :** le modèle `components.yaml` + `sourceRef` figé sur une
 > baseline/tag décrit ci-dessous ne correspond à aucune implémentation actuelle — l'architecture
-> réelle (T30) utilise des submodules git plats et autonomes, sans mécanisme de pin déclaratif de ce
-> type ni de lecture-seule imposée à un composant en tant que tel. Le seul motif de lecture-seule
+> réelle (T69, #333) clone à plat des repos autonomes déclarés dans `polenta-repo.yaml` (pin =
+> branche, tag ou commit) — pas de submodules git ; la lecture seule d'un composant se règle par un
+> nœud `readonly: true` portant son nom de montage dans le schéma du repo ouvert. Le seul motif de lecture-seule
 > restant dans le code (`SystemViewContext.isRepoReadonly`) est le detached HEAD d'un repo — pas la
 > nature "composant" du repo. Cette section reste comme repère historique de l'intention initiale ;
-> une réécriture alignée sur l'architecture submodules est hors scope de T87 (à traiter par un
+> une réécriture alignée sur l'architecture réelle est hors scope de T87 (à traiter par un
 > ticket dédié).
 
 Quand un projet charge ses exigences, l'index mémoire inclut :
@@ -676,7 +679,7 @@ modification en attente (stagée ou non). Les repos en défaut sont listés avec
 > retiré — voir encadré ci-dessous) ni de fichiers individuels `baselines/<nom>.yaml`. Le tag git
 > est l'unique source de vérité : `BaselineService.list()` (`apps/desktop/src/main/services/baseline.service.ts`)
 > énumère les tags du repo racine via `git.listTags`, et ne retient comme baseline que ceux
-> présents sous le même nom sur chaque composant (submodule) du workspace — ce qui écarte les tags
+> présents sous le même nom sur chaque composant (repo du workspace) — ce qui écarte les tags
 > créés ponctuellement ailleurs (ex. depuis la vue graphe des commits) sur un seul repo. `createdAt`
 > est dérivé de la date du commit taggé (`git.readCommit`), pas d'un champ stocké.
 >
@@ -886,7 +889,7 @@ Les baselines ne sont pas pré-chargées en mémoire — elles sont lues à la d
 
 | Point | Décision |
 |-------|----------|
-| Composant = sous-module | Oui — projet Polenta indépendant, référencé avec version pinnée sur une baseline |
+| Composant = repo séparé | Oui — projet Polenta indépendant, déclaré dans `polenta-repo.yaml` avec un pin (pas un sous-module git, T69) |
 | Exigences de composant modifiables | Non — read-only dans le projet parent |
 | Pin du composant | Toujours sur une baseline/tag, jamais sur `main` |
 | Merge fork → source | Wizard guidé (V1), pas de git merge direct entre repos distincts |

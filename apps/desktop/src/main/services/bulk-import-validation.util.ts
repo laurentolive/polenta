@@ -109,7 +109,7 @@ function validateEntry(
 
   // Le nœud propriétaire peut être connu localement (déclaré dans schema.nodes, avec
   // son propre `readonly`) MÊME quand le TYPE lui-même est `'unresolvable'` — c'est
-  // précisément la forme d'un nœud submodule (T69/CLAUDE.md : "objectTypes absent →
+  // précisément la forme d'un nœud de composant en repo séparé, nommé d'après son nom de montage (T69/CLAUDE.md : "objectTypes absent →
   // le schéma du composant fait foi") : findObjectTypeDef renvoie 'unresolvable' dès
   // que `node.objectTypes === undefined`, mais le `SystemNode` (donc son `readonly`)
   // est bien présent dans `schema.nodes`. Vérifier le readonly AVANT de traiter

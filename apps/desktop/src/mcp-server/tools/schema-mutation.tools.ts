@@ -145,8 +145,8 @@ export function registerSchemaMutationTools(server: McpServer, container: McpCon
     {
       title: 'Add component',
       description:
-        'Ajoute un composant (SystemNode) local au projet — pas de repo séparé/submodule ' +
-        "(un agent ne crée pas de submodule, cf. T113). Refusé si le nom est déjà pris par " +
+        'Ajoute un composant (SystemNode) local au projet — pas de repo séparé ' +
+        "(un agent ne crée pas de composant en repo séparé, cf. T113). Refusé si le nom est déjà pris par " +
         'un composant existant (y compris "root"), à n\'importe quelle profondeur. Le composant ' +
         "créé démarre sans type d'objet (objectTypes: []) et readonly: false par défaut. " +
         'Avec `parentName` (T123) : imbrique le nouveau composant dans les enfants du composant ' +

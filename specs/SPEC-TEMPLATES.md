@@ -72,8 +72,8 @@ même repo git que `root` (même historique, même commits) — il ne passe jama
 `polenta-repo.yaml`. C'est un pattern de premier ordre, pas un cas hérité : dans l'UI, "+
 Composant" (onglet Structure du Modèle de données) propose une case "Composant local (dans ce
 repo)" qui, cochée, n'exige qu'un nom (les champs URL/branche d'un composant en repo séparé sont
-désactivés). La question de donner son propre repo à un composant (submodule, via
-`polenta-repo.yaml`) reste une décision distincte, à la charge de l'utilisateur selon ses
+désactivés). La question de donner son propre repo à un composant (repo séparé déclaré dans
+`polenta-repo.yaml`, pas un submodule git) reste une décision distincte, à la charge de l'utilisateur selon ses
 contraintes de gestion de configuration — les deux modes coexistent et sont pleinement supportés
 (création/édition/suppression d'objets identique à `root`).
 
@@ -90,8 +90,8 @@ même contenir d'autres composants locaux, via le champ `children?: SystemNode[]
 limite de profondeur a priori. Dans l'UI, la ligne d'un composant local gagne une action
 "+ Composant local" (en plus de "+ élément") qui imbrique le nouveau composant dans ses propres
 `children[]`. **Un composant en repo séparé ne peut en revanche jamais être imbriqué sous un
-composant local** — limite technique, pas fonctionnelle : un composant en repo séparé est un git
-submodule déclaré dans `polenta-repo.yaml`, un fichier par repo, résolu au niveau du repo
+composant local** — limite technique, pas fonctionnelle : un composant en repo séparé est un
+repo déclaré dans `polenta-repo.yaml` (pas un submodule git), un fichier par repo, résolu au niveau du repo
 lui-même, jamais au niveau d'un `SystemNode` particulier à l'intérieur d'un `schema.yaml` — seules
 les lignes de repo (racine du workspace ou dépendance déclarée) peuvent porter une nouvelle
 dépendance en repo séparé. Un nom de composant (`SystemNode.name`) reste unique sur l'ensemble de
@@ -135,7 +135,7 @@ devient le chemin de ses ancêtres locaux jusqu'au nœud, séparés par `›` (e
 même mécanisme via le tool `add_component` du serveur MCP (`SchemaService.addNode`,
 cf. `SPEC-MCP-SERVER.md` §4.3) — un paramètre optionnel `parentName` imbrique le nouveau composant
 dans les `children[]` du composant local désigné (même repo uniquement) au lieu de l'ajouter au
-niveau racine de `nodes[]`. La création d'un composant en repo séparé (submodule) reste hors de
+niveau racine de `nodes[]`. La création d'un composant en repo séparé reste hors de
 portée d'un tool MCP (geste utilisateur explicite dans l'UI, implique clone/auth git).
 
 ```yaml

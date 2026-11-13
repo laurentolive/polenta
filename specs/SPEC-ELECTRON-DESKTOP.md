@@ -2830,7 +2830,8 @@ Sprint 11 — Panels Produit & Composants + Campagnes (voir §19.9-19.10 + §20.
   ⑩ Mise à jour déduction `activePanel` dans `AppLayout` (voir §19.13)
   ⑪ Onglet Schéma : ajouter section "Niveaux" dans l'éditeur `/schema`
 
-Sprint 10 — Architecture multi-composants (voir §22)
+Sprint 10 — Architecture multi-composants (voir §22) — plan initial NON réalisé : abandonné en T69 au
+profit du workspace plat (`polenta-repo.yaml`, repos clonés côte à côte, pas de submodules git — §22, #333)
   ① SubmoduleService (init, update, list) via isomorphic-git
   ② WorkspaceService.cloneAndAdd() : init submodules après clone
   ③ WorkspaceService.addLocalProject() : update submodules si .gitmodules présent

@@ -69,7 +69,8 @@ test.beforeAll(async () => {
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, projectId)
   await page.locator('button[title="Version"]').first().click()
-  await page.waitForFunction(() => window.location.pathname.endsWith('/graph'))
+  // GH289 : la barre d'activité ouvre le panneau Version sur « Version produit » (/versions).
+  await page.waitForFunction(() => window.location.pathname.endsWith('/versions'))
 })
 
 test.afterAll(async () => {

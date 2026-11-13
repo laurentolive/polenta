@@ -1738,7 +1738,9 @@ GH342 — la sortie d'un shell (`terminal:data`, `terminal:exit`) n'est envoyée
 l'a ouvert (webContents propriétaire), plus diffusée à toutes les fenêtres.
 
 Panneau bas de la zone principale (`components/terminal/TerminalPanel.tsx`), rendu sous `<main>`
-dans `AppLayout`, **seulement sur `/graph`, `/diff`, `/version-diff`, `/baseline`**. Desktop
+dans `AppLayout`, **seulement sur les routes du panneau Version** (`isVersionRoute`, même liste que
+`deducePanel`) : `/graph`, `/diff`, `/version-diff`, `/baseline`, `/local-impact`, `/revalidation`
+et « Version produit » (`/versions`, `/versions/backlog`, `/version/<id>` — GH345). Desktop
 seulement (écart avec le client web : `SPEC-WEB.md` §11).
 
 - **Ouverture** : `Ctrl+ù` / `` Ctrl+` `` (bascule, écouté en capture sur `window` par

@@ -22,7 +22,7 @@ const panel = () => page.getByTestId('terminal-panel')
 const screenText = () => page.locator('[data-testid="terminal-host"] .xterm-rows')
 const sidebar = () => page.getByTestId('sidebar')
 
-/** Navigation par la barre d'activité (Version → /graph, Exigences → /requirements…). */
+/** Navigation par la barre d'activité (Version → /versions, Exigences → /requirements…). */
 async function activity(label: 'Version' | 'Exigences'): Promise<void> {
   await page.locator(`button[title="${label}"]`).first().click()
 }
@@ -52,6 +52,10 @@ test.beforeAll(async () => {
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, projectId)
   await activity('Version')
+  // GH289 : la barre d'activité ouvre le panneau Version sur « Version produit » (/versions).
+  await page.waitForFunction(() => window.location.pathname.endsWith('/versions'))
+  // Les fichiers modifiés (« Stagés », E2) sont dans la barre latérale de l'arbre de versions.
+  await page.getByRole('button', { name: "Voir l'arbre de versions" }).click()
   await page.waitForFunction(() => window.location.pathname.endsWith('/graph'))
 })
 
@@ -121,13 +125,24 @@ test('E6 — bouton du header Version', async () => {
   await expect(panel()).toBeVisible()
 })
 
+test('GH345 — Version produit (accueil du panneau Version) : terminal affiché, Ctrl+ù actif', async () => {
+  await expect(panel()).toBeVisible()
+  await page.getByTestId('sidebar').getByRole('button', { name: 'Version produit', exact: true }).click()
+  await page.waitForFunction(() => window.location.pathname.endsWith('/versions'))
+  await expect(panel()).toBeVisible()
+  await page.keyboard.press('Control+Backquote')
+  await expect(panel()).toBeHidden()
+  await page.keyboard.press('Control+Backquote')
+  await expect(panel()).toBeVisible()
+})
+
 test('E7 — rechargement de la fenêtre : aucun shell orphelin', async () => {
   // Shell tué en E5 : Entrée en relance un.
   await page.locator('[data-testid="terminal-host"] textarea').focus()
   await page.keyboard.press('Enter')
   await expect(screenText()).toContainText('$', { timeout: 20_000 })
   await run('sleep 77')
-  // Sous file://, recharger /graph échoue (fichier introuvable) : c'est la navigation de la page
+  // Sous file://, recharger /versions échoue (fichier introuvable) : c'est la navigation de la page
   // principale qui compte, réussie ou non.
   await page.reload().catch(() => {})
   await expect.poll(() => execFileSync('tasklist', ['/FI', 'IMAGENAME eq sleep.exe']).toString(), { timeout: 10_000 })

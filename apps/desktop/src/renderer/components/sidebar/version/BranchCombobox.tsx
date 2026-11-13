@@ -85,12 +85,18 @@ interface BranchComboboxProps {
   isPending: boolean
   /** GH106 — designated integration branch, labelled in the list. */
   integrationBranch?: string
+  /** GH359 — text shown in the closed combo when it differs from `currentBranch` (detached HEAD:
+   *  the integration branch instead of a commit hash). `currentBranch` stays the real checked-out
+   *  branch, so picking the displayed branch in the list still checks it out. */
+  displayValue?: string
+  /** Tooltip of the closed combo. */
+  title?: string
   /** Notified when the dropdown opens/closes — lets a caller lazily enable its branches/tags
    *  fetch only while the list is actually visible (T86), instead of polling continuously. */
   onOpenChange?: (open: boolean) => void
 }
 
-export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCheckoutCommit, onDelete, onCreateNew, isPending, integrationBranch, onOpenChange }: BranchComboboxProps) {
+export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCheckoutCommit, onDelete, onCreateNew, isPending, integrationBranch, displayValue, title, onOpenChange }: BranchComboboxProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
@@ -204,7 +210,8 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
       <input
         ref={inputRef}
         type="text"
-        value={open ? filter : currentBranch}
+        value={open ? filter : (displayValue ?? currentBranch)}
+        title={open ? undefined : title}
         placeholder={t('sidebar.version.branchPlaceholder')}
         readOnly={!open}
         onChange={e => setFilter(e.target.value)}

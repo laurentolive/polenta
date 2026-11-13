@@ -775,11 +775,9 @@
       "objectsUnknown": "Nombre d'objets concernés indisponible"
     },
     "integrationIndicator": {
-      "label": "Intégration : <mono>{{branch}}</mono>",
       "designate": "Désigner {{branch}} comme intégration",
       "incoherentHint": "{{branch}} n'est pas la branche d'intégration désignée (le fichier indique {{configured}}).",
-      "detachedHint": "Épinglé sur le commit {{commit}}, hors de toute branche.",
-      "otherHint": "La branche courante {{branch}} n'est pas la branche d'intégration."
+      "detachedHint": "Épinglé sur le commit {{commit}}, hors de toute branche."
     }
   },
   "system": {

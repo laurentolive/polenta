@@ -5,7 +5,8 @@ import { setupSession } from './support/session'
  * GH106 sprint 2 — onglet Structure (specs/GH106-tests.md T-11, T-13, T-30, T-23) : la combo de
  * branche est le seul contrôle de la ligne ; y créer une `int-*` la désigne ; l'intégration n'est
  * affichée que si elle diffère de la branche checkoutée (« Désigner » sur une `int-*` non
- * désignée) ; refus de supprimer la branche désignée ; combo présente en detached HEAD.
+ * désignée) ; refus de supprimer la branche désignée ; combo présente en detached HEAD, sur le nom
+ * de l'intégration (GH359 : ni hash, ni libellé « Intégration : … » à droite).
  */
 const s = setupSession()
 // Images de la démo absentes (maquettes) : 404 sans rapport.
@@ -78,21 +79,25 @@ test('GH106-S2-3 — suppression de la branche désignée refusée, code de refu
   expect(err).toContain('⟦integration-guard {"code":"designated","branch":"int-e2e-s3"}⟧')
 })
 
-test('GH106-S2-4 — detached HEAD : combo sur le commit, intégration affichée, choisir la branche y revient (T-23)', async () => {
+test('GH106-S2-4 / GH359 — detached HEAD : combo sur la branche d\'intégration (pas le hash), choisir la branche y revient (T-23)', async () => {
   const { localPath } = s.project
   const { headOid } = await state()
   await s.invoke('sync:checkout-commit', localPath, headOid)
   expect((await state()).status).toBe('detached')
   await openStructure()
-  await expect(combo()).toHaveValue(headOid.slice(0, 7), { timeout: 15_000 })
-  await expect(integrationLabel()).toBeVisible({ timeout: 15_000 })
+  await expect(combo()).toHaveValue('int-e2e-s3', { timeout: 15_000 })
+  await expect(combo()).toHaveAttribute('title', `Épinglé sur le commit ${headOid.slice(0, 7)}, hors de toute branche.`)
+  await expect(integrationLabel()).toHaveCount(0)
 
   await combo().click()
   await s.page.getByRole('button', { name: /^int-e2e-s3/ }).click()
   await confirmCheckoutIfDirty()
-  await expect(combo()).toHaveValue('int-e2e-s3', { timeout: 15_000 })
-  await expect(integrationLabel()).toHaveCount(0, { timeout: 15_000 })
+  // La combo affichait déjà ce nom : c'est l'état git qui prouve le retour sur la branche.
+  await expect.poll(async () => (await state()).status, { timeout: 15_000 }).toBe('ok')
   expect(await state()).toMatchObject({ currentBranch: 'int-e2e-s3', configured: 'int-e2e-s3', status: 'ok' })
+  await expect(combo()).toHaveValue('int-e2e-s3')
+  await expect(combo()).not.toHaveAttribute('title', /.+/)
+  await expect(integrationLabel()).toHaveCount(0)
 })
 
 test('GH106-S2-5 — composant épinglé sur une baseline : la combo montre le tag, pin non répété', async () => {

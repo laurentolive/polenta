@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { McpContainer } from '../container'
+import { mcpActor, type McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
 
 /**
@@ -86,7 +86,7 @@ export function registerLinkTools(server: McpServer, container: McpContainer): v
         })
       }
 
-      const { created, errors } = await links.createLinks(container.repoPath, entries, 'mcp', container.workspaceDir, true)
+      const { created, errors } = await links.createLinks(container.repoPath, entries, mcpActor(container.user), container.workspaceDir, true)
       return jsonToolResult({
         dryRun: false,
         summary: { total: entries.length, ok: created.length, failed: errors.length },

@@ -134,6 +134,11 @@ class McpAuthService extends AuthService {
  * `getAuthor` y lit `auth.json` (`userData` indisponible : erreur absorbée), puis la config git, puis
  * `--user` (`McpAuthService`). Cf. specs/T122-design.md §2.1 pour l'analyse de sûreté initiale.
  */
+/** GH384 — auteur des écritures MCP (`createdBy` / `updatedBy`, historique, liens) : `--user`, sinon `mcp`. */
+export function mcpActor(user: string | undefined): string {
+  return user?.trim() || 'mcp'
+}
+
 export function createMcpContainer(repoPath: string, workspaceDir?: string, user?: string): McpContainer {
   const auth = new McpAuthService(user)
   const git = new GitService()
@@ -143,8 +148,9 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const polentaRepo = new PolentaRepoService()
   const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)
   const schema = new SchemaService(auth, workspaceTree)
-  // GH77 — écritures MCP : `by` = `--user` / `POLENTA_USER` (sinon `local`), `source: mcp`.
-  const history = new HistoryService(git, async () => ({ by: user ?? 'local', source: 'mcp' }))
+  // GH77 — écritures MCP : `by` = `--user` / `POLENTA_USER`, `source: mcp`. GH384 — sans utilisateur : `mcp`
+  // (et non `local`), comme le `createdBy` des liens (`mcpActor`) : un import MCP se distingue d'une saisie.
+  const history = new HistoryService(git, async () => ({ by: mcpActor(user), source: 'mcp' }))
   // T172 — mêmes déclencheurs que l'app : un changement de statut via MCP marque aussi les pairs.
   const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree, history)
   const requirements = new RequirementsService(git, reqIndex, schema, revalidation, history)
@@ -188,7 +194,7 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   )
 
   // GH371 — même graphe que main/container.ts (issues et validations comprises).
-  const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues, validations)
+  const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues, validations, versions)
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, issues, validations, transitionGuard, workspaceTree, reqIndex, testsIndex,

@@ -6,6 +6,7 @@ import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
 import { RICHTEXT_COLORS_NOTE } from './richtext-colors-note'
 import { planUpdate, type FieldChange, type UpdatableObject } from '../../main/services/update-validation.util'
+import { canonicalMultiEnumFields } from '../../main/services/field-values.util'
 import { findObjectTypeDef } from '../../main/services/schema-lookup.util'
 import { mergeFields } from '../../main/services/field-merge.util'
 import { readOwnedTypeDef } from '../../main/services/field-write.util'
@@ -63,7 +64,7 @@ const historySize = (o: Written | undefined) => Object.values(o?.history ?? {}).
 const NO_TRACKED_CHANGE = "modificationComment non conservé : aucun champ suivi (statut, champ trackHistory) n'a changé"
 
 
-async function runUpdate<TEntry extends { id: string; status?: string; modificationComment?: string }>(
+async function runUpdate<TEntry extends { id: string; status?: string; modificationComment?: string; fields?: Record<string, unknown> }>(
   container: McpContainer,
   entries: TEntry[],
   dryRun: boolean,
@@ -75,7 +76,8 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
   }
 
   // Série, jamais Promise.all : deux entrées sur le même ID s'appliquent dans l'ordre.
-  for (const [index, entry] of entries.entries()) {
+  for (const [index, input] of entries.entries()) {
+    let entry = input
     let existing: UpdatableObject & Written
     try {
       existing = await target.find(entry.id)
@@ -83,9 +85,13 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
       result.errors.push({ index, id: entry.id, reason: `objet introuvable : ${entry.id}` })
       continue
     }
+    // GH384 — `multi_enum` en liste réécrit au format de l'application (« a, b »).
+    const typeDef = findObjectTypeDef(schema, existing.objectTypeRef, target.category)
+    const canonical = canonicalMultiEnumFields(typeDef === 'unresolvable' ? null : typeDef, entry.fields)
+    if (canonical !== entry.fields) entry = { ...entry, fields: canonical }
     const plan = planUpdate(schema, target.category, existing, entry as never, target.extraKeys)
     if (!plan.ok) {
-      result.errors.push({ index, id: entry.id, reason: plan.reason, ...(plan.field && { field: plan.field }) })
+      for (const e of plan.errors) result.errors.push({ index, id: entry.id, reason: e.reason, ...(e.field && { field: e.field }) })
       continue
     }
     // GH206 — contraintes de transition sur l'état prévu, avant toute écriture : `dryRun` et écriture réelle
@@ -132,7 +138,8 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
   }
 
   result.summary.ok = dryRun ? result.preview.length : result.updated.length
-  result.summary.failed = result.errors.length
+  // GH384 — plusieurs erreurs possibles par entrée : `failed` compte les entrées.
+  result.summary.failed = new Set(result.errors.map(e => e.index)).size
   result.errors.sort((a, b) => a.index - b.index)
   return result
 }

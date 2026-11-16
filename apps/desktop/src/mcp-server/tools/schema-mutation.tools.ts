@@ -4,6 +4,9 @@ import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js'
 import type { McpContainer } from '../container'
 import { jsonToolResult, errorToolResult } from '../mcp-types'
 import { SchemaValidationError } from '../../main/services/schema.service'
+import { matchesRefs, type ResolvedLinkObject } from '../../main/services/link-validation.util'
+import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
+import { findSystemNode } from '@polenta/types'
 
 /**
  * Tools de mutation de schéma (T122 sprint 3 — specs/T122-design.md §4) : un tool
@@ -167,6 +170,9 @@ const reorderStatusesInput = { ...typeTarget, order: z.array(z.string().min(1)) 
 
 const dryRunInput = z.boolean().optional().describe('true : aucun écrit, mêmes refus, aperçu (withOld / withNew)')
 
+/** GH384 — schéma résolu complet dans la réponse (sinon : le seul type modifié). */
+const includeSchemaInput = z.boolean().optional().describe('true : réponse avec le schéma complet (`schema`) au lieu du seul type modifié (`type`)')
+
 const updateStatusInput = {
   ...typeTarget,
   name: z.string().min(1),
@@ -176,6 +182,7 @@ const updateStatusInput = {
   isApproval: z.boolean().optional().describe('false retire la marque'),
   isTerminal: z.boolean().optional().describe('false retire la marque'),
   dryRun: dryRunInput,
+  includeSchema: includeSchemaInput,
 }
 
 const removeStatusInput = {
@@ -183,6 +190,40 @@ const removeStatusInput = {
   name: z.string().min(1),
   replaceWith: z.string().min(1).optional().describe('Statut existant vers lequel migrer les objets (fusion)'),
   dryRun: dryRunInput,
+  includeSchema: includeSchemaInput,
+}
+
+/** GH384 — `update_link_type`. */
+const updateLinkTypeInput = {
+  name: z.string().min(1).describe('Nom du type de lien (non modifiable)'),
+  labelSourceToTarget: z.string().min(1).optional(),
+  labelTargetToSource: z.string().min(1).optional(),
+  defaultVisible: z.boolean().optional().describe('false retire la marque'),
+  sourceRefs: z.array(z.string().min(1)).nullable().optional().describe('Remplace la liste ; null retire la restriction'),
+  targetRefs: z.array(z.string().min(1)).nullable().optional().describe('Remplace la liste ; null retire la restriction'),
+}
+
+/**
+ * GH384 — IDs des liens existants du type que `next` n'accepterait plus, dans aucun sens (même règle
+ * que la création, `matchesRefs`). Une extrémité introuvable (objet supprimé, repo absent) ne bloque pas.
+ */
+async function linksBrokenBy(container: McpContainer, next: { name: string; sourceRefs?: string[]; targetRefs?: string[] }): Promise<string[]> {
+  const { repoPath, workspaceDir } = container
+  const links = (await container.workspaceLinks.listLinks(repoPath, workspaceDir, true)).filter((l) => l.type === next.name)
+  if (links.length === 0) return []
+  const objects = new Map<string, ResolvedLinkObject>()
+  for (const o of await container.workspaceLinks.listObjects(repoPath, workspaceDir)) {
+    objects.set(o.id, { id: o.id, category: o.category, objectTypeRef: o.objectTypeRef })
+  }
+  for (const c of await container.campaigns.list(repoPath)) {
+    if (!objects.has(c.id)) objects.set(c.id, { id: c.id, category: 'campaign', objectTypeRef: c.objectTypeRef ?? '' })
+  }
+  return links.filter((l) => {
+    const [a, b] = [objects.get(l.sourceId), objects.get(l.targetId)]
+    if (!a || !b) return false
+    const ok = (s: ResolvedLinkObject, t: ResolvedLinkObject) => matchesRefs(s, next.sourceRefs) && matchesRefs(t, next.targetRefs)
+    return !ok(a, b) && !ok(b, a)
+  }).map((l) => l.id)
 }
 
 const updateObjectTypeInput = {
@@ -218,6 +259,23 @@ async function runSchemaMutation(op: () => Promise<unknown>): Promise<SchemaMuta
     if (e instanceof SchemaValidationError) return errorToolResult(`[${e.code}] ${e.message}`)
     throw e
   }
+}
+
+/**
+ * GH384 — réponse de `update_status` / `remove_status` : le schéma résolu complet (plusieurs centaines
+ * de lignes sur un vrai projet) sature le contexte de l'agent ; seul le type modifié est rendu, sauf
+ * `includeSchema`.
+ */
+async function statusMutation(
+  dto: { nodeName: string; typeName: string; includeSchema?: boolean },
+  op: () => Promise<{ schema: ProjectSchema }>,
+): Promise<SchemaMutationToolResult> {
+  return runSchemaMutation(async () => {
+    const { schema, ...rest } = await op()
+    if (dto.includeSchema) return { schema, ...rest }
+    const type: ObjectTypeDefinition | undefined = findSystemNode(schema.nodes, dto.nodeName)?.objectTypes?.find(t => t.name === dto.typeName)
+    return { type, ...rest }
+  })
 }
 
 /**
@@ -374,10 +432,11 @@ export function registerSchemaMutationTools(server: McpServer, container: McpCon
       title: 'Update status',
       description:
         "Modifie un statut d'un type : `label` / `color` (null retire), `isApproval` / `isTerminal` (false retire), " +
-        '`to` (renommage : statut courant et history.status des exigences, tests, campagnes, issues et validations du ' +
-        'type, copies testSnapshot des campagnes pour un type de test, règles de transition et requiredWhen qui le ' +
-        'citent). Réponse { schema, migration: { migrated, skipped, failed, snapshots? } } ; `dryRun: true` : ' +
-        '{ dryRun, schema, preview: { withOld, withNew } } sans rien écrire. Refus : STATUS_NOT_FOUND, ' +
+        '`to` (renommage : statut courant et history.status des exigences, tests, campagnes, issues, validations et ' +
+        'versions du type (version released / abandonnée : historique seul), copies testSnapshot des campagnes pour un type de test, règles de transition et requiredWhen qui le ' +
+        'citent). Réponse { type, migration: { migrated, skipped, failed, snapshots? } } ; `dryRun: true` : ' +
+        '{ dryRun, type, preview: { withOld, withNew } } sans rien écrire ; `type` = le type modifié, ' +
+        '`includeSchema: true` rend le schéma complet (`schema`) à la place. Refus : STATUS_NOT_FOUND, ' +
         'STATUS_NAME_TAKEN (fusion : remove_status + replaceWith), VALIDATION_TYPE_INVALID / VERSION_TYPE_INVALID ' +
         '(marques du type validation / version, figées tant que des validations / versions existent), ' +
         'TRANSITION_INVALID, STATUS_LIST_INVALID (campagne : statuts fixes).',
@@ -386,7 +445,7 @@ export function registerSchemaMutationTools(server: McpServer, container: McpCon
     async (dto) => {
       requireSomeChange('update_status', dto, ['to', 'label', 'color', 'isApproval', 'isTerminal'])
       freshenObjectIndexes(container)
-      return runSchemaMutation(() => container.schema.updateStatus(container.repoPath, dto, container.fieldRename))
+      return statusMutation(dto, () => container.schema.updateStatus(container.repoPath, dto, container.fieldRename))
     },
   )
 
@@ -406,7 +465,27 @@ export function registerSchemaMutationTools(server: McpServer, container: McpCon
     },
     async (dto) => {
       freshenObjectIndexes(container)
-      return runSchemaMutation(() => container.schema.removeStatus(container.repoPath, dto, container.fieldRename))
+      return statusMutation(dto, () => container.schema.removeStatus(container.repoPath, dto, container.fieldRename))
+    },
+  )
+
+  server.registerTool(
+    'update_link_type',
+    {
+      title: 'Update link type',
+      description:
+        "Modifie un type de lien existant (GH384) : labelSourceToTarget / labelTargetToSource, defaultVisible " +
+        "(colonne affichée par défaut dans les vues ; false retire), sourceRefs / targetRefs (liste remplacée en " +
+        "bloc, catégories ou `<nœud>::<type>` ; null retire la restriction). Le nom ne se modifie pas. Refus : " +
+        'LINK_TYPE_NOT_FOUND ; LINK_TYPE_INVALID (liste vide) ; LINK_TYPE_IN_USE quand des liens existants du type ' +
+        "(tous les repos du workspace) ne seraient plus acceptés dans aucun sens — IDs cités, à supprimer d'abord " +
+        '(delete_links). Réponse : le type de lien modifié.',
+      inputSchema: updateLinkTypeInput,
+    },
+    async (dto) => {
+      requireSomeChange('update_link_type', dto, ['labelSourceToTarget', 'labelTargetToSource', 'defaultVisible', 'sourceRefs', 'targetRefs'])
+      freshenObjectIndexes(container)
+      return runSchemaMutation(() => container.schema.updateLinkType(container.repoPath, dto, (next) => linksBrokenBy(container, next)))
     },
   )
 

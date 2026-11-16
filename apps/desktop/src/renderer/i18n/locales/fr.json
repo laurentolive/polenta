@@ -2876,7 +2876,10 @@
       "steps": "Étapes",
       "resume": "Les étapes non faites peuvent être reprises plus tard, en ajoutant ce repo comme repo existant.",
       "continue": "Continuer",
-      "titleTodo": "Ajout terminé, points à traiter"
+      "titleTodo": "Ajout terminé, points à traiter",
+      "titleCreated": "Repo créé, points à traiter",
+      "resumeSettings": "Ces points se règlent plus tard dans les paramètres du repo (membres, branche par défaut).",
+      "continueComponent": "« Continuer » inscrit ce repo comme composant ; « Fermer » le laisse sur le serveur sans l’inscrire."
     },
     "existing": {
       "title": "Repo existant",

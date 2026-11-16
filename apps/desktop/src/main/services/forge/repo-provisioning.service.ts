@@ -25,7 +25,8 @@ const messageOf = (err: unknown) => err instanceof Error ? err.message : String(
 
 /**
  * GH107 — « Ajouter un repo » (spec GH103 §2.2 et §2.3, design §3 et §4) : création d'un repo neuf,
- * inspection et adoption d'un repo existant. Tout est validé avant la première écriture. Le repo
+ * inspection et adoption d'un repo existant. Tout est validé avant la première écriture, membres
+ * compris (GH354). Le repo
  * distant n'est jamais supprimé : après un échec, les étapes suivantes ne sont pas faites et l'écran
  * indique le repo et comment reprendre.
  */
@@ -44,6 +45,8 @@ export class RepoProvisioningService {
     assertRepoName(req.name)
     this.assertNewContent(description, req.integrationSuffix)
     this.assertFreeFolder(req)
+    // GH354 — membres inconnus refusés ici : le repo n'est pas créé pour un ajout voué à l'échec.
+    await this.forge.checkMembers(req.accountKey, req.owner, req.ownerKind, req.members)
 
     // remote — un échec arrête tout, rien n'a été écrit (le nom est revérifié ici).
     const remote = await this.forge.createRemote(req.accountKey, {
@@ -204,6 +207,7 @@ export class RepoProvisioningService {
     const { details, fullName } = found
     if (!details.permissions.push) throw new Error(`Vous n'avez pas le droit d'écriture sur ${fullName}, et ce repo est vide.`)
     this.assertNewContent(description, req.integrationSuffix ?? '')
+    await this.forge.checkMembers(req.accountKey, req.owner, details.ownerKind, req.members ?? [])
     const branch = `${INT_PREFIX}${req.integrationSuffix}`
     const steps: ProvisionStep[] = []
     const order: ProvisionStepId[] = ['description', ...ORDER.filter(id => id !== 'remote')]

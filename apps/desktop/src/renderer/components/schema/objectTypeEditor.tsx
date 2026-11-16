@@ -2,6 +2,8 @@ import type { ValidationDecisionDef } from '@polenta/types'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  DEFAULT_VALIDATION_DECISIONS as SHARED_VALIDATION_DECISIONS, DEFAULT_VALIDATION_STATUSES as SHARED_VALIDATION_STATUSES,
+  DEFAULT_VERSION_STATUSES as SHARED_VERSION_STATUSES,
   DISPLAY_ID_FIELD_TYPES, HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES,
   TRANSITION_CATEGORIES, displayIdFieldCandidates, historyModeFor, renameRequiredWhenRefs, renameTransitionRefs, renameValues, requiredWhenIssues,
 } from '@polenta/types'
@@ -352,12 +354,11 @@ export const DEFAULT_REQ_STATUSES: EditableStatus[] = [
   { name: 'obsolete', label: 'Obsolète', color: '#dc2626', isApproval: false, isTerminal: true },
 ]
 
-/** GH201 — cycle de vie par défaut d'une version : released (`isApproval`) pose le tag et fige. */
-export const DEFAULT_VERSION_STATUSES: EditableStatus[] = [
-  { name: 'en_cours', label: 'En cours', color: '#2563eb', isApproval: false, isTerminal: false },
-  { name: 'released', label: 'Released', color: '#16a34a', isApproval: true, isTerminal: false },
-  { name: 'abandonnee', label: 'Abandonnée', color: '#6b7280', isApproval: false, isTerminal: true },
-]
+/** GH201 / GH377 — défauts partagés avec le serveur MCP (`@polenta/types`, schema-defaults.ts). */
+const toEditableStatus = (s: SchemaStatus): EditableStatus => ({
+  name: s.name, label: s.label ?? '', color: s.color ?? '', isApproval: !!s.isApproval, isTerminal: !!s.isTerminal,
+})
+export const DEFAULT_VERSION_STATUSES: EditableStatus[] = SHARED_VERSION_STATUSES.map(toEditableStatus)
 
 /** GH244 — `corrigee` n'est pas terminal : un terminal sort du backlog, une correction doit pouvoir entrer dans une version. */
 export const DEFAULT_ISSUE_STATUSES: EditableStatus[] = [
@@ -367,21 +368,9 @@ export const DEFAULT_ISSUE_STATUSES: EditableStatus[] = [
   { name: 'rejetee', label: 'Rejetée', color: '#6b7280', isApproval: false, isTerminal: true },
 ]
 
-/** GH204 — cycle de vie d'une validation : `signee` (`isApproval`) est le feu vert, `annulee` en sort. */
-export const DEFAULT_VALIDATION_STATUSES: EditableStatus[] = [
-  { name: 'en_cours', label: 'En cours', color: '#2563eb', isApproval: false, isTerminal: false },
-  { name: 'signee', label: 'Signée', color: '#16a34a', isApproval: true, isTerminal: false },
-  { name: 'annulee', label: 'Annulée', color: '#6b7280', isApproval: false, isTerminal: true },
-]
+export const DEFAULT_VALIDATION_STATUSES: EditableStatus[] = SHARED_VALIDATION_STATUSES.map(toEditableStatus)
 
-/** GH204 — jeu de décisions par défaut (MILESTONE-D §5.1). */
-export const DEFAULT_VALIDATION_DECISIONS: ValidationDecisionDef[] = [
-  { name: 'en_attente', label: 'En attente', isPending: true },
-  { name: 'conforme', label: 'Conforme' },
-  { name: 'non_conforme', label: 'Non conforme', proposesIssue: true },
-  { name: 'hors_scope', label: 'Hors scope' },
-  { name: 'derogation', label: 'Dérogation', proposesIssue: true },
-]
+export const DEFAULT_VALIDATION_DECISIONS: ValidationDecisionDef[] = SHARED_VALIDATION_DECISIONS.map(d => ({ ...d }))
 
 export const DEFAULT_TEST_STATUSES: EditableStatus[] = [
   { name: 'draft', label: 'Brouillon', color: '#475569', isApproval: false, isTerminal: false },

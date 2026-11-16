@@ -267,7 +267,9 @@ Tools disponibles :
 - \`add_component\` / \`add_object_type\` / \`add_field\` / \`add_status\` / \`add_link_type\` —
   modification ciblée du modèle de données (\`.polenta/schema.yaml\`), avec vérification
   des invariants (nom déjà pris, \`prefix\` unique sur tout le projet, nœud
-  \`readonly: true\`) avant toute écriture.
+  \`readonly: true\`) avant toute écriture. \`add_object_type\` crée aussi le type version et
+  le type validation (un de chaque, sur \`root\`, statuts et décisions par défaut de l'application
+  si absents).
 
 Comme le reste de ${name}, le serveur MCP n'effectue **jamais de commit/push
 automatique** — les fichiers créés/modifiés restent en attente, l'utilisateur les

@@ -231,13 +231,15 @@ export function ProvisionResult({ result, mode, onContinue, onClose }: {
   const { t } = useTranslation()
   const canContinue = mode === 'project' ? !!result.open : result.steps.find(s => s.id === 'push')?.status === 'done'
   const incomplete = result.steps.some(s => s.status === 'failed')
+  // GH354 — repo publié : un échec ensuite (membres, branche par défaut) ne défait pas la création.
+  const title = !incomplete ? t('repoWizard.result.titleTodo') : canContinue ? t('repoWizard.result.titleCreated') : t('repoWizard.result.title')
   useModalHotkeys(onClose)
   const steps = useMemo(() => result.steps, [result])
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(onClose)}>
-      <div onClick={e => e.stopPropagation()} role="dialog" aria-label={incomplete ? t('repoWizard.result.title') : t('repoWizard.result.titleTodo')}
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-label={title}
         className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 space-y-3">
-        <h2 className="text-sm font-semibold text-ink">{incomplete ? t('repoWizard.result.title') : t('repoWizard.result.titleTodo')}</h2>
+        <h2 className="text-sm font-semibold text-ink">{title}</h2>
         <p className="text-sm text-ink-2">{t('repoWizard.result.created', { repo: result.fullName, branch: result.branch })}</p>
         <ul className="space-y-1.5" aria-label={t('repoWizard.result.steps')}>
           {steps.map(s => (
@@ -253,7 +255,8 @@ export function ProvisionResult({ result, mode, onContinue, onClose }: {
             </li>
           ))}
         </ul>
-        {incomplete && <p className="text-xs text-ink-3">{t('repoWizard.result.resume')}</p>}
+        {incomplete && <p className="text-xs text-ink-3">{canContinue ? t('repoWizard.result.resumeSettings') : t('repoWizard.result.resume')}</p>}
+        {canContinue && mode === 'component' && <p className="text-xs text-ink-2">{t('repoWizard.result.continueComponent')}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="btn-secondary">{t('common.close')}</button>
           {canContinue && <button type="button" onClick={onContinue} className="btn-primary">{t('repoWizard.result.continue')}</button>}

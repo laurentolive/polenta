@@ -60,7 +60,17 @@ const schemaStatusSchema = z.object({
   isTerminal: z.boolean().optional(),
 })
 
-const objectCategorySchema = z.enum(['requirement', 'test', 'campaign', 'issue'])
+// GH377 — `version` et `validation` : un seul type de chaque par repo, sur `root` (garde-fous de `SchemaService.save`).
+const objectCategorySchema = z.enum(['requirement', 'test', 'campaign', 'issue', 'version', 'validation'])
+
+/** GH204 — décision de validation (`ValidationDecisionDef`). */
+const validationDecisionSchema = z.object({
+  name: z.string().min(1),
+  label: z.string().optional(),
+  color: z.string().optional(),
+  isPending: z.boolean().optional(),
+  proposesIssue: z.boolean().optional(),
+})
 
 const objectTypeDefinitionSchema = z.object({
   name: z.string().min(1),
@@ -74,6 +84,9 @@ const objectTypeDefinitionSchema = z.object({
   trackStatusHistory: z.boolean().optional(),
   /** GH229 — champ affiché à la place de l'ID dans les liens (`title`, ou champ text / number / enum). */
   displayIdField: z.string().optional(),
+  /** GH377 — type validation : décisions (défauts de l'éditeur si absent) et champs d'entrée. */
+  decisions: z.array(validationDecisionSchema).optional(),
+  entryFields: z.array(schemaFieldSchema).optional(),
 })
 
 const linkTypeDefinitionSchema = z.object({
@@ -165,7 +178,17 @@ export function registerSchemaMutationTools(server: McpServer, container: McpCon
         "le composant est introuvable ou readonly, si le nom du type est déjà pris dans ce " +
         "composant, ou si prefix est déjà utilisé par un type de N'IMPORTE QUEL composant " +
         "du projet (règle 10 de CLAUDE.md — prefix unique projet-wide). Appeler get_schema " +
-        "d'abord pour connaître les composants et prefixes déjà utilisés.",
+        "d'abord pour connaître les composants et prefixes déjà utilisés. " +
+        "Catégories version et validation (GH377) : un seul type de chaque par repo, sur le nœud root, " +
+        "prefix obligatoire. statuses absent → statuts par défaut de l'application (version : en_cours, " +
+        "released [isApproval], abandonnee [isTerminal] ; validation : en_cours, signee [isApproval], " +
+        "annulee [isTerminal]) ; une liste fournie est prise telle quelle. Une version a exactement un " +
+        "statut isApproval. Validation : decisions absent → en_attente [isPending], conforme, " +
+        "non_conforme [proposesIssue], hors_scope, derogation [proposesIssue] ; exactement une décision " +
+        "isPending, un statut isApproval, un isTerminal, premier statut non marqué ; entryFields : champs " +
+        "remplis par décision (nom \"decision\" réservé, requiredWhen sur les autres champs d'entrée ou " +
+        "sur decision avec des noms de décisions existants). decisions / entryFields refusés pour les " +
+        "autres catégories.",
       inputSchema: addObjectTypeInput,
     },
     async (dto) => runSchemaMutation(() => container.schema.addObjectType(container.repoPath, dto)),

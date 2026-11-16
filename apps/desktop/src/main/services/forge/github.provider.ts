@@ -218,6 +218,17 @@ export const githubProvider: ForgeProvider = {
       .sort((a, b) => a.name.localeCompare(b.name))
   },
 
+  async userExists(baseUrl, token, login) {
+    try {
+      const { data } = await forgeRequest<{ type?: string }>(`${apiBase(baseUrl)}/users/${encodeURIComponent(login)}`, opts(baseUrl, token))
+      // Une organisation répond aussi sur /users/{login} : elle ne peut pas être collaboratrice.
+      return data?.type !== 'Organization'
+    } catch (err) {
+      if (err instanceof ForgeHttpError && err.status === 404) return false
+      throw err
+    }
+  },
+
   async listOrgTeams(baseUrl, token, org) {
     const teams = await paginate<{ slug: string; name: string }>(baseUrl, `/orgs/${encodeURIComponent(org)}/teams`, token)
     return teams.map(t => ({ name: t.slug, label: t.name })).sort((a, b) => a.name.localeCompare(b.name))

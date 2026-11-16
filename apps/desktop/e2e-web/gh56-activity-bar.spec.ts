@@ -16,6 +16,10 @@ function button(page: Page, title: string) {
   return activityBar(page).and(page.locator(`[title="${title}"]`))
 }
 
+/**
+ * Titres de la barre d'activité, dans l'ordre. À lire via `expect.poll` : juste après un
+ * `reload()`/`goto()`, la barre n'est pas encore rendue et la lecture renvoie `[]` (GH385).
+ */
 async function titles(page: Page): Promise<string[]> {
   return activityBar(page).evaluateAll(els => els.map(e => e.getAttribute('title') ?? ''))
 }
@@ -43,12 +47,12 @@ test.beforeEach(async () => {
 })
 
 test('E1 — drag & drop : Version avant Suivi, persistant', async () => {
-  expect(await titles(s.page)).toEqual(DEFAULT_TITLES)
+  await expect.poll(() => titles(s.page)).toEqual(DEFAULT_TITLES)
   await dragBefore(s.page, 'Version', 'Suivi')
   const expected = ['Compte', 'Projet', 'Version', 'Suivi', 'Exigences', 'Tests', 'Campagnes', 'Issues', 'Validation', 'Paramètres', 'Recherche']
-  expect(await titles(s.page)).toEqual(expected)
+  await expect.poll(() => titles(s.page)).toEqual(expected)
   await s.page.reload()
-  expect(await titles(s.page)).toEqual(expected)
+  await expect.poll(() => titles(s.page)).toEqual(expected)
   await s.shot('gh56-e1-ordre')
 })
 
@@ -64,7 +68,7 @@ test('E2/E3 — masquer par clic droit puis réafficher depuis la zone vide', as
   const entry = s.page.getByRole('menuitemcheckbox', { name: 'Recherche' })
   await expect(entry).toHaveAttribute('aria-checked', 'false')
   await entry.click()
-  expect(await titles(s.page)).toEqual(DEFAULT_TITLES)
+  await expect.poll(() => titles(s.page)).toEqual(DEFAULT_TITLES)
 })
 
 test('E4 — Compte et Projet non masquables', async () => {
@@ -84,11 +88,11 @@ test('E5 — réinitialiser la disposition', async () => {
   await dragBefore(s.page, 'Version', 'Suivi')
   await openMenu(s.page, 'Tests')
   await s.page.getByRole('menuitem', { name: 'Masquer « Tests »' }).click()
-  expect(await titles(s.page)).not.toEqual(DEFAULT_TITLES)
+  await expect.poll(() => titles(s.page)).not.toEqual(DEFAULT_TITLES)
 
   await openMenu(s.page, null)
   await s.page.getByRole('menuitem', { name: 'Réinitialiser la disposition' }).click()
-  expect(await titles(s.page)).toEqual(DEFAULT_TITLES)
+  await expect.poll(() => titles(s.page)).toEqual(DEFAULT_TITLES)
   expect(await storedLayout(s.page)).toBeNull()
 })
 
@@ -110,7 +114,7 @@ test('L2 — masquer le panneau actif laisse la vue affichée', async () => {
 test('L3 — dépôt à la position d\'origine : aucun changement', async () => {
   await button(s.page, 'Version').dragTo(button(s.page, 'Version'))
   expect(await storedLayout(s.page)).toBeNull()
-  expect(await titles(s.page)).toEqual(DEFAULT_TITLES)
+  await expect.poll(() => titles(s.page)).toEqual(DEFAULT_TITLES)
 })
 
 test('L5 — clic extérieur et Échap ferment le menu sans rien changer', async () => {
@@ -127,14 +131,14 @@ test('L6 — préférence corrompue : disposition par défaut', async () => {
   await s.page.evaluate(k => localStorage.setItem(k, '{'), KEY)
   await s.page.reload()
   await s.page.waitForLoadState('networkidle')
-  expect(await titles(s.page)).toEqual(DEFAULT_TITLES)
+  await expect.poll(() => titles(s.page)).toEqual(DEFAULT_TITLES)
 })
 
 test('E7/L1 — préférence commune aux projets ; bouton grisé déplaçable', async () => {
   await dragBefore(s.page, 'Version', 'Suivi')
   const ordered = await titles(s.page)
   await s.cloneAndOpen('demo-ll800-produit', 'gh56-second')
-  expect(await titles(s.page)).toEqual(ordered)
+  await expect.poll(() => titles(s.page)).toEqual(ordered)
 
   // Sans projet : les boutons de projet sont grisés mais restent déplaçables.
   await s.invoke('workspace:clear-last-opened')
@@ -142,5 +146,5 @@ test('E7/L1 — préférence commune aux projets ; bouton grisé déplaçable', 
   await s.page.waitForLoadState('networkidle')
   await expect(button(s.page, 'Exigences')).toHaveAttribute('aria-disabled', 'true')
   await dragBefore(s.page, 'Exigences', 'Projet')
-  expect((await titles(s.page)).slice(0, 2)).toEqual(['Compte', 'Exigences'])
+  await expect.poll(async () => (await titles(s.page)).slice(0, 2)).toEqual(['Compte', 'Exigences'])
 })

@@ -184,3 +184,39 @@ test('S-11 — compte non admin : lecture seule, sans erreur', async () => {
   await expect(m.getByLabel(/Compte à ajouter|Account to add/)).toHaveCount(0)
   await s.page.keyboard.press('Escape')
 })
+
+test('GH356 — repo personnel GitHub : pas de choix de niveau, ajout en écriture', async () => {
+  // Repo personnel GitHub simulé : la réponse de `forge:repo-settings` porte le niveau imposé.
+  const SETTINGS_RPC = /\/rpc\/forge(?:%3A|:)repo-settings$/
+  const SET_RPC = /\/rpc\/forge(?:%3A|:)set-collaborator$/
+  const sent: unknown[][] = []
+  await s.page.route(SETTINGS_RPC, async route => {
+    const res = await route.fetch()
+    const body = await res.json() as { ok: boolean; value: Record<string, unknown> }
+    await route.fulfill({ response: res, json: { ...body, value: { ...body.value, fixedCollaboratorLevel: 'write' } } })
+  })
+  await s.page.route(SET_RPC, async route => {
+    sent.push((route.request().postDataJSON() as { args: unknown[] }).args)
+    await route.continue()
+  })
+  try {
+    const name = `perso-${RUN}`
+    seedRepo(E2E_ORG, name)
+    await openProject(E2E_ORG, name)
+    await openSettings()
+    const m = modal()
+    await expect(m.getByText(/seul niveau possible sur un repo personnel GitHub|only level on a personal GitHub repository/)).toBeVisible({ timeout: 15_000 })
+    await expect(m.getByRole('combobox', { name: /^(Niveau|Level)$/ })).toHaveCount(0)
+    await m.getByLabel(/Compte à ajouter|Account to add/).fill('ann')
+    await m.getByRole('button', { name: /^(Ajouter|Add)$/ }).click()
+    const list = m.getByRole('list', { name: /Collaborateurs|Collaborators/ })
+    await expect(list.getByRole('listitem').filter({ hasText: 'ann' })).toBeVisible({ timeout: 15_000 })
+    expect(sent.at(-1)?.slice(1)).toEqual(['ann', 'write'])
+    await expect(m.getByRole('combobox', { name: /Niveau de ann|Level of ann/ })).toHaveCount(0)
+    await expect(list.getByRole('listitem').filter({ hasText: 'ann' })).toContainText(/Écriture|Write/)
+    await s.page.keyboard.press('Escape')
+  } finally {
+    await s.page.unroute(SETTINGS_RPC)
+    await s.page.unroute(SET_RPC)
+  }
+})

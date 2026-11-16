@@ -84,7 +84,9 @@ export function AddRepoWizard({ mode, accounts, initialName = '', existing, onSu
     try {
       const created = await onSubmit({
         accountKey, owner: current.name, ownerKind: current.kind, name: trimmed, description: description.trim(), visibility,
-        integrationSuffix: branchSuffix, members,
+        integrationSuffix: branchSuffix,
+        // GH356 — niveaux choisis avant de passer sur un propriétaire à niveau imposé.
+        members: members.map(m => ({ ...m, level: current.fixedCollaboratorLevel ?? m.level })),
       })
       if (!created) return
       if (created.steps.every(s => s.status === 'done')) onDone(created)
@@ -170,7 +172,8 @@ export function AddRepoWizard({ mode, accounts, initialName = '', existing, onSu
 
         {current && (
           <Field label={t('repoWizard.members.title')}>
-            <RepoMembersEditor accountKey={accountKey} owner={current.name} ownerKind={current.kind} value={members} onChange={setMembers} />
+            <RepoMembersEditor accountKey={accountKey} owner={current.name} ownerKind={current.kind}
+              fixedLevel={current.fixedCollaboratorLevel} value={members} onChange={setMembers} />
           </Field>
         )}
 

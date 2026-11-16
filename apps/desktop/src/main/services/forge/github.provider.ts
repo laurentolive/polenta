@@ -73,7 +73,8 @@ export const githubProvider: ForgeProvider = {
   async listOwners(baseUrl, token, login) {
     // `GET /user/memberships/orgs` donne le rôle ; il exige `read:org` (mesuré : GH107-sprint1 §2).
     const scopeMissing = await githubProvider.teamScopeMissing!(baseUrl, token)
-    const user: ForgeOwner = { name: login, label: '', kind: 'user', canCreate: true }
+    // Repo personnel : un collaborateur a toujours l'écriture, GitHub refuse un autre niveau (GH356).
+    const user: ForgeOwner = { name: login, label: '', kind: 'user', canCreate: true, fixedCollaboratorLevel: 'write' }
     let orgs: Array<{ login: string; role: 'admin' | 'member' }>
     if (scopeMissing) {
       const pub = await paginate<{ login: string }>(baseUrl, '/user/orgs', token)
@@ -143,6 +144,7 @@ export const githubProvider: ForgeProvider = {
       return {
         cloneUrl: data.clone_url, description: data.description ?? '', visibility: data.private ? 'private' : 'public', defaultBranch: data.default_branch ?? '',
         permissions: { pull: p?.pull ?? true, push: p?.push ?? false, admin: p?.admin ?? false },
+        ...ownerKindOf(data),
       }
     } catch (err) {
       if (err instanceof ForgeHttpError && err.status === 404) return null
@@ -178,8 +180,13 @@ export const githubProvider: ForgeProvider = {
   },
 
   async setCollaborator(baseUrl, token, owner, repo, login, level) {
+    // GH356 — repo personnel : pas de niveau (écriture, seul possible) ; `permission` y est refusé en 422
+    // (constaté avec admin). Propriétaire inconnu : niveau envoyé, comme pour une organisation.
+    const personal = await githubProvider.repoDetails!(baseUrl, token, owner, repo)
+      .then(d => d?.ownerKind === 'user', () => false)
     // Invitation en attente : un nouveau PUT ne change pas son niveau (mesuré), PATCH de l'invitation.
     const pending = (await githubProvider.listInvitations!(baseUrl, token, owner, repo)).find(i => i.login.toLowerCase() === login.toLowerCase())
+    if (pending && personal) return 'invited'
     if (pending) {
       await forgeRequest(`${repoApiUrl(baseUrl, owner, repo)}/invitations/${pending.id}`, {
         ...opts(baseUrl, token), method: 'PATCH', json: { permissions: level },
@@ -188,7 +195,7 @@ export const githubProvider: ForgeProvider = {
     }
     try {
       const res = await forgeRequest(`${repoApiUrl(baseUrl, owner, repo)}/collaborators/${encodeURIComponent(login)}`, {
-        ...opts(baseUrl, token), method: 'PUT', json: { permission: githubLevel(level) },
+        ...opts(baseUrl, token), method: 'PUT', json: personal ? {} : { permission: githubLevel(level) },
       })
       return res.status === 201 ? 'invited' : 'added'
     } catch (err) {
@@ -298,6 +305,12 @@ function scopesOf(headers: Record<string, string>): string[] | null {
   return headers[key].split(',').map(s => s.trim()).filter(Boolean)
 }
 
+/** `type` du propriétaire : `User` (repo personnel) ou `Organization` ; absent → rien. */
+function ownerKindOf(r: ApiRepo): { ownerKind?: 'user' | 'org' } {
+  const type = r.owner?.type
+  return type === 'User' ? { ownerKind: 'user' } : type === 'Organization' ? { ownerKind: 'org' } : {}
+}
+
 /** Niveau Polenta → nom GitHub en écriture. */
 function githubLevel(level: RepoAccessLevel): 'pull' | 'push' | 'admin' {
   return level === 'read' ? 'pull' : level === 'write' ? 'push' : 'admin'
@@ -306,7 +319,7 @@ function githubLevel(level: RepoAccessLevel): 'pull' | 'push' | 'admin' {
 interface ApiRepo {
   full_name: string
   name: string
-  owner?: { login?: string }
+  owner?: { login?: string; type?: string }
   description?: string | null
   clone_url: string
   default_branch?: string

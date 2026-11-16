@@ -197,6 +197,8 @@ function MembersSection({ repoPath, settings, queryKey }: SectionProps) {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const isAdmin = settings.details.permissions.admin
+  // GH356 — repo personnel GitHub : écriture pour tout collaborateur, aucun choix de niveau.
+  const fixedLevel = settings.fixedCollaboratorLevel
   const [login, setLogin] = useState('')
   const [level, setLevel] = useState<RepoAccessLevel>('write')
   const [team, setTeam] = useState('')
@@ -224,7 +226,7 @@ function MembersSection({ repoPath, settings, queryKey }: SectionProps) {
 
   const add = () => act('add', async () => {
     const name = login.trim()
-    const outcome = await api.forge.setCollaborator(repoPath, name, level)
+    const outcome = await api.forge.setCollaborator(repoPath, name, fixedLevel ?? level)
     setLogin('')
     if (outcome === 'invited') setNotice(t('repoSettings.invited', { login: name }))
   })
@@ -240,8 +242,10 @@ function MembersSection({ repoPath, settings, queryKey }: SectionProps) {
           <span className="flex-1 truncate"><span className="font-mono">{c.login}</span>{c.name && <span className="text-ink-3"> — {c.name}</span>}</span>
           {isAdmin ? (
             <>
-              <LevelSelect value={c.level} label={t('repoWizard.members.levelOf', { name: c.login })} disabled={busy}
-                onChange={l => void act(`user:${c.login}`, async () => { await api.forge.setCollaborator(repoPath, c.login, l) })} />
+              {fixedLevel
+                ? <span className="text-xs text-ink-3">{levelLabel(t, c.level)}</span>
+                : <LevelSelect value={c.level} label={t('repoWizard.members.levelOf', { name: c.login })} disabled={busy}
+                  onChange={l => void act(`user:${c.login}`, async () => { await api.forge.setCollaborator(repoPath, c.login, l) })} />}
               <button type="button" disabled={busy} aria-label={t('repoWizard.members.remove', { name: c.login })} className="text-ink-3 hover:text-status-danger"
                 onClick={() => { if (isSelf && c.level === 'admin') setConfirmSelf(true); else void remove(c.login) }}>
                 <X size={14} />
@@ -298,10 +302,11 @@ function MembersSection({ repoPath, settings, queryKey }: SectionProps) {
             <datalist id="repo-settings-members">
               {settings.orgMembers.map(m => <option key={m.login} value={m.login}>{m.name}</option>)}
             </datalist>
-            <LevelSelect value={level} label={t('repoWizard.members.level.label')} onChange={setLevel} />
+            {!fixedLevel && <LevelSelect value={level} label={t('repoWizard.members.level.label')} onChange={setLevel} />}
             <button type="submit" className="btn-secondary btn-sm" disabled={busy || !login.trim()}>{t('repoWizard.members.add')}</button>
           </form>
         )}
+        {isAdmin && fixedLevel && <p className="text-xs text-ink-3">{t('repoWizard.members.fixedLevel')}</p>}
         {rowError('add')}
         {notice && <p className="text-xs text-ink-2">{notice}</p>}
       </div>

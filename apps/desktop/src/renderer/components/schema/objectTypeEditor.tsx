@@ -429,7 +429,7 @@ const LIGATURES: Record<string, string> = {
 }
 
 /** Racine de nom/préfixe : accents retirés (GH365), majuscules, tout caractère hors `A-Z0-9` → `_`. */
-function slugifyComponentName(componentName: string): string {
+export function slugifyComponentName(componentName: string): string {
   return componentName.trim()
     .replace(/[ŒœÆæßØøŁłĐđÐðÞþı]/g, c => LIGATURES[c])
     .normalize('NFD').replace(/[̀-ͯ]/g, '')

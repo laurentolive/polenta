@@ -6,6 +6,7 @@ import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { CreateComponentRepo } from '../repo/CreateComponentRepo'
 import { backdropDismiss } from '../../lib/backdropDismiss'
 import { COMPONENT_DEFAULT_CATEGORIES, REPO_ROOT_ONLY_CATEGORIES } from './objectTypeEditor'
+import { DEFAULT_LINK_KINDS, offeredDefaultLinks, showsIssueImpact, type DefaultLinkKind } from './defaultLinkTypes'
 
 /** GH365 — libellé (pluriel) de chaque case « Types d'objets créés par défaut ». */
 const INCLUDE_LABEL_KEY: Record<ObjectCategory, string> = {
@@ -15,6 +16,13 @@ const INCLUDE_LABEL_KEY: Record<ObjectCategory, string> = {
   issue: 'schema.addDependency.includeIssuesLabel',
   version: 'schema.addDependency.includeVersionsLabel',
   validation: 'schema.addDependency.includeValidationsLabel',
+}
+
+/** GH373 — libellé de chaque case « Types de liens créés par défaut ». */
+const LINK_LABEL_KEY: Record<DefaultLinkKind, string> = {
+  verification: 'schema.addDependency.linkVerificationLabel',
+  implementation: 'schema.addDependency.linkImplementationLabel',
+  'implementation-parent': 'schema.addDependency.linkImplementationParentLabel',
 }
 
 export interface AddDependencyValues {
@@ -44,6 +52,9 @@ export interface AddDependencyValues {
    *  per repo, on `root`). Only meaningful when adding a component (kind === 'component', add
    *  mode); empty otherwise. */
   defaultCategories: ObjectCategory[]
+  /** GH373 — types de liens par défaut cochés parmi ceux proposés (extrémités cochées). Même
+   *  portée que `defaultCategories` ; `issue-impact` n'y figure pas (ajouté par le main). */
+  defaultLinks: DefaultLinkKind[]
 }
 
 interface Props {
@@ -66,10 +77,14 @@ interface Props {
   /** T110 sprint 2 — résout le nom de montage vers son pin affiché ("Version implémentée"),
    *  même troncature que l'arbre Structure. `null` si non résolvable. */
   resolveInterfacePin?: (mountName: string) => string | null
+  /** GH373 — le parent (nœud sous lequel le composant est ajouté) a au moins un type exigence :
+   *  conditionne la case « Implémentation depuis le parent ». */
+  parentHasRequirementTypes?: boolean
 }
 
 export function AddDependencyModal({
   kind, parentLabel, isSaving, error, onSubmit, onClose, initialValues, resolveInterfaceRoles, resolveInterfacePin,
+  parentHasRequirementTypes = false,
 }: Props) {
   const { t } = useTranslation()
   const isEdit = !!initialValues
@@ -87,6 +102,10 @@ export function AddDependencyModal({
   const [checkedCategories, setCheckedCategories] = useState<ReadonlySet<ObjectCategory>>(
     () => new Set(initialValues?.defaultCategories ?? COMPONENT_DEFAULT_CATEGORIES),
   )
+  // GH373 — liens cochés ; un lien masqué (extrémité décochée) garde son état.
+  const [checkedLinks, setCheckedLinks] = useState<ReadonlySet<DefaultLinkKind>>(
+    () => new Set(initialValues?.defaultLinks ?? DEFAULT_LINK_KINDS),
+  )
   const [formError, setFormError] = useState<string | null>(null)
 
   // Only offered when creating a component (not editing — an interface inherently needs a
@@ -102,6 +121,15 @@ export function AddDependencyModal({
     const next = new Set(prev)
     if (checked) next.add(category)
     else next.delete(category)
+    return next
+  })
+  const selectedCategories = canBeLocal ? offeredCategories.filter(c => checkedCategories.has(c)) : []
+  const offeredLinks = offeredDefaultLinks(selectedCategories, parentHasRequirementTypes)
+  const showIssueImpact = showsIssueImpact(selectedCategories)
+  const toggleLink = (kind: DefaultLinkKind, checked: boolean) => setCheckedLinks(prev => {
+    const next = new Set(prev)
+    if (checked) next.add(kind)
+    else next.delete(kind)
     return next
   })
 
@@ -132,7 +160,8 @@ export function AddDependencyModal({
     onSubmit({
       url: url.trim(), name: name.trim(), branch: branch.trim(), catalogRoles, parentRoles, implementsList,
       label: label.trim(), description: description.trim(), isLocal,
-      defaultCategories: canBeLocal ? offeredCategories.filter(c => checkedCategories.has(c)) : [],
+      defaultCategories: selectedCategories,
+      defaultLinks: offeredLinks.filter(k => checkedLinks.has(k)),
     })
   }
 
@@ -213,6 +242,25 @@ export function AddDependencyModal({
                     {t(INCLUDE_LABEL_KEY[category])}
                   </label>
                 ))}
+              </div>
+            </div>
+          )}
+          {canBeLocal && (offeredLinks.length > 0 || showIssueImpact) && (
+            <div>
+              <p className="text-xs text-ink-2 mb-1">{t('schema.addDependency.defaultLinkTypesLabel')}</p>
+              <div className="flex flex-col gap-1">
+                {offeredLinks.map(kind => (
+                  <label key={kind} className="flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
+                    <input type="checkbox" checked={checkedLinks.has(kind)} onChange={e => toggleLink(kind, e.target.checked)} />
+                    {t(LINK_LABEL_KEY[kind], { parentLabel })}
+                  </label>
+                ))}
+                {showIssueImpact && (
+                  <label className="flex items-center gap-2 text-xs text-ink-3" title={t('schema.addDependency.linkIssueImpactTitle')}>
+                    <input type="checkbox" checked disabled />
+                    {t('schema.addDependency.linkIssueImpactLabel')}
+                  </label>
+                )}
               </div>
             </div>
           )}

@@ -1461,8 +1461,13 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
     if (!schema) return
     // `nodeName` is 'root' when added from a RepoRow (cf. AddMenu callers below) — in that case the
     // fallback name is the repo's own mount name (`repoLabel`), not the literal string 'root'.
-    // GH365 — racine = label affiché du nœud (pour `root` : label du repo), repli sur ce nom.
-    const componentName = typeNamingRoot(findSystemNode(schema.nodes, nodeName)?.label, nodeName === 'root' ? repoLabel : nodeName)
+    // GH365 — racine = label affiché du nœud, repli sur ce nom. Pour `root` : label du repo lu par
+    // l'arbre, posé seulement depuis un vrai schema.yaml (le schéma par défaut d'un repo qui n'en a
+    // pas porte « Produit », qui ne doit pas devenir PRODUIT_*).
+    const nodeLabel = nodeName === 'root'
+      ? flatNodes.find(n => n.repoPath === repoPath)?.label
+      : findSystemNode(schema.nodes, nodeName)?.label
+    const componentName = typeNamingRoot(nodeLabel, nodeName === 'root' ? repoLabel : nodeName)
     // GH97 — noms des types du nœud + préfixes de tout le workspace : la proposition les évite.
     const taken = new Set([...(findSystemNode(schema.nodes, nodeName)?.objectTypes ?? []).map(ot => ot.name), ...allPrefixes])
     const newType = editableToObjType(
@@ -1606,10 +1611,8 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         // unseen) dependency's schema query on its own rather than invalidating every
         // already-loaded repo's schema.
         qc.setQueryData(['workspace-open', workspaceDir], result)
-        // Checkboxes only render for kind === 'component' (cf. AddDependencyModal's canBeLocal) —
-        // for an interface, `values.include*` still carry their unseen default (true) and must be
-        // ignored here, or every "+ Interface" would silently seed object types nobody asked for.
-        const categories = pendingDependency.kind === 'component' ? values.defaultCategories : []
+        // Vide pour une interface : la modale n'offre les cases qu'à l'ajout d'un composant.
+        const categories = values.defaultCategories
         // T177 — label/description saisis à l'ajout, écrits sur le node `root` du schéma propre
         // de la dépendance (comme en édition). Seulement s'ils sont renseignés : un repo existant
         // qui a déjà son propre label ne doit pas le perdre parce que le champ a été laissé vide.

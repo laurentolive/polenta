@@ -96,9 +96,7 @@ export function AddDependencyModal({
   // whether the choice itself is offered.
   const canBeLocal = !isEdit && kind === 'component'
 
-  // Rôles hérités hors catalogue (T110) — présents côté parent mais ne correspondant à aucune
-  // entrée du catalogue en cours d'édition (legacy texte libre pré-T110, ou catalogue vidé
-  // depuis) : jamais purgés silencieusement, affichés séparément avec leur propre retrait explicite.
+  // GH365 — version / validation : un seul type par repo, sur `root` — pas pour un composant local.
   const offeredCategories = COMPONENT_DEFAULT_CATEGORIES.filter(c => !(isLocal && REPO_ROOT_ONLY_CATEGORIES.includes(c)))
   const toggleCategory = (category: ObjectCategory, checked: boolean) => setCheckedCategories(prev => {
     const next = new Set(prev)
@@ -107,6 +105,9 @@ export function AddDependencyModal({
     return next
   })
 
+  // Rôles hérités hors catalogue (T110) — présents côté parent mais ne correspondant à aucune
+  // entrée du catalogue en cours d'édition (legacy texte libre pré-T110, ou catalogue vidé
+  // depuis) : jamais purgés silencieusement, affichés séparément avec leur propre retrait explicite.
   const legacyParentRoles = parentRoles.filter(r => !catalogRoles.some(cr => cr.name === r))
   const showPlayedRoles = catalogRoles.length > 0 || parentRoles.length > 0
 

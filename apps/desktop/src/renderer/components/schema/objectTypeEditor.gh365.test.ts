@@ -13,6 +13,8 @@ describe('typeNamingRoot (U-1)', () => {
     expect(typeNamingRoot(undefined, 'motor')).toBe('motor')
     expect(typeNamingRoot('  ', 'motor')).toBe('motor')
     expect(typeNamingRoot('电机', 'motor')).toBe('motor')
+    // Racine qui ne commence pas par une lettre : préfixe numérique évité.
+    expect(typeNamingRoot('电机 2', 'motor')).toBe('motor')
   })
 })
 
@@ -23,6 +25,7 @@ describe('racine de nom/préfixe (U-2)', () => {
     expect(nameOf('Œil — capteur')).toBe('OEIL_CAPTEUR_REQ')
     expect(nameOf('  Ça  va  ')).toBe('CA_VA_REQ')
     expect(nameOf('Straße Æther')).toBe('STRASSE_AETHER_REQ')
+    expect(nameOf('Øresund Łódź')).toBe('ORESUND_LODZ_REQ')
   })
 })
 

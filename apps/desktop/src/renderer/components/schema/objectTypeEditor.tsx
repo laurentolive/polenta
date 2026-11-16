@@ -422,21 +422,24 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   validation: 'VAL',
 }
 
-/** GH365 — ligatures sans décomposition Unicode (NFD les laisse intactes). */
-const LIGATURES: Record<string, string> = { 'Œ': 'OE', 'œ': 'OE', 'Æ': 'AE', 'æ': 'AE', 'ß': 'SS' }
+/** GH365 — lettres latines que la décomposition Unicode (NFD) laisse intactes. */
+const LIGATURES: Record<string, string> = {
+  'Œ': 'OE', 'œ': 'OE', 'Æ': 'AE', 'æ': 'AE', 'ß': 'SS', 'Ø': 'O', 'ø': 'O', 'Ł': 'L', 'ł': 'L',
+  'Đ': 'D', 'đ': 'D', 'Ð': 'D', 'ð': 'D', 'Þ': 'TH', 'þ': 'TH', 'ı': 'I',
+}
 
 /** Racine de nom/préfixe : accents retirés (GH365), majuscules, tout caractère hors `A-Z0-9` → `_`. */
 function slugifyComponentName(componentName: string): string {
   return componentName.trim()
-    .replace(/[ŒœÆæß]/g, c => LIGATURES[c])
+    .replace(/[ŒœÆæßØøŁłĐđÐðÞþı]/g, c => LIGATURES[c])
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
 }
 
-/** GH365 — racine des types proposés pour un composant : son label affiché, ou son nom quand le
- *  label est vide ou n'a aucun caractère latin/chiffre. */
+/** GH365 — racine des types proposés pour un composant : son label affiché, ou son nom quand la
+ *  racine tirée du label ne commence pas par une lettre latine (label vide, non latin, `电机 2`). */
 export function typeNamingRoot(label: string | undefined, name: string): string {
-  return label && slugifyComponentName(label) ? label : name
+  return label && /^[A-Z]/.test(slugifyComponentName(label)) ? label : name
 }
 
 /** GH365 — catégories proposées à l'ajout d'un composant, dans l'ordre des cases et des types créés. */

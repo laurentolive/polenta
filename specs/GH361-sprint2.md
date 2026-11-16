@@ -54,3 +54,37 @@
 4. Tuer l'app (gestionnaire des tâches) pendant qu'elle affiche le type → l'écriture de l'agent
    passe aussitôt.
 5. `git status` : aucun fichier de verrou.
+
+## Revue de code (`/code-review medium`, diff du sprint 2)
+
+Corrigé :
+- `reloadTree` remplaçait toujours `root` : il ne recharge plus que si le disque diffère de l'état
+  dont `root` est issu (`baseRootRef`) — une simple reprise de bail garde les modifications non
+  enregistrées et l'historique d'annulation.
+- Erreur de transport au renouvellement : bail gardé (seul un `false` du main fait reprendre).
+- Fichier de verrou long nommé par PID **et** instance (`app-<pid>-<owner>.json`) : deux conteneurs
+  du serveur web ne s'effacent plus mutuellement.
+- Libération des baux à l'arrêt d'Electron (`will-quit`) et à l'éviction d'un utilisateur web.
+- `acquire` en échec : le bail n'est plus laissé enregistré.
+- Délais partagés (`TREE_LOCK_TTL_MS`, `TREE_LOCK_RENEW_MS`) dans `@polenta/types`.
+- `waitForWriteLock` attend la libération ou la péremption (30 s) d'une écriture MCP, plus 5 s au
+  plus : la relecture qui suit voit l'écriture terminée.
+- Purge périodique : erreur journalisée, jamais de rejet non géré (qui arrêterait le processus).
+
+Non retenu :
+- Verrou tenu panneau replié : voulu, la vue principale affiche et modifie encore l'arbre.
+- Fenêtre entre l'expiration d'un bail (veille de plus de 30 s) et sa reprise, pendant laquelle
+  un enregistrement de l'app pourrait écraser une écriture MCP : limitation documentée
+  (`SPEC-MCP-SERVER.md` §7).
+
+## Vérifications
+
+- `pnpm typecheck` (monorepo, 4 paquets) : OK. Pas de script `lint`.
+- `pnpm test` complet : OK (desktop 175 fichiers, merge-core, admin-service).
+- e2e (`pnpm build:web` puis `npx playwright test`, ports décalés) : `gh361-tree-lock` (2 tests) et
+  specs voisines `gh123-sidebar-collapse`, `gh230-view-switch`, `gh261-legacy-tree-names`,
+  `gh300-scroll-position` : 28/28 ; `gh123` + `gh361` répétés ×3 : 33/33. Une première série avait
+  échoué en cascade après `gh123 E4/E7` (serveur arrêté, cause non conservée) ; non reproduit en
+  4 séries depuis ; la purge pouvait produire un rejet non géré, corrigé ci-dessus.
+- Contre-épreuve : sans `reloadTree`, `gh361-tree-lock` échoue.
+- Non lancé : suite e2e complète (niveau 3, après validation), `test:e2e:desktop`.

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import { TREE_LOCK_TTL_MS, removeAppLock, waitForWriteLock, writeAppLock } from './tree-lock.util'
+import { TREE_LOCK_RENEW_MS, TREE_LOCK_TTL_MS } from '@polenta/types'
+import { removeAppLock, waitForWriteLock, writeAppLock } from './tree-lock.util'
 
 /**
  * GH361 — verrou long de l'application sur un rangement (`.polenta/trees/<nœud>/<type>.yaml`) :
@@ -15,8 +16,6 @@ import { TREE_LOCK_TTL_MS, removeAppLock, waitForWriteLock, writeAppLock } from 
 
 interface Lease { repoPath: string; nodeId: string; typeId: string; expiresAt: number }
 
-export const TREE_LEASE_RENEW_MS = 10_000
-
 export class TreeEditLocksService {
   private readonly leases = new Map<string, Lease>()
   /** Début du verrou de chaque arbre (clé `repo\0nœud\0type`), conservé tant qu'il reste un bail. */
@@ -24,9 +23,15 @@ export class TreeEditLocksService {
   private readonly pruneTimer: ReturnType<typeof setInterval>
   /** Écritures de fichier d'un même arbre sérialisées : un `release` ne passe pas devant un `acquire`. */
   private readonly queues = new Map<string, Promise<void>>()
+  /** Détenteur des fichiers de cette instance (le serveur web a un conteneur par utilisateur). */
+  private readonly owner = randomUUID()
 
   constructor(private readonly now: () => number = Date.now) {
-    this.pruneTimer = setInterval(() => void this.prune(), TREE_LEASE_RENEW_MS)
+    // Une erreur de fichier (EBUSY, EPERM…) ne doit jamais devenir un rejet non géré, qui arrêterait
+    // le processus (serveur web compris).
+    this.pruneTimer = setInterval(() => {
+      this.prune().catch(err => console.error('[TreeEditLocks] purge des baux :', err))
+    }, TREE_LOCK_RENEW_MS)
     this.pruneTimer.unref?.()
   }
 
@@ -34,8 +39,15 @@ export class TreeEditLocksService {
   async acquire(repoPath: string, nodeId: string, typeId: string): Promise<string> {
     const id = randomUUID()
     this.leases.set(id, { repoPath, nodeId, typeId, expiresAt: this.now() + TREE_LOCK_TTL_MS })
-    await this.sync(repoPath, nodeId, typeId)
-    await waitForWriteLock(repoPath, nodeId, typeId)
+    try {
+      await this.sync(repoPath, nodeId, typeId)
+      await waitForWriteLock(repoPath, nodeId, typeId)
+    } catch (err) {
+      // Bail jamais rendu au renderer : il ne doit pas survivre à l'échec.
+      this.leases.delete(id)
+      await this.sync(repoPath, nodeId, typeId).catch(() => {})
+      throw err
+    }
     return id
   }
 
@@ -78,12 +90,12 @@ export class TreeEditLocksService {
       const mine = [...this.leases.values()].filter(l => l.repoPath === repoPath && l.nodeId === nodeId && l.typeId === typeId)
       if (mine.length === 0) {
         this.since.delete(key)
-        await removeAppLock(repoPath, nodeId, typeId)
+        await removeAppLock(repoPath, nodeId, typeId, this.owner)
         return
       }
       if (!this.since.has(key)) this.since.set(key, new Date(this.now()).toISOString())
       const expiresAt = new Date(Math.max(...mine.map(l => l.expiresAt))).toISOString()
-      await writeAppLock(repoPath, nodeId, typeId, this.since.get(key)!, expiresAt)
+      await writeAppLock(repoPath, nodeId, typeId, this.since.get(key)!, expiresAt, this.owner)
     }
     const next = (this.queues.get(key) ?? Promise.resolve()).then(run, run)
     this.queues.set(key, next.catch(() => {}))

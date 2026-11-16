@@ -657,6 +657,8 @@ Deux catégories (cf. §4) :
   travaillent sur d'autres clones : conflits par fusion git). Une écriture MCP est refusée tant que
   l'application affiche le type ; les services du main qui réécrivent un arbre hors affichage
   (renommage / déplacement / suppression de type) ne prennent pas le verrou court.
+  Un bail de l'app expiré (veille de plus de 30 s) laisse, jusqu'à sa reprise, une fenêtre où un
+  enregistrement de l'app peut écraser une écriture MCP faite entre-temps.
 
 - **Mode mono-repo par défaut** (§2.3) : sans `--workspace`, un `objectTypeRef` vers un
   composant en repo séparé (nom de montage) retombe silencieusement sur le repo

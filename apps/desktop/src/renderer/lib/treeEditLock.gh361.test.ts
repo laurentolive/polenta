@@ -45,6 +45,18 @@ describe('holdTreeEditLock', () => {
     expect(calls.at(-1)).toBe('unlock:L2')
   })
 
+  it('revue — erreur de transport au renouvellement : bail gardé, pas de nouvelle prise ni relecture', async () => {
+    const { api, calls } = fakeApi()
+    vi.mocked(api.renewLock).mockRejectedValueOnce(new Error('réseau'))
+    const acquired = vi.fn()
+    const stop = holdTreeEditLock(api, '/r', 'root', 'req', acquired)
+    await vi.advanceTimersByTimeAsync(TREE_LOCK_RENEW_MS * 2)
+    expect(calls).toEqual(['lock:req', 'renew:L1'])
+    expect(vi.mocked(api.renewLock)).toHaveBeenCalledTimes(2)
+    expect(acquired).toHaveBeenCalledTimes(1)
+    stop()
+  })
+
   it('arrêt pendant la prise : le bail obtenu est rendu, onAcquired non appelé', async () => {
     const { api, calls } = fakeApi()
     const acquired = vi.fn()

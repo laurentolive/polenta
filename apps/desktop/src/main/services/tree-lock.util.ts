@@ -2,6 +2,9 @@ import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import { createHash, randomUUID } from 'crypto'
+import { TREE_LOCK_TTL_MS } from '@polenta/types'
+
+export { TREE_LOCK_TTL_MS }
 
 /**
  * GH361 — verrou du rangement d'un type (`.polenta/trees/<nœud>/<type>.yaml`), partagé entre
@@ -13,7 +16,7 @@ import { createHash, randomUUID } from 'crypto'
  * long ; l'app écrit le verrou long PUIS attend la fin du verrou court, puis relit l'arbre.
  */
 
-export const TREE_LOCK_TTL_MS = 30_000
+/** Attente max d'un écrivain MCP sur le verrou court d'un autre (au-delà : `TREE_LOCKED`). */
 export const TREE_WRITE_WAIT_MS = 5_000
 const POLL_MS = 25
 
@@ -91,18 +94,23 @@ export async function readAppLock(repoPath: string, nodeId: string, typeId: stri
   return oldest ? { by: 'app', since: oldest } : null
 }
 
-/** Écrit (ou prolonge) le verrou long de CE processus sur cet arbre. */
-export async function writeAppLock(repoPath: string, nodeId: string, typeId: string, since: string, expiresAt: string): Promise<void> {
+/** Fichier du verrou long d'un détenteur : processus + instance (le serveur web en a une par utilisateur). */
+const appLockName = (nodeId: string, typeId: string, owner: string) => `${appLockPrefix(nodeId, typeId)}${process.pid}-${enc(owner)}.json`
+
+/** Écrit (ou prolonge) le verrou long du détenteur `owner` de CE processus sur cet arbre. */
+export async function writeAppLock(
+  repoPath: string, nodeId: string, typeId: string, since: string, expiresAt: string, owner = 'default',
+): Promise<void> {
   const dir = await lockDir(repoPath)
   await fsP.mkdir(dir, { recursive: true })
   const lock: AppLockFile = { pid: process.pid, since, expiresAt }
-  await fsP.writeFile(path.join(dir, `${appLockPrefix(nodeId, typeId)}${process.pid}.json`), JSON.stringify(lock), 'utf-8')
+  await fsP.writeFile(path.join(dir, appLockName(nodeId, typeId, owner)), JSON.stringify(lock), 'utf-8')
 }
 
-/** Retire le verrou long de CE processus sur cet arbre. */
-export async function removeAppLock(repoPath: string, nodeId: string, typeId: string): Promise<void> {
+/** Retire le verrou long du détenteur `owner` de CE processus sur cet arbre. */
+export async function removeAppLock(repoPath: string, nodeId: string, typeId: string, owner = 'default'): Promise<void> {
   const dir = await lockDir(repoPath)
-  await fsP.rm(path.join(dir, `${appLockPrefix(nodeId, typeId)}${process.pid}.json`), { force: true })
+  await fsP.rm(path.join(dir, appLockName(nodeId, typeId, owner)), { force: true })
 }
 
 // ── Verrou court (écriture) ────────────────────────────────────────────────────
@@ -146,10 +154,13 @@ async function activeWriteLock(file: string): Promise<boolean> {
   return false
 }
 
-/** Attend qu'aucun verrou court actif ne tienne cet arbre (au plus `TREE_WRITE_WAIT_MS`, puis rend la main). */
+/**
+ * Attend qu'aucun verrou court actif ne tienne cet arbre : jusqu'à sa libération, ou sa péremption
+ * (`TREE_LOCK_TTL_MS`), pour que la relecture qui suit voie l'écriture terminée.
+ */
 export async function waitForWriteLock(repoPath: string, nodeId: string, typeId: string): Promise<void> {
   const file = await writeLockFile(repoPath, nodeId, typeId)
-  const deadline = Date.now() + TREE_WRITE_WAIT_MS
+  const deadline = Date.now() + TREE_LOCK_TTL_MS + 5_000
   while (await activeWriteLock(file) && Date.now() < deadline) await sleep(POLL_MS)
 }
 

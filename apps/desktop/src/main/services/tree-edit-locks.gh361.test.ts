@@ -63,6 +63,20 @@ describe('TreeEditLocksService', () => {
     expect(await appFiles()).toEqual([])
   })
 
+  it('revue — deux instances du même processus (serveur web) : chacune ses fichiers', async () => {
+    const other = new TreeEditLocksService(() => clock)
+    try {
+      const a = await locks.acquire(repo, 'root', 'req')
+      await other.acquire(repo, 'root', 'req')
+      await locks.release(a)
+      expect(await readAppLock(repo, 'root', 'req')).not.toBeNull()
+      expect(await appFiles()).toHaveLength(1)
+    } finally {
+      await other.releaseAll()
+    }
+    expect(await appFiles()).toEqual([])
+  })
+
   it('D2 — acquire attend la fin d’une écriture MCP en cours', async () => {
     let written = false
     const writing = withTreeWriteLock(repo, 'root', 'req', async () => {

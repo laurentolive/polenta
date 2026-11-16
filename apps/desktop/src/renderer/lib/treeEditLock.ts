@@ -1,5 +1,6 @@
-/** Renouvellement du bail (le main le purge à 30 s sans renouvellement). */
-export const TREE_LOCK_RENEW_MS = 10_000
+import { TREE_LOCK_RENEW_MS } from '@polenta/types'
+
+export { TREE_LOCK_RENEW_MS }
 
 export interface TreeLockApi {
   lock(repoPath: string, nodeId: string, typeId: string): Promise<string>
@@ -9,7 +10,8 @@ export interface TreeLockApi {
 
 /**
  * GH361 — tient le verrou d'édition d'un rangement jusqu'à l'appel de la fonction renvoyée : prise
- * immédiate, renouvellement toutes les 10 s (bail purgé ou prise échouée → nouvelle prise),
+ * immédiate, renouvellement toutes les 10 s (bail purgé — `renewLock` répond `false` — ou prise
+ * échouée → nouvelle prise),
  * libération à l'arrêt (y compris d'une prise encore en cours). `onAcquired` à chaque prise.
  */
 export function holdTreeEditLock(
@@ -44,7 +46,9 @@ export function holdTreeEditLock(
       return
     }
     const current = lease
-    void api.renewLock(current).catch(() => false).then(ok => {
+    // Erreur de transport : bail gardé, nouvel essai au tick suivant (le main le purge s'il est
+    // vraiment perdu, et répond alors `false`). Seul `false` déclenche une nouvelle prise.
+    void api.renewLock(current).catch(() => true).then(ok => {
       if (ok || stopped || lease !== current) return
       lease = null
       void acquire()

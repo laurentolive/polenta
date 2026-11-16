@@ -147,6 +147,12 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
     closeDrop()
   }
 
+  /** GH367 — a branch only on the server is checked out as `origin/<name>`: the local tracking
+   *  branch is created (GH138). */
+  function handleSelectBranch(b: BranchInfo) {
+    handleSelect(b.remoteOnly ? `origin/${b.name}` : b.name)
+  }
+
   function handleCreate() {
     const name = newName.trim()
     if (!name) return
@@ -236,7 +242,8 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
               <li key={b.name} className="flex items-center group">
                 <button
                   type="button"
-                  onClick={() => handleSelect(b.name)}
+                  onClick={() => handleSelectBranch(b)}
+                  title={b.remoteOnly ? t('sidebar.version.remoteOnlyHint') : undefined}
                   className={`flex-1 flex items-center gap-2 px-3 py-1.5 text-left text-xs font-mono hover:bg-hover transition-colors ${
                     b.isCurrent ? 'text-status-info' : 'text-ink'
                   }`}
@@ -244,13 +251,16 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
                   {b.isCurrent && <Check size={11} className="shrink-0" />}
                   {!b.isCurrent && <span className="w-[11px] shrink-0" />}
                   <span className="truncate">{b.name}</span>
+                  {b.remoteOnly && (
+                    <span className={`${b.type === 'int' || b.name === integrationBranch ? '' : 'ml-auto '}shrink-0 text-[10px] text-ink-3 font-sans`}>{t('sidebar.version.remoteOnlyTag')}</span>
+                  )}
                   {b.name === integrationBranch ? (
                     <span className="ml-auto shrink-0 text-[10px] text-status-info font-sans">{t('sidebar.version.integrationTag')}</span>
                   ) : b.type === 'int' && (
                     <span className="ml-auto shrink-0 text-[10px] text-ink-3 font-sans">int</span>
                   )}
                 </button>
-                {!b.isCurrent && deleteConfirm !== b.name && (
+                {!b.isCurrent && !b.remoteOnly && deleteConfirm !== b.name && (
                   <button
                     type="button"
                     onClick={() => setDeleteConfirm(b.name)}

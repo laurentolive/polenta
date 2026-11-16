@@ -36,3 +36,17 @@ les écritures MCP passent toujours (verrou court entre agents seulement).
 - `pnpm typecheck` (desktop) : OK.
 - `npx vitest run --changed main` : 22 fichiers, 270 tests OK (dont 35 nouveaux GH361).
 - Pas de script `lint` pour `apps/desktop`.
+
+## Revue de code (`/code-review medium`)
+
+Corrigé : dossiers prévus de même id dans l'aperçu (faux `FOLDER_AMBIGUOUS`) ; erreur imprévue
+au rangement après création (compte rendu perdu) → `FOLDER_PLACEMENT_FAILED` ; verrou court sans
+propriétaire (jeton, reprise d'un verrou périmé par renommage vérifié, libération du seul sien) ;
+IDs prévus décalés par une entrée refusée pour son dossier (entrées refusées exclues avant
+l'import, plus de correspondance par identité d'objet) ; aperçu muet sur la lecture seule ;
+`toCreate` comptant des entrées non créées ; comparateur dupliqué.
+
+Non retenu : relecture des index à chaque appel (nécessaire, ce process n'a pas de watcher) ;
+documentation du verrou côté application (livré au sprint 2, même ticket).
+
+Après correctifs : typecheck OK ; `vitest --changed main` 22 fichiers OK (39 tests GH361).

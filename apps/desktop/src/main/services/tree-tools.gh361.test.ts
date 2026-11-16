@@ -213,7 +213,7 @@ describe('bulk_import avec folder', () => {
       ],
     })
     expect(res.data.created.map((c: { index: number }) => c.index)).toEqual([0, 1, 2])
-    expect(res.data.errors).toEqual([{ index: 3, reason: expect.stringContaining('[FOLDER_PATH_INVALID]') }])
+    expect(res.data.errors).toEqual([{ index: 3, field: 'folder', reason: expect.stringContaining('[FOLDER_PATH_INVALID]') }])
     const t = await tree()
     expect(t.root).toEqual([{
       kind: 'folder', name: 'A', path: 'A', children: [
@@ -239,6 +239,39 @@ describe('bulk_import avec folder', () => {
     } finally {
       await removeAppLock(dir, 'root', 'test')
     }
+  })
+
+  it('revue — dossiers prévus distincts, IDs prévus sans les entrées refusées, toCreate des seules entrées créées', async () => {
+    const res = await call('bulk_import_requirements', {
+      dryRun: true,
+      entries: [
+        { objectTypeRef: REQ, title: 'Un', fields: {}, folder: 'A/Y' },
+        { objectTypeRef: REQ, title: 'Deux', fields: {}, folder: 'B/Y' },
+        { objectTypeRef: REQ, title: 'Trois', fields: {}, folder: 'A/Y' },
+        { objectTypeRef: REQ, title: 'Quatre', fields: {}, folder: '' },
+        { objectTypeRef: REQ, title: 'Cinq', fields: {} },
+        { objectTypeRef: 'root::nope', title: 'Six', fields: {}, folder: 'Z' },
+      ],
+    })
+    expect(res.data.wouldCreate).toEqual([
+      { index: 0, id: 'SYS-0001' }, { index: 1, id: 'SYS-0002' }, { index: 2, id: 'SYS-0003' }, { index: 4, id: 'SYS-0004' },
+    ])
+    expect(res.data.errors.map((e: { index: number }) => e.index)).toEqual([3, 5])
+    expect(res.data.folders).toEqual([{ objectTypeRef: REQ, toCreate: ['A', 'A/Y', 'B', 'B/Y'], locked: null }])
+  })
+
+  it('revue — erreur imprévue au rangement : objets créés, FOLDER_PLACEMENT_FAILED', async () => {
+    vi.spyOn(mcp.tree, 'save').mockRejectedValue(new Error('EBUSY: fichier occupé'))
+    const res = await call('bulk_import_requirements', {
+      dryRun: false, entries: [{ objectTypeRef: REQ, title: 'Un', fields: {}, folder: 'A' }],
+    })
+    expect(res.isError).toBe(false)
+    expect(res.data.created).toEqual([{ index: 0, id: 'SYS-0001' }])
+    expect(res.data.errors).toEqual([{ index: 0, reason: 'FOLDER_PLACEMENT_FAILED: EBUSY: fichier occupé' }])
+  })
+
+  it('revue — aperçu sur un nœud en lecture seule : refus annoncé', async () => {
+    expect((await call('create_folders', { objectTypeRef: 'fige::exf', paths: ['A'] })).data).toContain('[READONLY_REPO]')
   })
 
   it('C16 — le fichier écrit par le MCP est relu à l’identique par le TreeService de l’app', async () => {

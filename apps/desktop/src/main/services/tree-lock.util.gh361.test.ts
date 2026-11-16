@@ -86,6 +86,16 @@ describe('tree-lock', () => {
     expect(await withTreeWriteLock(repo, 'root', 'req', async () => 2)).toBe(2)
   })
 
+  it('revue — un verrou repris par un autre processus n’est pas supprimé par l’ancien détenteur', async () => {
+    const file = path.join(await lockDir(repo), 'tree.root.req.write')
+    const other = { pid: process.pid, since: now(), token: 'autre' }
+    await withTreeWriteLock(repo, 'root', 'req', async () => {
+      await fsP.writeFile(file, JSON.stringify(other))
+    })
+    expect(JSON.parse(await fsP.readFile(file, 'utf-8'))).toEqual(other)
+    expect((await fsP.readdir(await lockDir(repo))).filter(n => n.endsWith('.stale'))).toEqual([])
+  })
+
   it('B7 — verrou court vivant tenu au-delà de l’attente : refus', async () => {
     await writeFile('tree.root.req.write', { pid: process.pid, since: now() })
     await expect(withTreeWriteLock(repo, 'root', 'req', async () => 1)).rejects.toBeInstanceOf(TreeLockedError)

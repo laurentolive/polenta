@@ -1,7 +1,7 @@
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 
 /**
  * GH361 — verrou du rangement d'un type (`.polenta/trees/<nœud>/<type>.yaml`), partagé entre
@@ -27,7 +27,7 @@ export class TreeLockedError extends Error {
 }
 
 interface AppLockFile { pid: number; since: string; expiresAt: string }
-interface WriteLockFile { pid: number; since: string }
+interface WriteLockFile { pid: number; since: string; token?: string }
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
@@ -111,7 +111,24 @@ async function writeLockFile(repoPath: string, nodeId: string, typeId: string): 
   return path.join(await lockDir(repoPath), `${treeKey(nodeId, typeId)}.write`)
 }
 
-/** Verrou court actif ? Un verrou périmé (processus mort, plus de 30 s) est supprimé au passage. */
+/**
+ * Retire un verrou court périmé sans risquer d'emporter celui, tout neuf, d'un autre processus :
+ * renommage atomique vers un nom unique, puis vérification que c'est bien le fichier lu ; sinon il
+ * est remis en place (`link` échoue si un autre verrou a été pris entre-temps).
+ */
+async function removeStale(file: string, seen: WriteLockFile | null): Promise<void> {
+  const aside = `${file}.${randomUUID()}.stale`
+  try {
+    await fsP.rename(file, aside)
+  } catch {
+    return // déjà retiré (ou repris) par un autre processus
+  }
+  const moved = await readJson<WriteLockFile>(aside)
+  if ((moved?.token ?? null) !== (seen?.token ?? null)) await fsP.link(aside, file).catch(() => {})
+  await fsP.rm(aside, { force: true })
+}
+
+/** Verrou court actif ? Un verrou périmé (processus mort, plus de 30 s) est retiré au passage. */
 async function activeWriteLock(file: string): Promise<boolean> {
   const lock = await readJson<WriteLockFile>(file)
   if (!lock) {
@@ -120,12 +137,12 @@ async function activeWriteLock(file: string): Promise<boolean> {
     const stat = await fsP.stat(file).catch(() => null)
     if (!stat) return false
     if (Date.now() - stat.mtimeMs <= TREE_LOCK_TTL_MS) return true
-    await fsP.rm(file, { force: true })
+    await removeStale(file, null)
     return false
   }
   const stale = !isProcessAlive(lock.pid) || Date.now() - Date.parse(lock.since) > TREE_LOCK_TTL_MS
   if (!stale) return true
-  await fsP.rm(file, { force: true })
+  await removeStale(file, lock)
   return false
 }
 
@@ -136,14 +153,16 @@ export async function waitForWriteLock(repoPath: string, nodeId: string, typeId:
   while (await activeWriteLock(file) && Date.now() < deadline) await sleep(POLL_MS)
 }
 
-async function acquireWriteLock(file: string): Promise<void> {
+/** Prend le verrou court ; renvoie son jeton (seul son détenteur le libère). */
+async function acquireWriteLock(file: string): Promise<string> {
   await fsP.mkdir(path.dirname(file), { recursive: true })
   const deadline = Date.now() + TREE_WRITE_WAIT_MS
   for (;;) {
+    const token = randomUUID()
     try {
-      const lock: WriteLockFile = { pid: process.pid, since: new Date().toISOString() }
+      const lock: WriteLockFile = { pid: process.pid, since: new Date().toISOString(), token }
       await fsP.writeFile(file, JSON.stringify(lock), { encoding: 'utf-8', flag: 'wx' })
-      return
+      return token
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
     }
@@ -155,13 +174,19 @@ async function acquireWriteLock(file: string): Promise<void> {
   }
 }
 
+/** Libère le verrou court s'il porte encore notre jeton (repris comme périmé : il n'est plus à nous). */
+async function releaseWriteLock(file: string, token: string): Promise<void> {
+  const lock = await readJson<WriteLockFile>(file)
+  if (lock?.token === token) await fsP.rm(file, { force: true })
+}
+
 /**
  * Exécute `fn` sous le verrou court de cet arbre, après avoir vérifié qu'aucune application ne
  * l'affiche en édition (sinon `TreeLockedError`, sans exécuter `fn`). Libère toujours.
  */
 export async function withTreeWriteLock<T>(repoPath: string, nodeId: string, typeId: string, fn: () => Promise<T>): Promise<T> {
   const file = await writeLockFile(repoPath, nodeId, typeId)
-  await acquireWriteLock(file)
+  const token = await acquireWriteLock(file)
   try {
     const app = await readAppLock(repoPath, nodeId, typeId)
     if (app) {
@@ -173,6 +198,6 @@ export async function withTreeWriteLock<T>(repoPath: string, nodeId: string, typ
     }
     return await fn()
   } finally {
-    await fsP.rm(file, { force: true })
+    await releaseWriteLock(file, token)
   }
 }

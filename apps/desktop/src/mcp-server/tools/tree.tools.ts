@@ -92,16 +92,18 @@ export interface Mutation<R> { root: TypeTreeNode[]; changed: boolean; result: R
 
 /**
  * Lit le rangement, applique `apply`, et l'écrit sous verrou si quelque chose a changé ; en
- * `dryRun`, n'écrit rien et signale le verrou de l'application (`locked`).
+ * `dryRun`, n'écrit rien et signale le verrou de l'application (`locked`). Lecture seule
+ * (`READONLY_*`) refusée dans les deux cas.
  */
 export async function mutateTree<R>(
   c: McpContainer, t: TreeTarget, dryRun: boolean, apply: (layout: TreeLayout) => Mutation<R>,
 ): Promise<{ result: R; locked: TreeLockInfo | null }> {
+  // Aussi en aperçu : il doit annoncer le refus qu'aurait l'écriture.
+  await assertWritable(c, t)
   if (dryRun) {
     const out = apply(await readTreeLayout(c, t))
     return { result: out.result, locked: await readAppLock(t.repoPath, t.nodeId, t.typeId) }
   }
-  await assertWritable(c, t)
   return withTreeWriteLock(t.repoPath, t.nodeId, t.typeId, async () => {
     const out = apply(await readTreeLayout(c, t))
     if (out.changed) await c.tree.save(t.repoPath, { nodeId: t.nodeId, typeId: t.typeId, root: out.root })
@@ -138,6 +140,9 @@ async function guarded(run: () => Promise<ToolResult>): Promise<ToolResult> {
   }
 }
 
+const isExpected = (err: unknown) =>
+  err instanceof TreeToolError || err instanceof TreeLockedError || err instanceof TreeOpError
+
 /** `[CODE] message` d'une erreur attendue (appel ou entrée) ; toute autre erreur remonte. */
 function expectedReason(err: unknown): string {
   if (err instanceof TreeToolError) return `[${err.code}] ${err.message}`
@@ -173,9 +178,10 @@ export async function planBulkFolders(c: McpContainer, entries: BulkFolderEntry[
       continue
     }
     const toCreate: string[] = []
+    let planned = 0
     for (const e of group) {
       try {
-        const out = ensureFolder(root, parseFolderPath(e.folder), () => 'planned')
+        const out = ensureFolder(root, parseFolderPath(e.folder), () => `planned-${++planned}`)
         root = out.root
         toCreate.push(...out.created)
       } catch (err) {
@@ -208,7 +214,9 @@ export async function placeBulkFolders(
         result: null,
       }))
     } catch (err) {
-      const reason = expectedReason(err)
+      // Les objets sont déjà créés : aucune erreur, même imprévue (E/S), ne doit faire perdre le
+      // compte rendu de l'import.
+      const reason = isExpected(err) ? expectedReason(err) : (err instanceof Error ? err.message : String(err))
       for (const e of group) fail(e.index, reason)
     }
   }

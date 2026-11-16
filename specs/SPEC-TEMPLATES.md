@@ -62,6 +62,19 @@ SPEC-PROJECT-MANAGEMENT §9.1 et §9.2). Son URL remplit le champ « Repo (git U
 d'intégration le champ « Branche » (pin) ; l'ajout se poursuit comme pour un repo existant
 (clone, `polenta-repo.yaml`, types d'objets par défaut). Détail : SPEC-PROJECT-MANAGEMENT §9.2.
 
+**Types d'objets créés par défaut (GH365)** : à l'ajout d'un composant, `AddDependencyModal` propose
+une case par catégorie, toutes cochées : Exigences, Tests, Campagnes, Issues, et pour un composant en
+repo séparé Versions et Validations (un seul type de chacune par repo, sur `root` : cases masquées
+quand « Composant local » est coché). Les types cochés sont créés dans cet ordre ; un repo séparé dont
+le `root` a déjà des types n'est pas amorcé, une interface jamais. Le **nom et le préfixe** proposés
+(`<RACINE>_<SUFFIXE>`, suffixe `REQ` / `TEST` / `CAMP` / `ISS` / `VER` / `VAL`) prennent pour racine le
+**label affiché** du composant — accents retirés, majuscules, tout caractère hors `A-Z0-9` remplacé
+par `_` (`Contrôle moteur` → `CONTROLE_MOTEUR_REQ`) —, ou son nom si le label est vide ou n'a aucun
+caractère latin. Un nom ou préfixe déjà pris dans le workspace reçoit le premier suffixe libre
+(`_2`, `_3`…, GH97). Même règle pour « + Exigence / + Test… » sur un composant existant (pour la
+ligne d'un repo : label de son `root`, repli sur le nom de montage) ; les types existants ne sont
+pas renommés (`objectTypeEditor.tsx` : `typeNamingRoot`, `defaultObjectTypes`).
+
 **Paramètres du repo (GH108)** : icône sur la ligne d'un repo dont `origin` est sur une forge d'un
 compte connecté. Détail : SPEC-PROJECT-MANAGEMENT §9.4.
 

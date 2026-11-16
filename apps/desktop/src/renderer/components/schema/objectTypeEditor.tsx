@@ -410,9 +410,9 @@ export function emptyStatus(): EditableStatus {
   return { name: '', label: '', color: '', isApproval: false, isTerminal: false }
 }
 
-// Naming convention for a newly added object type: <COMPOSANT>_<SUFFIXE>, ex. VE12A_REQ pour une
-// exigence du composant VE12A — reprend le nom (technique, court) du composant/nœud plutôt que son
-// label, cohérent avec la convention d'IDs du projet (cf. CLAUDE.md "Convention des IDs").
+// Naming convention for a newly added object type: <COMPOSANT>_<SUFFIXE>, ex. CONTROLE_MOTEUR_REQ
+// pour une exigence du composant de label « Contrôle moteur » — GH365 : la racine est le label
+// affiché du composant (repli sur son nom technique, cf. typeNamingRoot).
 const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   requirement: 'REQ',
   test: 'TEST',
@@ -422,8 +422,41 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   validation: 'VAL',
 }
 
+/** GH365 — ligatures sans décomposition Unicode (NFD les laisse intactes). */
+const LIGATURES: Record<string, string> = { 'Œ': 'OE', 'œ': 'OE', 'Æ': 'AE', 'æ': 'AE', 'ß': 'SS' }
+
+/** Racine de nom/préfixe : accents retirés (GH365), majuscules, tout caractère hors `A-Z0-9` → `_`. */
 function slugifyComponentName(componentName: string): string {
-  return componentName.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  return componentName.trim()
+    .replace(/[ŒœÆæß]/g, c => LIGATURES[c])
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+/** GH365 — racine des types proposés pour un composant : son label affiché, ou son nom quand le
+ *  label est vide ou n'a aucun caractère latin/chiffre. */
+export function typeNamingRoot(label: string | undefined, name: string): string {
+  return label && slugifyComponentName(label) ? label : name
+}
+
+/** GH365 — catégories proposées à l'ajout d'un composant, dans l'ordre des cases et des types créés. */
+export const COMPONENT_DEFAULT_CATEGORIES: readonly ObjectCategory[] = ['requirement', 'test', 'campaign', 'issue', 'version', 'validation']
+/** Un seul type de ces catégories par repo, sur `root` (GH201, GH204) : pas sur un composant local. */
+export const REPO_ROOT_ONLY_CATEGORIES: readonly ObjectCategory[] = ['version', 'validation']
+
+/** GH365 — types créés à l'ajout d'un composant, un par catégorie. Chaque nom/préfixe produit est
+ *  ajouté aux noms pris pour la suivante : ni collision entre eux, ni avec `taken` (GH97). */
+export function defaultObjectTypes(
+  categories: readonly ObjectCategory[], root: string, categoryLabel: (category: ObjectCategory) => string,
+  descriptionLabel: string, taken: Iterable<string> = [],
+): EditableObjectType[] {
+  const used = new Set(taken)
+  return categories.map(category => {
+    const type = emptyObjType(category, root, categoryLabel(category), descriptionLabel, used)
+    used.add(type.name)
+    used.add(type.prefix)
+    return type
+  })
 }
 
 /** `categoryLabel`/`descriptionLabel` are pre-resolved by the caller (`t(CATEGORY_LABEL_KEY[category])`

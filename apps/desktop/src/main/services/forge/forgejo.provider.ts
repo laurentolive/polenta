@@ -199,6 +199,11 @@ export const forgejoProvider: ForgeProvider = {
     }
   },
 
+  async listUserOrgs(baseUrl, token) {
+    const orgs = await paginate<{ username: string }>(`${baseUrl}/api/v1/user/orgs`, token)
+    return orgs.map(o => o.username)
+  },
+
   async orgMembers(baseUrl, token, owner) {
     try {
       await forgeRequest(`${baseUrl}/api/v1/orgs/${encodeURIComponent(owner)}`, { token })

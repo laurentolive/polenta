@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import type { RepoAccessLevel, RepoMemberGrant } from '@polenta/types'
 import { api } from '../../api'
+import { MemberLoginInput } from './MemberLoginInput'
 
 const LEVELS: RepoAccessLevel[] = ['read', 'write', 'admin']
 
@@ -65,9 +66,11 @@ export function RepoMembersEditor({ accountKey, owner, ownerKind, fixedLevel, va
         </ul>
       )}
       <div className="flex items-center gap-2">
-        <input value={login} onChange={e => setLogin(e.target.value)} placeholder={t('repoWizard.members.loginPlaceholder')}
-          aria-label={t('repoWizard.members.login')} className="input-field flex-1 text-sm py-1"
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add('user', login); setLogin('') } }} />
+        <MemberLoginInput accountKey={accountKey} ownerOrg={ownerKind === 'org' ? owner : undefined}
+          exclude={value.filter(g => g.kind === 'user').map(g => g.name)}
+          value={login} onChange={setLogin} onSubmit={l => { add('user', l); setLogin('') }}
+          placeholder={t('repoWizard.members.loginPlaceholder')} aria-label={t('repoWizard.members.login')}
+          className="input-field w-full text-sm py-1" />
         {!fixedLevel && (
           <select value={level} onChange={e => setLevel(e.target.value as RepoAccessLevel)} aria-label={t('repoWizard.members.level.label')}
             className="input-field py-1 text-xs w-auto">

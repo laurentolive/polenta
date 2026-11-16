@@ -4,7 +4,7 @@ import * as os from 'os'
 import * as path from 'path'
 import git from 'isomorphic-git'
 import type {
-  CreateRepoInput, DefaultBranchOutcome, ForgeAccount, ForgeKind, ForgeMember, ForgeOwners, ForgeRepo,
+  CreateRepoInput, DefaultBranchOutcome, ForgeAccount, ForgeKind, ForgeMember, ForgeMemberSuggestion, ForgeOwners, ForgeRepo,
   ForgeRepoAccess, ForgeRepoDetails, ForgeTeam, RepoAccessLevel, RepoMemberGrant, RepoSettings, RepoVisibility,
 } from '@polenta/types'
 
@@ -26,8 +26,11 @@ import { CONFIG_REPO } from '../forge-config.service'
  * aucun compte) : ce sont des aides, jamais des blocages (spec §7.3, §8.4).
  */
 export class ForgeService {
-  /** Membres par `(hôte, organisation)` pour la durée du processus (spec §7.1). */
-  private readonly membersCache = new Map<string, Promise<ForgeMember[] | null>>()
+  /**
+   * Membres par `(compte, organisation)` (spec GH45 §7.1), gardés `MEMBERS_TTL_MS` : le serveur web
+   * tourne longtemps, un nouveau membre doit finir par être proposé (GH368).
+   */
+  private readonly membersCache = new Map<string, { at: number; pending: Promise<ForgeMember[] | null> }>()
 
   constructor(
     private readonly auth: AuthService,
@@ -121,19 +124,62 @@ export class ForgeService {
   async orgMembers(repoPath: string): Promise<ForgeMember[] | null> {
     const target = await this.originTarget(repoPath)
     if (!target) return null
-    const key = `${target.account.host}\n${target.owner.toLowerCase()}`
-    let pending = this.membersCache.get(key)
-    if (!pending) {
-      pending = forgejoProvider.orgMembers!(target.account.baseUrl, target.token, target.owner)
-      this.membersCache.set(key, pending)
-      // Échec (hors ligne…) : pas mis en cache, on réessaiera au prochain affichage.
-      pending.catch(() => { this.membersCache.delete(key) })
-    }
     try {
-      return await pending
+      return await this.cachedOrgMembers(target.account, target.token, forgejoProvider, target.owner)
     } catch {
       return null
     }
+  }
+
+  /**
+   * GH368 — membres de toutes les organisations du compte, fusionnés par login (spec §1.2, §1.6).
+   * Jamais d'exception : une organisation en échec est ignorée, tout en échec rend `[]`. Pas de
+   * `guard` : une aide silencieuse ne marque pas le compte révoqué.
+   */
+  async memberSuggestions(accountKey: string): Promise<ForgeMemberSuggestion[]> {
+    let ctx: Awaited<ReturnType<ForgeService['require']>>
+    let orgs: string[]
+    try {
+      ctx = await this.require(accountKey)
+      orgs = ctx.provider.listUserOrgs ? await ctx.provider.listUserOrgs(ctx.account.baseUrl, ctx.token) : []
+    } catch {
+      return []
+    }
+    const { account, token, provider } = ctx
+    const byLogin = new Map<string, ForgeMemberSuggestion>()
+    const self = account.login.toLowerCase()
+    await mapLimit(orgs, MEMBER_ORGS_PARALLEL, async org => {
+      const members = await this.cachedOrgMembers(account, token, provider, org).catch(() => null)
+      for (const m of members ?? []) {
+        const key = m.login.toLowerCase()
+        if (key === self) continue
+        const found = byLogin.get(key)
+        if (!found) byLogin.set(key, { login: m.login, name: m.name || m.login, orgs: [org] })
+        else {
+          found.orgs.push(org)
+          if (found.name === found.login && m.name && m.name !== m.login) found.name = m.name
+        }
+      }
+    })
+    return [...byLogin.values()]
+      .map(s => ({ ...s, orgs: [...s.orgs].sort((a, b) => a.localeCompare(b)) }))
+      .sort((a, b) => a.login.localeCompare(b.login))
+  }
+
+  /**
+   * Membres d'une organisation, en cache par `(compte, organisation)` : deux comptes du même hôte
+   * peuvent voir des listes différentes (membres privés). Un échec n'est pas gardé.
+   */
+  private cachedOrgMembers(account: ForgeAccount, token: string, provider: ForgeProvider, org: string): Promise<ForgeMember[] | null> {
+    const key = `${account.key}\n${org.toLowerCase()}`
+    const cached = this.membersCache.get(key)
+    if (cached && Date.now() - cached.at < MEMBERS_TTL_MS) return cached.pending
+    const pending = provider.orgMembers!(account.baseUrl, token, org)
+    const entry = { at: Date.now(), pending }
+    this.membersCache.set(key, entry)
+    // Échec (hors ligne…) : pas mis en cache, on réessaiera au prochain affichage.
+    pending.catch(() => { if (this.membersCache.get(key) === entry) this.membersCache.delete(key) })
+    return pending
   }
 
   /** GH108 — sans appel réseau : `origin` sur une forge `github` ou `forgejo` d'un compte connecté. */
@@ -179,8 +225,8 @@ export class ForgeService {
           provider.teamScopeMissing?.(baseUrl, token) ?? Promise.resolve(false),
         ])
         return {
-          available: true, fullName: `${owner}/${repo}`, host: account.host, login: account.login, details, collaborators, teams,
-          invitations, orgTeams, orgMembers: orgMembers ?? [], isOrg, scopeMissing, membersRestricted: restricted,
+          available: true, fullName: `${owner}/${repo}`, host: account.host, login: account.login, accountKey: account.key, details,
+          collaborators, teams, invitations, orgTeams, isOrg, scopeMissing, membersRestricted: restricted,
           teamsUrl: provider.kind === 'github' ? `${baseUrl}/orgs/${owner}/teams` : `${baseUrl}/org/${owner}/teams`,
           teamLevelEditable: provider.kind === 'github',
           // GH356 — repo personnel GitHub : écriture pour tout collaborateur, pas de choix de niveau.
@@ -315,6 +361,19 @@ export class ForgeService {
 
 /** GH108 — forges où régler un repo depuis Polenta. */
 const REPO_KINDS: ForgeKind[] = ['forgejo', 'github']
+
+/** GH368 — organisations lues en parallèle pour les suggestions de membres. */
+const MEMBER_ORGS_PARALLEL = 4
+/** GH368 — durée de vie des membres d'une organisation en cache. */
+const MEMBERS_TTL_MS = 10 * 60_000
+
+async function mapLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) await fn(items[next++])
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+}
 
 interface OriginTarget {
   account: ForgeAccount

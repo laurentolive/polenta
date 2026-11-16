@@ -291,6 +291,7 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('forge:owners', (_e, accountKey: string) => c.forge.owners(accountKey))
   r.handle('forge:name-available', (_e, accountKey: string, owner: string, name: string) => c.forge.nameAvailable(accountKey, owner, name))
   r.handle('forge:org-teams', (_e, accountKey: string, org: string) => c.forge.orgTeams(accountKey, org))
+  r.handle('forge:member-suggestions', (_e, accountKey: string) => c.forge.memberSuggestions(accountKey))
   r.handle('forge:create-repo', (_e, req: CreateRepoRequest) => c.repoProvisioning.create(req))
   r.handle('forge:inspect-repo', (_e, accountKey: string, owner: string, name: string) => c.repoProvisioning.inspect(accountKey, owner, name))
   r.handle('forge:adopt-repo', (_e, req: AdoptRepoRequest) => c.repoProvisioning.adopt(req))

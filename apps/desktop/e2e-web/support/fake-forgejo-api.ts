@@ -9,7 +9,8 @@ import * as path from 'path'
  * détails, branche par défaut, collaborateurs, équipes. Les réponses reprennent les mesures de
  * specs/GH107-sprint1.md §1 (Forgejo 15.0.9).
  *
- * Organisations : `e2e-org` (création permise, équipe `devs`) et `lecture` (création refusée).
+ * Organisations : `e2e-org` (création permise, équipe `devs`, membres ann et bob) et `lecture`
+ * (création refusée, membre carol).
  * Les collaborateurs et équipes ajoutés sont relus par `GET /api/v1/_e2e/members/<owner>/<repo>`.
  */
 export const E2E_ORG = 'e2e-org'
@@ -82,7 +83,9 @@ export async function handleFakeForgejoApi(req: http.IncomingMessage, res: http.
     return [E2E_ORG, E2E_READONLY_ORG].includes(parts[1]) ? (send(res, 200, { username: parts[1] }), true) : (send(res, 404, { message: 'GetOrgByName' }), true)
   }
   if (method === 'GET' && parts[0] === 'orgs' && parts[2] === 'members') {
-    return send(res, 200, Number(url.searchParams.get('page') ?? 1) > 1 ? [] : [{ login: 'ann', full_name: 'Ann' }, { login: 'bob', full_name: 'Bob' }]), true
+    // GH368 — membres propres à chaque organisation (suggestions de membres).
+    const orgMembers = parts[1] === E2E_READONLY_ORG ? [{ login: 'carol', full_name: 'Carol Martín' }] : [{ login: 'ann', full_name: 'Ann' }, { login: 'bob', full_name: 'Bob' }]
+    return send(res, 200, Number(url.searchParams.get('page') ?? 1) > 1 ? [] : orgMembers), true
   }
   if (method === 'GET' && parts[0] === 'orgs' && parts[2] === 'teams') {
     return send(res, 200, Number(url.searchParams.get('page') ?? 1) > 1 || parts[1] !== E2E_ORG ? [] : [{ id: 6, name: 'devs', permission: 'write', includes_all_repositories: false }]), true

@@ -25,7 +25,7 @@ export const WEB_EXPOSED: ReadonlySet<string> = new Set([
   'diff:save-working-file',
   'drawio:read',
   'export-templates:install-examples', 'export-templates:list',
-  'forge:accounts', 'forge:adopt-repo', 'forge:create-repo', 'forge:inspect-repo', 'forge:list-repos', 'forge:name-available', 'forge:org-members',
+  'forge:accounts', 'forge:adopt-repo', 'forge:create-repo', 'forge:inspect-repo', 'forge:list-repos', 'forge:member-suggestions', 'forge:name-available', 'forge:org-members',
   'forge:org-teams', 'forge:owners', 'forge:repo-access', 'forge:repo-accounts',
   'forge:cancel-invitation', 'forge:readme-state', 'forge:remove-collaborator', 'forge:remove-repo-team', 'forge:repo-settings',
   'forge:repo-settings-available', 'forge:set-collaborator', 'forge:set-repo-team', 'forge:sync-readme', 'forge:update-repo-settings',

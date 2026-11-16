@@ -31,6 +31,7 @@ import { ParametersService } from '../main/services/parameters.service'
 import { TestedConfigService } from '../main/services/tested-config.service'
 import { ResultsImportService } from '../main/services/results-import.service'
 import { TreeService, indexObjectLister, serviceTitleAdopter } from '../main/services/tree.service'
+import { FieldRenameService } from '../main/services/field-rename.service'
 
 export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
@@ -77,6 +78,8 @@ export interface McpContainer {
   resultsImport: ResultsImportService
   /** GH361 — rangement en dossiers (`.polenta/trees/`), outils `get_tree`, `create_folders`… */
   tree: TreeService
+  /** GH371 — migration des objets au renommage / retrait d'un statut (`update_status`, `remove_status`). */
+  fieldRename: FieldRenameService
 }
 
 /**
@@ -184,8 +187,11 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
     serviceTitleAdopter(requirements, tests, issues),
   )
 
+  // GH371 — même graphe que main/container.ts (issues et validations comprises).
+  const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues, validations)
+
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, issues, validations, transitionGuard, workspaceTree, reqIndex, testsIndex,
-    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters, resultsImport, tree,
+    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters, resultsImport, tree, fieldRename,
   }
 }

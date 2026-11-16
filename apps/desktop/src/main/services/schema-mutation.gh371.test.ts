@@ -96,10 +96,15 @@ beforeEach(async () => {
   await git.writeYaml(dir, '.polenta/schema.yaml', SCHEMA)
   await git.writeYaml(dir, 'validations/VAL-0001.yaml', validationFile('VAL-0001', 'en_cours', 'conforme', true))
   await git.writeYaml(dir, 'validations/VAL-0002.yaml', validationFile('VAL-0002', 'signee', 'refuse'))
+  registerTools()
+})
+
+/** Conteneur MCP neuf (cache de schéma et index vides) et ses outils de mutation du schéma. */
+function registerTools(): void {
   tools = new Map()
   const server = { registerTool: (name: string, config: { inputSchema: Tool['schema'] }, handler: Tool['handler']) => { tools.set(name, { schema: config.inputSchema, handler }) } } as unknown as McpServer
   registerSchemaMutationTools(server, createMcpContainer(dir))
-})
+}
 
 afterEach(async () => {
   await fsP.rm(dir, { recursive: true, force: true })
@@ -277,5 +282,219 @@ describe('G — communs', () => {
       await expectRefused(name, { nodeName: 'nope', typeName: 'ext', ...dto }, 'NODE_NOT_FOUND')
       await expectRefused(name, { nodeName: 'root', typeName: 'nope', ...dto }, 'TYPE_NOT_FOUND')
     }
+  })
+})
+
+// ── Sprint 2 — statuts avec migration ─────────────────────────────────────────
+
+const OLD = '2026-09-01T00:00:00Z'
+const base = { projectId: '', branchId: '', title: 'X', version: 1, jiraLinks: [] }
+type Obj = { status: string; history?: { status?: Array<{ value?: string }> }; runs?: Array<{ testSnapshot?: { status: string } }> }
+const readObj = (file: string) => git.readYaml<Obj>(dir, file) as Promise<Obj>
+const historyOf = (...values: string[]) => ({ status: values.map(value => ({ value, at: OLD, by: 'lolive' })) })
+const OBJECT_FILES = ['requirements/REQ-0001.yaml', 'requirements/REQ-0002.yaml', 'requirements/REQ-0003.yaml', 'tests/TST-0001.yaml', 'campaigns/CMP-0001.yaml']
+const filesBytes = () => Promise.all(OBJECT_FILES.map(f => fsP.readFile(path.join(dir, f), 'utf-8')))
+
+async function writeObjects() {
+  await git.writeYaml(dir, 'requirements/REQ-0001.yaml', { ...base, id: 'REQ-0001', objectTypeRef: 'root::exigence', status: 'review', fields: {}, history: historyOf('draft', 'review') })
+  await git.writeYaml(dir, 'requirements/REQ-0002.yaml', { ...base, id: 'REQ-0002', objectTypeRef: 'root::exigence', status: 'review', fields: {}, history: historyOf('review') })
+  await git.writeYaml(dir, 'requirements/REQ-0003.yaml', { ...base, id: 'REQ-0003', objectTypeRef: 'root::exigence', status: 'approved', fields: {}, history: historyOf('review', 'approved') })
+  await git.writeYaml(dir, 'tests/TST-0001.yaml', {
+    ...base, id: 'TST-0001', objectTypeRef: 'root::test', status: 'ready', steps: [], preconditions: '', postconditions: '', equipment: [], fields: {}, history: historyOf('ready'),
+  })
+  await git.writeYaml(dir, 'campaigns/CMP-0001.yaml', {
+    id: 'CMP-0001', title: 'C', objectTypeRef: 'root::campagne', status: 'planned', testCaseIds: ['TST-0001'], createdAt: OLD, fields: {},
+    runs: [{ entryId: 'TST-0001-1', testCaseId: 'TST-0001', status: 'pending', testSnapshot: { id: 'TST-0001', objectTypeRef: 'root::test', title: 'T', status: 'ready', fields: {}, steps: [] } }],
+  })
+}
+
+type Migrated = { schema: ProjectSchema; migration: { migrated: string[]; skipped: unknown[]; failed: unknown[]; snapshots?: number } }
+type Preview = { dryRun: true; schema: ProjectSchema; preview: { withOld: number; withNew: number } }
+
+describe('C — update_status', () => {
+  beforeEach(writeObjects)
+
+  it('C1 — dryRun : aperçu, aucun fichier écrit', async () => {
+    const before = await filesBytes()
+    const schemaBefore = await schemaBytes()
+    const res = await call<Preview>('update_status', { nodeName: 'root', typeName: 'exigence', name: 'review', to: 'relecture', dryRun: true })
+    expect(res.dryRun).toBe(true)
+    expect(res.preview).toEqual({ withOld: 2, withNew: 0 })
+    expect(res.schema.nodes[0].objectTypes![0].statuses!.map(s => s.name)).toEqual(['draft', 'relecture', 'approved'])
+    expect(await filesBytes()).toEqual(before)
+    expect(await schemaBytes()).toBe(schemaBefore)
+  })
+
+  it('C2 — renommage : objets (statut, historique), transitions et requiredWhen migrés', async () => {
+    const res = await call<Migrated>('update_status', { nodeName: 'root', typeName: 'exigence', name: 'review', to: 'relecture' })
+    expect(res.migration.migrated.sort()).toEqual(['REQ-0001', 'REQ-0002', 'REQ-0003'])
+    expect(res.migration.failed).toEqual([])
+    const r1 = await readObj('requirements/REQ-0001.yaml')
+    expect(r1.status).toBe('relecture')
+    expect(r1.history!.status!.map(e => e.value)).toEqual(['draft', 'relecture'])
+    expect((await readObj('requirements/REQ-0003.yaml')).history!.status!.map(e => e.value)).toEqual(['relecture', 'approved'])
+    const t = await typeOnDisk('exigence')
+    expect(t.statuses!.map(s => s.name)).toEqual(['draft', 'relecture', 'approved'])
+    expect(t.transitions).toEqual([{ from: 'draft', to: 'relecture', requires: { fieldsFilled: 'warn' } }])
+    expect(t.fields.find(f => f.name === 'justif')!.requiredWhen).toEqual({ status: ['relecture'] })
+  })
+
+  it('C3 — type de test : copie testSnapshot de la campagne migrée', async () => {
+    const res = await call<Migrated>('update_status', { nodeName: 'root', typeName: 'test', name: 'ready', to: 'pret' })
+    expect(res.migration.snapshots).toBe(1)
+    expect((await readObj('tests/TST-0001.yaml')).status).toBe('pret')
+    expect((await readObj('campaigns/CMP-0001.yaml')).runs![0].testSnapshot!.status).toBe('pret')
+  })
+
+  it('C4 — nom cible déjà pris : STATUS_NAME_TAKEN', async () => {
+    await expectRefused('update_status', { nodeName: 'root', typeName: 'exigence', name: 'review', to: 'approved' }, 'STATUS_NAME_TAKEN')
+  })
+
+  it('C5 — label, color, marques posés puis retirés, sans toucher aux objets', async () => {
+    const before = await filesBytes()
+    const res = await call<Migrated>('update_status', { nodeName: 'root', typeName: 'exigence', name: 'review', label: 'Relecture', color: '#f80', isApproval: true, isTerminal: true })
+    expect(res.migration).toEqual({ migrated: [], skipped: [], failed: [] })
+    expect((await typeOnDisk('exigence')).statuses![1]).toEqual({ name: 'review', label: 'Relecture', color: '#f80', isApproval: true, isTerminal: true })
+    await call('update_status', { nodeName: 'root', typeName: 'exigence', name: 'review', label: null, color: null, isApproval: false, isTerminal: false })
+    expect((await typeOnDisk('exigence')).statuses![1]).toEqual({ name: 'review' })
+    expect(await filesBytes()).toEqual(before)
+    await expect(raw('update_status', { nodeName: 'root', typeName: 'exigence', name: 'review' })).rejects.toThrow(/Input validation error/)
+  })
+
+  it('C6 — type validation avec des validations : statut signée figé', async () => {
+    await expectRefused('update_status', { nodeName: 'root', typeName: 'validation', name: 'signee', to: 'signe' }, 'VALIDATION_TYPE_INVALID')
+    await expectRefused('update_status', { nodeName: 'root', typeName: 'validation', name: 'signee', isApproval: false }, 'VALIDATION_TYPE_INVALID')
+    await expectRefused('update_status', { nodeName: 'root', typeName: 'validation', name: 'signee', to: 'signe', dryRun: true }, 'VALIDATION_TYPE_INVALID')
+    // Statut non marqué : libre.
+    await call('update_status', { nodeName: 'root', typeName: 'validation', name: 'en_cours', label: 'En cours' })
+  })
+
+  it('C7 — type version avec des versions : statut released figé', async () => {
+    await git.writeYaml(dir, 'versions/PV-0001.yaml', { id: 'PV-0001', objectTypeRef: 'root::version', title: '1.0', status: 'en_cours', fields: {} })
+    await expectRefused('update_status', { nodeName: 'root', typeName: 'version', name: 'released', to: 'livree' }, 'VERSION_TYPE_INVALID')
+  })
+
+  it('C8 — type validation sans validation : deux statuts signée refusés', async () => {
+    await fsP.rm(path.join(dir, 'validations'), { recursive: true })
+    await expectRefused('update_status', { nodeName: 'root', typeName: 'validation', name: 'annulee', isApproval: true, isTerminal: false }, 'VALIDATION_TYPE_INVALID')
+    await call('update_status', { nodeName: 'root', typeName: 'validation', name: 'signee', to: 'signe' })
+    expect((await typeOnDisk('validation')).statuses!.map(s => s.name)).toEqual(['en_cours', 'signe', 'annulee'])
+  })
+
+  it('C9 — statut inconnu ; campagne', async () => {
+    await expectRefused('update_status', { nodeName: 'root', typeName: 'exigence', name: 'nope', label: 'x' }, 'STATUS_NOT_FOUND')
+    await expectRefused('update_status', { nodeName: 'root', typeName: 'campagne', name: 'planned', label: 'x' }, 'STATUS_LIST_INVALID')
+  })
+})
+
+describe('D — remove_status', () => {
+  beforeEach(writeObjects)
+
+  it('D1 — statut porté sans replaceWith : STATUS_IN_USE, nombre et IDs', async () => {
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'review' }, 'STATUS_IN_USE', /2 objet\(s\) \(REQ-0001, REQ-0002\)/)
+  })
+
+  it('D2 — dryRun avec replaceWith : aperçu, rien d\'écrit', async () => {
+    const before = await filesBytes()
+    const schemaBefore = await schemaBytes()
+    const res = await call<Preview>('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'review', replaceWith: 'approved', dryRun: true })
+    expect(res.preview).toEqual({ withOld: 2, withNew: 1 })
+    expect(await filesBytes()).toEqual(before)
+    expect(await schemaBytes()).toBe(schemaBefore)
+  })
+
+  it('D3 — replaceWith : objets fusionnés, statut retiré, références réécrites', async () => {
+    const res = await call<Migrated>('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'review', replaceWith: 'approved' })
+    expect(res.migration.migrated.sort()).toEqual(['REQ-0001', 'REQ-0002', 'REQ-0003'])
+    const r1 = await readObj('requirements/REQ-0001.yaml')
+    expect(r1.status).toBe('approved')
+    expect(r1.history!.status!.map(e => e.value)).toEqual(['draft', 'approved'])
+    const t = await typeOnDisk('exigence')
+    expect(t.statuses!.map(s => s.name)).toEqual(['draft', 'approved'])
+    expect(t.transitions).toEqual([{ from: 'draft', to: 'approved', requires: { fieldsFilled: 'warn' } }])
+    expect(t.fields.find(f => f.name === 'justif')!.requiredWhen).toEqual({ status: ['approved'] })
+  })
+
+  it('D3b — fusion qui rend une règle invalide (draft → draft) : TRANSITION_INVALID, rien d\'écrit', async () => {
+    const before = await filesBytes()
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'review', replaceWith: 'draft' }, 'TRANSITION_INVALID')
+    expect(await filesBytes()).toEqual(before)
+  })
+
+  it('D4 — statut non porté mais cité : TRANSITION_INVALID / REQUIRED_WHEN_INVALID', async () => {
+    await call('update_status', { nodeName: 'root', typeName: 'exigence', name: 'review', to: 'relecture' }) // REQ-0001/2 → relecture
+    await call('add_status', { nodeName: 'root', typeName: 'exigence', status: { name: 'review' } })
+    await call('add_field', { nodeName: 'root', typeName: 'exigence', field: { name: 'motif', type: 'text', requiredWhen: { status: ['review'] } } })
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'review' }, 'REQUIRED_WHEN_INVALID', /motif/)
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'relecture', replaceWith: 'draft' }, 'TRANSITION_INVALID')
+    await call('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'review', replaceWith: 'draft' })
+    expect((await typeOnDisk('exigence')).fields.find(f => f.name === 'motif')!.requiredWhen).toEqual({ status: ['draft'] })
+  })
+
+  it('D4 — statut non porté cité par une transition, sans replaceWith : TRANSITION_INVALID', async () => {
+    await call('update_status', { nodeName: 'root', typeName: 'exigence', name: 'review', to: 'relecture' })
+    await call('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'relecture', replaceWith: 'approved' })
+    // `draft → approved` cite maintenant `approved`, porté par les trois exigences : on vide `draft`.
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'draft' }, 'TRANSITION_INVALID', /draft → approved/)
+  })
+
+  it('D5 — statut non porté, non cité : retiré (le premier statut compris)', async () => {
+    await call('add_status', { nodeName: 'root', typeName: 'test', status: { name: 'obsolete' } })
+    const res = await call<Migrated>('remove_status', { nodeName: 'root', typeName: 'test', name: 'obsolete' })
+    expect(res.migration).toEqual({ migrated: [], skipped: [], failed: [] })
+    await call('remove_status', { nodeName: 'root', typeName: 'test', name: 'draft' })
+    expect((await typeOnDisk('test')).statuses!.map(s => s.name)).toEqual(['ready'])
+  })
+
+  it('D6 — replaceWith inconnu ou identique ; dernier statut', async () => {
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'review', replaceWith: 'nope' }, 'STATUS_NOT_FOUND')
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'nope' }, 'STATUS_NOT_FOUND')
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'review', replaceWith: 'review' }, 'STATUS_LIST_INVALID')
+    await call('remove_status', { nodeName: 'root', typeName: 'test', name: 'draft' })
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'test', name: 'ready', replaceWith: 'ready' }, 'STATUS_LIST_INVALID')
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'test', name: 'ready' }, 'STATUS_LIST_INVALID', /dernier/)
+  })
+
+  it('D7 — statut signée avec des validations : refusé, validations intactes', async () => {
+    const vals = await fsP.readFile(path.join(dir, 'validations', 'VAL-0002.yaml'), 'utf-8')
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'validation', name: 'signee' }, 'STATUS_IN_USE', /VAL-0002/)
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'validation', name: 'signee', replaceWith: 'en_cours' }, 'VALIDATION_TYPE_INVALID')
+    expect(await fsP.readFile(path.join(dir, 'validations', 'VAL-0002.yaml'), 'utf-8')).toBe(vals)
+  })
+
+  it('D8 — objet écrit hors MCP après un premier appel : compté (index rafraîchi)', async () => {
+    await call('add_status', { nodeName: 'root', typeName: 'exigence', status: { name: 'gel' } })
+    await call<Preview>('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'gel', dryRun: true }) // index construit
+    await git.writeYaml(dir, 'requirements/REQ-0004.yaml', { ...base, id: 'REQ-0004', objectTypeRef: 'root::exigence', status: 'gel', fields: {} })
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'gel' }, 'STATUS_IN_USE', /REQ-0004/)
+  })
+
+  it('G1/G2 — nœud readonly, nœud ou type inconnus', async () => {
+    for (const [name, dto] of [['update_status', { name: 'a', label: 'x' }], ['remove_status', { name: 'a' }]] as const) {
+      await expectRefused(name, { nodeName: 'lecture', typeName: 'ext', ...dto }, 'NODE_READONLY')
+      await expectRefused(name, { nodeName: 'nope', typeName: 'ext', ...dto }, 'NODE_NOT_FOUND')
+      await expectRefused(name, { nodeName: 'root', typeName: 'nope', ...dto }, 'TYPE_NOT_FOUND')
+    }
+  })
+})
+
+describe('G4 — appels pipelinés', () => {
+  const steps: Array<[string, Record<string, unknown>]> = [
+    ...[1, 2, 3, 4, 5].map((i): [string, Record<string, unknown>] => ['add_decision', { nodeName: 'root', typeName: 'validation', decision: { name: `d${i}` } }]),
+    ['update_status', { nodeName: 'root', typeName: 'exigence', name: 'draft', label: 'Brouillon' }],
+    ['reorder_statuses', { nodeName: 'root', typeName: 'exigence', order: ['review', 'draft', 'approved'] }],
+    ['update_object_type', { nodeName: 'root', typeName: 'exigence', label: 'Exigence' }],
+    ['add_field', { nodeName: 'root', typeName: 'validation', list: 'entryFields', field: { name: 'note', type: 'text' } }],
+    ['update_decision', { nodeName: 'root', typeName: 'validation', name: 'd3', label: 'D3' }],
+  ]
+
+  it('dix appels sans attente = mêmes appels séquentiels', async () => {
+    await Promise.all(steps.map(([name, dto]) => call(name, dto)))
+    const pipelined = await onDiskSchema()
+    await git.writeYaml(dir, '.polenta/schema.yaml', SCHEMA)
+    registerTools()
+    for (const [name, dto] of steps) await call(name, dto)
+    expect(pipelined).toEqual(await onDiskSchema())
+    expect((await typeOnDisk('validation')).decisions!.map(d => d.name)).toEqual(['en_attente', 'conforme', 'refuse', 'non_conforme', 'd1', 'd2', 'd3', 'd4', 'd5'])
   })
 })

@@ -160,6 +160,26 @@ const removeDecisionInput = { ...typeTarget, name: z.string().min(1) }
 
 const reorderStatusesInput = { ...typeTarget, order: z.array(z.string().min(1)) }
 
+const dryRunInput = z.boolean().optional().describe('true : aucun écrit, mêmes refus, aperçu (withOld / withNew)')
+
+const updateStatusInput = {
+  ...typeTarget,
+  name: z.string().min(1),
+  to: z.string().min(1).optional().describe('Nouveau nom : objets du type, transitions et requiredWhen migrés'),
+  label: removableString,
+  color: removableString,
+  isApproval: z.boolean().optional().describe('false retire la marque'),
+  isTerminal: z.boolean().optional().describe('false retire la marque'),
+  dryRun: dryRunInput,
+}
+
+const removeStatusInput = {
+  ...typeTarget,
+  name: z.string().min(1),
+  replaceWith: z.string().min(1).optional().describe('Statut existant vers lequel migrer les objets (fusion)'),
+  dryRun: dryRunInput,
+}
+
 const updateObjectTypeInput = {
   ...typeTarget,
   label: removableString,
@@ -193,6 +213,16 @@ async function runSchemaMutation(op: () => Promise<unknown>): Promise<SchemaMuta
     if (e instanceof SchemaValidationError) return errorToolResult(`[${e.code}] ${e.message}`)
     throw e
   }
+}
+
+/**
+ * GH371 — ce process n'a pas de watcher : un objet créé ou modifié par l'application depuis le
+ * dernier appel doit compter (STATUS_IN_USE) et être migré.
+ */
+function freshenObjectIndexes(container: McpContainer): void {
+  container.reqIndex.invalidate(container.repoPath)
+  container.testsIndex.invalidate(container.repoPath)
+  container.issues.invalidate(container.repoPath)
 }
 
 export function registerSchemaMutationTools(server: McpServer, container: McpContainer): void {
@@ -321,6 +351,48 @@ export function registerSchemaMutationTools(server: McpServer, container: McpCon
       inputSchema: reorderStatusesInput,
     },
     async (dto) => runSchemaMutation(() => container.schema.reorderStatuses(container.repoPath, dto)),
+  )
+
+  server.registerTool(
+    'update_status',
+    {
+      title: 'Update status',
+      description:
+        "Modifie un statut d'un type : `label` / `color` (null retire), `isApproval` / `isTerminal` (false retire), " +
+        '`to` (renommage : statut courant et history.status des exigences, tests, campagnes, issues et validations du ' +
+        'type, copies testSnapshot des campagnes pour un type de test, règles de transition et requiredWhen qui le ' +
+        'citent). Réponse { schema, migration: { migrated, skipped, failed, snapshots? } } ; `dryRun: true` : ' +
+        '{ dryRun, schema, preview: { withOld, withNew } } sans rien écrire. Refus : STATUS_NOT_FOUND, ' +
+        'STATUS_NAME_TAKEN (fusion : remove_status + replaceWith), VALIDATION_TYPE_INVALID / VERSION_TYPE_INVALID ' +
+        '(marques du type validation / version, figées tant que des validations / versions existent), ' +
+        'TRANSITION_INVALID, STATUS_LIST_INVALID (campagne : statuts fixes).',
+      inputSchema: updateStatusInput,
+    },
+    async (dto) => {
+      requireSomeChange('update_status', dto, ['to', 'label', 'color', 'isApproval', 'isTerminal'])
+      freshenObjectIndexes(container)
+      return runSchemaMutation(() => container.schema.updateStatus(container.repoPath, dto, container.fieldRename))
+    },
+  )
+
+  server.registerTool(
+    'remove_status',
+    {
+      title: 'Remove status',
+      description:
+        "Retire un statut d'un type. Statut courant d'au moins un objet du type : refusé (STATUS_IN_USE, nombre et " +
+        'IDs) sauf `replaceWith` (statut existant) : les objets y sont migrés (statut, history.status, copies ' +
+        'testSnapshot) et les règles de transition / requiredWhen qui citaient le statut sont réécrites vers lui. ' +
+        'Sans replaceWith, un statut cité par une transition (TRANSITION_INVALID) ou un requiredWhen ' +
+        "(REQUIRED_WHEN_INVALID) ne se retire pas. Le premier statut peut être retiré (le suivant devient celui de " +
+        'création). Autres refus : STATUS_NOT_FOUND, STATUS_LIST_INVALID (dernier statut, replaceWith = name, ' +
+        'campagne), VALIDATION_TYPE_INVALID / VERSION_TYPE_INVALID. Réponse et `dryRun` : comme update_status.',
+      inputSchema: removeStatusInput,
+    },
+    async (dto) => {
+      freshenObjectIndexes(container)
+      return runSchemaMutation(() => container.schema.removeStatus(container.repoPath, dto, container.fieldRename))
+    },
   )
 
   server.registerTool(

@@ -3,8 +3,9 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import git from 'isomorphic-git'
-import { validationTypeError } from '@polenta/types'
+import { REQUIRED_WHEN_STATUS, emptyFieldRenameResult, renameTransitionRefs, rulesCitingStatus, validationTypeError } from '@polenta/types'
 import type {
+  FieldRenameResult,
   LinkTypeDefinition,
   ObjectTypeDefinition,
   ProjectSchema,
@@ -12,10 +13,12 @@ import type {
   SchemaStatus,
   SystemNode,
   ValidationDecisionDef,
+  ValueRename,
 } from '@polenta/types'
 import { ISSUE_IMPACT_LINK, displayIdFieldError, transitionRuleIssues, findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues, runFieldIssues } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
+import type { FieldRenameService } from './field-rename.service'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
 import { GITATTRIBUTES_CONTENT, GITIGNORE_CONTENT } from './repo-conformity.util'
 
@@ -67,6 +70,26 @@ export class SchemaValidationError extends Error {
     super(message)
     this.name = 'SchemaValidationError'
   }
+}
+
+/**
+ * GH371 — migration des objets d'un type après une écriture du schéma (`FieldRenameService`), passée
+ * en argument : `FieldRenameService` dépend de services qui dépendent de `SchemaService`.
+ */
+export type SchemaValueMigrator = Pick<FieldRenameService, 'previewValueRenames' | 'renameValues' | 'objectIdsWithStatus'>
+
+/** GH371 — réponse de `update_status` / `remove_status`. */
+export interface StatusMutationResult {
+  schema: ProjectSchema
+  /** Objets migrés (vide si rien à migrer). */
+  migration: FieldRenameResult
+}
+
+/** GH371 — réponse `dryRun` : schéma qui serait écrit, objets portant l'ancienne / la nouvelle valeur. */
+export interface StatusMutationPreview {
+  dryRun: true
+  schema: ProjectSchema
+  preview: { withOld: number; withNew: number }
 }
 
 export class SchemaService {
@@ -816,6 +839,116 @@ export class SchemaService {
     })
   }
 
+  /**
+   * GH371 — modifie un statut : libellé, couleur, marques (`null` / `false` retirent la clé), nom.
+   * Renommage aligné sur l'éditeur (GH82) : règles de transition et `requiredWhen` des `fields`
+   * suivent ; après l'écriture du schéma, dans la même entrée de file, les objets du type sont migrés
+   * (`renameValues` : statut courant, `history.status`, copies `testSnapshot`). `dryRun` : aucun
+   * écrit, mêmes refus, aperçu du renommage.
+   */
+  async updateStatus(
+    repoPath: string,
+    dto: {
+      nodeName: string; typeName: string; name: string; to?: string
+      label?: string | null; color?: string | null; isApproval?: boolean; isTerminal?: boolean; dryRun?: boolean
+    },
+    migrator: SchemaValueMigrator,
+  ): Promise<StatusMutationResult | StatusMutationPreview> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const statuses = this.requireStatusList(type)
+      const current = this.requireStatus(type, statuses, dto.name)
+      const to = dto.to !== undefined && dto.to !== dto.name ? dto.to : undefined
+      if (to && statuses.some((s) => s.name === to)) {
+        throw new SchemaValidationError('STATUS_NAME_TAKEN', `Le statut "${to}" existe déjà dans le type "${type.name}" (une fusion passe par remove_status + replaceWith).`)
+      }
+      const next: SchemaStatus = { ...current, ...(to && { name: to }) }
+      setOrDelete(next, 'label', dto.label)
+      setOrDelete(next, 'color', dto.color)
+      setOrDelete(next, 'isApproval', dto.isApproval === false ? null : dto.isApproval)
+      setOrDelete(next, 'isTerminal', dto.isTerminal === false ? null : dto.isTerminal)
+      let updatedType: ObjectTypeDefinition = { ...type, statuses: statuses.map((s) => (s === current ? next : s)) }
+      const rename: ValueRename | null = to ? { target: { kind: 'status' }, from: dto.name, to } : null
+      if (rename) updatedType = withStatusRefsRenamed(updatedType, rename)
+      const updated = this.replaceObjectType(schema, node, type, updatedType)
+      return this.writeAndMigrate(repoPath, updated, `${node.name}::${type.name}`, rename, !!dto.dryRun, migrator)
+    })
+  }
+
+  /**
+   * GH371 — retire un statut. Statut porté par un objet du type (statut courant) : refusé sauf
+   * `replaceWith`, vers lequel les objets sont alors migrés (fusion GH82 D4 : statut, historique,
+   * copies). Références des transitions et des `requiredWhen` : refus sans `replaceWith`, réécrites
+   * vers `replaceWith` sinon (Q1).
+   */
+  async removeStatus(
+    repoPath: string,
+    dto: { nodeName: string; typeName: string; name: string; replaceWith?: string; dryRun?: boolean },
+    migrator: SchemaValueMigrator,
+  ): Promise<StatusMutationResult | StatusMutationPreview> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const statuses = this.requireStatusList(type)
+      const current = this.requireStatus(type, statuses, dto.name)
+      const ref = `${node.name}::${type.name}`
+      if (dto.replaceWith !== undefined) {
+        this.requireStatus(type, statuses, dto.replaceWith)
+        if (dto.replaceWith === dto.name) {
+          throw new SchemaValidationError('STATUS_LIST_INVALID', `replaceWith doit désigner un autre statut que "${dto.name}".`)
+        }
+      }
+      if (statuses.length === 1) {
+        throw new SchemaValidationError('STATUS_LIST_INVALID', `"${dto.name}" est le dernier statut du type "${type.name}" : il ne se retire pas.`)
+      }
+      let updatedType: ObjectTypeDefinition = { ...type, statuses: statuses.filter((s) => s !== current) }
+      let rename: ValueRename | null = null
+      if (dto.replaceWith === undefined) {
+        const carriers = await migrator.objectIdsWithStatus(repoPath, ref, dto.name)
+        if (carriers.length > 0) {
+          throw new SchemaValidationError('STATUS_IN_USE', `Le statut "${dto.name}" est porté par ${carriers.length} objet(s) (${idList(carriers)}) : préciser replaceWith pour les migrer vers un autre statut.`)
+        }
+        const rules = rulesCitingStatus(type, dto.name)
+        if (rules.length > 0) {
+          throw new SchemaValidationError('TRANSITION_INVALID', `Le statut "${dto.name}" est cité par les règles de transition ${idList(rules)} : préciser replaceWith pour les réécrire.`)
+        }
+        const citing = fieldsCiting(type.fields ?? [], REQUIRED_WHEN_STATUS, dto.name)
+        if (citing.length > 0) {
+          throw new SchemaValidationError('REQUIRED_WHEN_INVALID', `Le statut "${dto.name}" est cité par le requiredWhen de ${idList(citing)} : préciser replaceWith pour le réécrire.`)
+        }
+      } else {
+        rename = { target: { kind: 'status' }, from: dto.name, to: dto.replaceWith }
+        updatedType = withStatusRefsRenamed(updatedType, rename)
+      }
+      const updated = this.replaceObjectType(schema, node, type, updatedType)
+      return this.writeAndMigrate(repoPath, updated, ref, rename, !!dto.dryRun, migrator)
+    })
+  }
+
+  private requireStatus(type: ObjectTypeDefinition, statuses: SchemaStatus[], name: string): SchemaStatus {
+    const status = statuses.find((s) => s.name === name)
+    if (!status) throw new SchemaValidationError('STATUS_NOT_FOUND', `Statut "${name}" introuvable dans le type "${type.name}".`)
+    return status
+  }
+
+  /**
+   * GH371 — fin commune de `updateStatus` / `removeStatus` : `dryRun` → garde-fous de `save` sans
+   * écrire et aperçu ; sinon `save` puis migration des objets (même entrée de file que l'appelant).
+   */
+  private async writeAndMigrate(
+    repoPath: string, updated: ProjectSchema, objectTypeRef: string, rename: ValueRename | null, dryRun: boolean, migrator: SchemaValueMigrator,
+  ): Promise<StatusMutationResult | StatusMutationPreview> {
+    if (dryRun) {
+      const schema = await this.assertSaveable(repoPath, updated)
+      const [preview] = rename ? await migrator.previewValueRenames(repoPath, objectTypeRef, [rename]) : []
+      return { dryRun: true, schema, preview: { withOld: preview?.withOld ?? 0, withNew: preview?.withNew ?? 0 } }
+    }
+    await this.save(repoPath, updated)
+    const migration = rename ? await migrator.renameValues(repoPath, objectTypeRef, [rename]) : emptyFieldRenameResult()
+    return { schema: this.cache.get(repoPath) ?? updated, migration }
+  }
+
   /** Ajoute un `LinkTypeDefinition` au projet (pas rattaché à un nœud particulier). */
   async addLinkType(repoPath: string, dto: { linkType: LinkTypeDefinition }): Promise<ProjectSchema> {
     return this.withMutationQueue(repoPath, async () => {
@@ -1009,6 +1142,15 @@ function renamePseudoRefs(fields: SchemaField[], key: string, from: string, to: 
     const renamed = [...new Set(values.map((v) => (String(v) === from ? to : v)))]
     return { ...f, requiredWhen: { ...f.requiredWhen, [key]: renamed } }
   })
+}
+
+/** GH371 — type après renommage (ou fusion) d'un statut : règles de transition et `requiredWhen` des `fields`. */
+function withStatusRefsRenamed(type: ObjectTypeDefinition, rename: ValueRename): ObjectTypeDefinition {
+  return {
+    ...type,
+    ...(type.transitions && { transitions: renameTransitionRefs(type.transitions, [rename]) }),
+    ...(type.fields && { fields: renamePseudoRefs(type.fields, REQUIRED_WHEN_STATUS, rename.from, rename.to) }),
+  }
 }
 
 /**

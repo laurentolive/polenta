@@ -74,6 +74,26 @@ alternant les binaires, avec la même config vide (`GIT_CONFIG_NOSYSTEM=1`) :
   `node.exe` (`Program Files\nodejs`), alors que dans Polenta installé il tourne dans `polenta.exe`,
   sous `%LOCALAPPDATA%\Programs`. Ce n'est mesurable que dans l'application installée.
 
+### Mesure dans l'application empaquetée
+
+Même script, exécuté par `dist/win-unpacked/Polenta.exe` (`ELECTRON_RUN_AS_NODE=1`) : isomorphic-git
+tourne dans l'exécutable de Polenta, comme chez un client, et le git natif depuis
+`win-unpacked/resources/git`.
+
+| Opération | handstickProduct iso / natif | polenta-official iso / natif |
+|---|---|---|
+| 200 × resolve HEAD | 3 343 / 261 ms | 198 / 170 ms |
+| lire tous les fichiers à HEAD | 8 498 / 244 ms | 23 323 / 490 ms |
+| statut, arbre propre | 135 / 225 ms | 255 / 47 ms |
+| historique par fichier | — / 116 ms | — / 341 ms |
+| **checkout aller-retour** | 1 678 / **4 698 ms** | 1 506 / **8 152 ms** |
+
+Dans les conditions réelles, le checkout natif reste **2,8× à 5,4× plus lent** qu'isomorphic-git.
+L'hypothèse « l'emplacement pénalise aussi isomorphic-git » est donc écartée : `Polenta.exe` écrit
+vite, et ce sont les écritures faites par `git.exe` hors de `Program Files` qui sont lentes,
+vraisemblablement à cause de l'analyse de Windows Defender. Le statut du petit dépôt (225 ms contre
+46 ms au passage précédent) varie d'un passage à l'autre.
+
 ## Écarts par rapport au design
 
 - **Statut** : un fichier dont la taille sur disque diffère de celle de l'index (CRLF sur disque, LF

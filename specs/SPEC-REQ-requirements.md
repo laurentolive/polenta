@@ -822,6 +822,7 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
   et poussé au prochain push du repo (`<gitdir>/polenta-pending-tags`).
 - Une version released est verrouillée (champs, `changes`, `components`) ; seul l'abandon reste.
 - Composant en lecture seule (épinglé, ou sous un nœud `readonly`) : aucune écriture (`READONLY_REPO`).
+- Création, alimentation, statut et passage released : interface et MCP (GH362, SPEC-MCP-SERVER §4.8), mêmes contrôles.
 
 ### 11.3 Backlog et changements
 
@@ -926,4 +927,5 @@ elle vaut feu vert ; sur la version produit, go production série. Détail : `sp
   et Validation (décision de la **dernière validation signée** du repo de l'exigence, dans l'ordre des livraisons de sa
   version, avec le label de cette version ; une annulée ne compte plus ; exigence sans entrée : « — »). Lus dans le repo
   propriétaire (sous-composant compris), rien n'est stocké (`reflections:list`). Vue : SPEC-SYSTEM-VIEW.
-- **Vue** : SPEC-ELECTRON-DESKTOP §19.2. **MCP** : SPEC-MCP-SERVER §4.10. **Graphe** : SPEC-DASHBOARDS.
+- **Vue** : SPEC-ELECTRON-DESKTOP §19.2. **MCP** : SPEC-MCP-SERVER §4.10 — création, décisions, confirmation / rejet,
+  annulation (GH362) ; **la signature reste dans la vue**, jamais par le MCP. **Graphe** : SPEC-DASHBOARDS.

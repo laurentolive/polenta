@@ -15,6 +15,7 @@ import {
 } from '../../main/services/bulk-import-validation.util'
 import { peekNextCounterId, formatCounterId } from '../../main/services/id-counter.util'
 import { readOwnedTypeDef } from '../../main/services/field-write.util'
+import { placeBulkFolders, planBulkFolders, type BulkFolderEntry } from './tree.tools'
 
 /**
  * Tools d'import massif (T122 sprint 2 — specs/T122-design.md §3) : un tool par
@@ -34,13 +35,17 @@ import { readOwnedTypeDef } from '../../main/services/field-write.util'
 
 // `CreateRequirementSchema`/`CreateTestCaseSchema` sont réutilisés tel quel
 // (@polenta/zod-schemas) — mêmes DTOs que l'UI, pas de duplication de règles.
+/** GH361 — chemin de dossier où ranger l'objet créé (hors DTO : jamais écrit dans son YAML). */
+const folderSchema = z.string().optional()
+  .describe('GH361 — dossier où ranger l’objet créé (chemin « A/B », créé s’il manque ; cf. get_tree)')
+
 const bulkImportRequirementsInput = {
-  entries: z.array(CreateRequirementSchema),
+  entries: z.array(CreateRequirementSchema.extend({ folder: folderSchema })),
   dryRun: z.boolean().optional().default(true),
 }
 
 const bulkImportTestsInput = {
-  entries: z.array(CreateTestCaseSchema),
+  entries: z.array(CreateTestCaseSchema.extend({ folder: folderSchema })),
   dryRun: z.boolean().optional().default(true),
 }
 
@@ -75,6 +80,57 @@ interface BulkImportToolResult {
   errors: BulkEntryError[]
   /** GH206 — notifications des contraintes de transition (statut de création), par entrée. */
   transitionWarnings?: Array<{ index: number; issues: TransitionIssue[] }>
+  /** GH361 — `dryRun` avec `folder` : dossiers qui seraient créés et verrou de l'application, par type. */
+  folders?: Awaited<ReturnType<typeof planBulkFolders>>['folders']
+}
+
+const byIndex = (a: { index: number }, b: { index: number }) => a.index - b.index
+
+/**
+ * GH361 — champ `folder` des entrées : retiré du DTO et contrôlé avant tout (une entrée au chemin
+ * refusé est exclue de l'import, en aperçu comme en écriture : les IDs prévus des suivantes restent
+ * ceux de l'écriture), puis l'objet créé est rangé (une écriture par type). Un échec de rangement
+ * laisse l'objet créé : `FOLDER_PLACEMENT_FAILED` dans `errors`, hors `summary.failed`.
+ */
+async function bulkImportWithFolders<TDto extends BulkImportEntryDto>(
+  container: McpContainer,
+  entries: Array<TDto & { folder?: string }>,
+  dryRun: boolean,
+  run: (dtos: TDto[]) => Promise<BulkImportToolResult>,
+): Promise<BulkImportToolResult> {
+  const dtos = entries.map(({ folder: _folder, ...dto }) => dto as unknown as TDto)
+  const folderEntries: BulkFolderEntry[] = entries.flatMap((e, index) =>
+    e.folder !== undefined ? [{ index, objectTypeRef: e.objectTypeRef ?? '', folder: e.folder }] : [])
+  if (folderEntries.length === 0) return run(dtos)
+
+  const plan = await planBulkFolders(container, folderEntries)
+  // Import des seules entrées acceptées, puis indices ramenés à ceux de la requête.
+  const kept = dtos.map((_, index) => index).filter(index => !plan.errors.has(index))
+  const result = await run(kept.map(index => dtos[index]))
+  const remap = <E extends { index: number }>(list: E[]): E[] => list.map(e => ({ ...e, index: kept[e.index] }))
+  const folderErrors = [...plan.errors].map(([index, reason]) => ({ index, reason, field: 'folder' }))
+  const errors = [...remap(result.errors), ...folderErrors].sort(byIndex)
+  const remapped: BulkImportToolResult = {
+    ...result,
+    summary: { total: entries.length, ok: result.summary.ok, failed: errors.length },
+    created: remap(result.created),
+    wouldCreate: remap(result.wouldCreate),
+    errors,
+    ...(result.transitionWarnings && { transitionWarnings: remap(result.transitionWarnings) }),
+  }
+
+  if (dryRun) {
+    // Dossiers prévus : seulement pour les entrées qui seraient réellement créées.
+    const willCreate = new Set(remapped.wouldCreate.map(w => w.index))
+    const { folders } = await planBulkFolders(container, folderEntries.filter(e => willCreate.has(e.index)))
+    return { ...remapped, folders }
+  }
+  const created = remapped.created.flatMap(c => {
+    const entry = folderEntries.find(e => e.index === c.index)
+    return entry ? [{ ...entry, id: c.id }] : []
+  })
+  const placementErrors = await placeBulkFolders(container, created)
+  return { ...remapped, errors: [...remapped.errors, ...placementErrors].sort(byIndex) }
 }
 
 /** GH206 — contrôle du statut de création d'une entrée (`before` null : toutes les règles vers ce statut). */
@@ -137,7 +193,7 @@ async function runBulkImport<TDto extends BulkImportEntryDto>(
       summary: { total: entries.length, ok: valid.length, failed: errors.length },
       created: [],
       wouldCreate: valid.map((v) => ({ index: v.index, id: v.predictedId })),
-      errors: [...errors].sort((a, b) => a.index - b.index),
+      errors: [...errors].sort(byIndex),
       ...withWarnings(),
     }
   }
@@ -158,7 +214,7 @@ async function runBulkImport<TDto extends BulkImportEntryDto>(
     }
   }
 
-  const allErrors = [...errors, ...writeErrors].sort((a, b) => a.index - b.index)
+  const allErrors = [...errors, ...writeErrors].sort(byIndex)
   return {
     dryRun: false,
     summary: { total: entries.length, ok: created.length, failed: allErrors.length },
@@ -241,7 +297,10 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
         "SANS RIEN ÉCRIRE. dryRun: false : écrit réellement, en série, best-effort " +
         "(une entrée en échec n'annule pas les précédentes). Appeler get_schema " +
         "d'abord pour connaître les objectTypeRef valides et leurs champs requis. " +
-        "status est facultatif : sans lui, l'exigence prend le premier statut du type." + RICHTEXT_COLORS_NOTE,
+        "status est facultatif : sans lui, l'exigence prend le premier statut du type. " +
+        "folder (facultatif, GH361) : dossier où ranger l'exigence créée (chemin « A/B », créé s'il manque ; " +
+        "chemin invalide ou ambigu = entrée refusée ; rangement impossible, ex. TREE_LOCKED quand l'application " +
+        "affiche ce rangement = exigence créée mais non classée, FOLDER_PLACEMENT_FAILED dans errors)." + RICHTEXT_COLORS_NOTE,
       inputSchema: bulkImportRequirementsInput,
     },
     async ({ entries, dryRun }) => {
@@ -249,10 +308,10 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
       const preview = dryRun
         ? await makeSchemaBackedIdPreview(container, schema, entries, 'requirements')
         : NOOP_ID_PREVIEW
-      const result = await runBulkImport(schema, entries, dryRun, preview, (dto) =>
-        container.requirements.create(container.repoPath, dto, container.workspaceDir),
-        makeCreationCheck(container),
-      )
+      const result = await bulkImportWithFolders(container, entries, dryRun, (dtos) =>
+        runBulkImport(schema, dtos, dryRun, preview, (dto) =>
+          container.requirements.create(container.repoPath, dto, container.workspaceDir),
+        makeCreationCheck(container)))
       return jsonToolResult(result)
     },
   )
@@ -264,7 +323,7 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
       description:
         "Crée plusieurs cas de test en une fois. Mêmes règles que " +
         "bulk_import_requirements (dryRun par défaut true, validation par entrée, " +
-        "écriture série best-effort en dryRun: false).",
+        "écriture série best-effort en dryRun: false, champ folder).",
       inputSchema: bulkImportTestsInput,
     },
     async ({ entries, dryRun }) => {
@@ -272,10 +331,10 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
       const preview = dryRun
         ? await makeSchemaBackedIdPreview(container, schema, entries, 'tests')
         : NOOP_ID_PREVIEW
-      const result = await runBulkImport(schema, entries, dryRun, preview, (dto) =>
-        container.tests.create(container.repoPath, dto, container.workspaceDir),
-        makeCreationCheck(container),
-      )
+      const result = await bulkImportWithFolders(container, entries, dryRun, (dtos) =>
+        runBulkImport(schema, dtos, dryRun, preview, (dto) =>
+          container.tests.create(container.repoPath, dto, container.workspaceDir),
+        makeCreationCheck(container)))
       return jsonToolResult(result)
     },
   )

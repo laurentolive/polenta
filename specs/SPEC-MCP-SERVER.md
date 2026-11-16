@@ -142,10 +142,12 @@ ponctuels) ni les autres services hors périmètre (`ReviewsService`, `Traceabil
 `BaselineService`, `InterfaceComplianceService`, `SavedQueriesService`,
 `DashboardSeedService`).
 
-**GH180 : `TreeService` n'est plus construit.** T138 l'avait ajouté pour inscrire chaque objet
-créé dans `.polenta/trees/<nœud>/<type>.yaml`, faute de quoi SystemView/ExcelView ne l'affichaient
-pas. Depuis GH180, l'app complète l'arbre à la lecture avec les objets non classés : créer un objet
-n'écrit plus l'arbre, côté app comme côté MCP (`SPEC-ELECTRON-DESKTOP.md` §22.4).
+**GH180 / GH361 : `TreeService`.** T138 l'avait ajouté pour inscrire chaque objet créé dans
+`.polenta/trees/<nœud>/<type>.yaml` ; depuis GH180, l'app complète l'arbre à la lecture avec les
+objets non classés : créer un objet n'écrit plus l'arbre, côté app comme côté MCP
+(`SPEC-ELECTRON-DESKTOP.md` §22.4). GH361 le reconstruit (`tree`), branché comme dans l'app
+(`indexObjectLister` exigences + tests + issues, `serviceTitleAdopter`), pour les outils de
+rangement en dossiers (§4.12) — il n'écrit toujours rien à la création d'un objet.
 
 Synchrone (pas de `createContainer()` async) — pas de fenêtre à ouvrir, pas d'attente
 `app.whenReady()`.
@@ -285,6 +287,15 @@ ou modification par un tool porte `source: mcp`.
   ```
 
 `BulkEntryError` : `{ index: number; reason: string; field?: string }`.
+
+**GH361 — champ `folder`** (`bulk_import_requirements` / `bulk_import_tests`) : chemin de dossier
+où ranger l'objet créé (§4.12), hors DTO (jamais écrit dans le YAML). Contrôlé avant tout, en aperçu
+comme en écriture : chemin invalide / dossier ambigu / type sans rangement → erreur d'entrée
+(`field: 'folder'`), entrée exclue de l'import (les IDs prévus des suivantes sont ceux de
+l'écriture). `dryRun` : `folders: [{ objectTypeRef, toCreate, locked }]` (dossiers créés pour les
+seules entrées qui seraient créées). Écriture : objets créés puis rangés, une écriture d'arbre par
+type ; un échec de rangement (`TREE_LOCKED`, erreur d'E/S…) laisse l'objet créé et non classé,
+`FOLDER_PLACEMENT_FAILED: <cause>` dans `errors`, hors `summary.failed`.
 
 ### 4.3 Mutation de schéma (`tools/schema-mutation.tools.ts`)
 
@@ -505,18 +516,30 @@ avec l'objet changeset (`specs/MILESTONE-D.md`). Reste : le contenu d'un éléme
 d'abord le statut (réouverture, `version + 1`), puis le contenu. `get_history` : `kind` parmi
 `requirement`, `test`, `campaign`.
 
-### 4.8 Versions (GH201, `tools/versions.tools.ts`)
+### 4.8 Versions (GH201, GH245, GH362 — `tools/versions.tools.ts`)
 
-Lecture seule (SPEC-REQ §11) : `list_versions` (par composant : versions du plus récent au plus
+Lecture (SPEC-REQ §11) : `list_versions` (par composant : versions du plus récent au plus
 ancien, état, `basedOn`, `freeze`, nombre d'éléments au backlog ; filtre `component`),
 `get_version` (`id`, `component` : champs, composants retenus, changements avec `base` et `toSha`),
 `get_version_backlog` (`component`). `component` = nom du repo dans le workspace, absent = repo
-ouvert. Le MCP ne crée pas de version, n'inclut pas de changement et ne passe pas une version
-released. Listés dans `AGENTS.md`.
+ouvert (résolution commune : `tools/component-repo.ts`). Listés dans `AGENTS.md`.
 
 GH245 : `get_version_impact { id, component? }` (analyse figée ou live : racines, lignes avec statut,
 `reached`, `sources` ; arbres omis) et `get_version_tests { id, component? }` (tests à exécuter,
-instances, sources, `alreadyIn`, `uncovered`). Pas d'écriture des statuts d'impact par le MCP.
+instances, sources, `alreadyIn`, `uncovered`).
+
+GH362 — écriture, par les méthodes de `VersionsService` de l'IPC (mêmes contrôles et erreurs
+`CODE: détail`, renvoyées en `isError` par le SDK) :
+`create_version { title, basedOn?, components?, fields? }`, `copy_version { id }`,
+`update_version { id, title?, basedOn?, components?, fields?, status? }` (statut released →
+`RELEASE_REQUIRED` ; released seulement abandonnable, `VERSION_LOCKED`), `include_in_version` /
+`remove_from_version { id, elementIds }`, `set_version_impact { id, elementId, status, comment? }`
+(version en cours), `get_version_release_preview { id, tag? }` et `release_version { id, tag? }`
+(tag suggéré par défaut ; gel, commit du seul fichier, tag annoté — irréversible, refusé sur
+`DIRTY_CHANGES`, `TAG_EXISTS`, composant non released…). Tous acceptent `component`. `update_version` fusionne
+`fields` et remplace `components` ; `include_in_version` renvoie `notFound` (IDs introuvables, ignorés). Chaque
+écriture relit le schéma et les index du repo (`freshComponentRepoResolver` : pas de watcher dans ce process).
+Auteur du commit de release : §7.
 
 ### 4.9 Issues (GH244, `tools/issues.tools.ts`)
 
@@ -528,7 +551,13 @@ passent par `create_links`, type `issue-impact` (`NOT_OWN_ELEMENT` hors du compo
 
 `list_validations`, `get_validation` (lignes, décisions restantes, motifs de refus), `propose_validation_decision`.
 Une proposition (`proposed`, `proposedBy` = `--user`) n'écrit que sur une exigence sans décision confirmée d'une
-validation en cours, et bloque la signature. Le MCP ne confirme, ne rejette et ne signe pas (SPEC-REQ §13).
+validation en cours, et bloque la signature.
+
+GH362 : `create_validation { versionId, title, fields? }`, `update_validation { id, title?, fields? }`,
+`decide_validation { id, requirementId, decision, comment?, fields? }` (décision confirmée directement,
+`decidedBy` = `--user`), `confirm_validation_decision` / `reject_validation_decision { id, requirementId }`,
+`cancel_validation { id }`. **Le MCP ne signe pas** : aucun outil n'appelle `sign` et aucun ne prend de `status`
+(le seul changement de statut est l'annulation) ; la signature reste un geste humain (SPEC-REQ §13).
 
 ### 4.11 Import de résultats JUnit (GH129, `tools/results-import.tools.ts`)
 
@@ -539,6 +568,36 @@ validation en cours, et bloque la signature. Le MCP ne confirme, ne rejette et n
 importés : succès, détaillés dans le rapport ; erreur globale (`no_files`, `invalid_xml`,
 `campaign_closed`, `tested_version_required`…) : `isError`. Le container construit désormais
 `TestedConfigService` (version testée d'un run de campagne, GH202) et `ResultsImportService`.
+
+### 4.12 Rangement en dossiers (GH361, `tools/tree.tools.ts`)
+
+Types de catégorie `requirement`, `test`, `issue` (sinon `TYPE_NOT_SUPPORTED` ; inconnu :
+`TYPE_NOT_FOUND`). Arbre visé : celui qu'affiche l'app — pour un composant en repo séparé, le
+fichier du repo du composant, nœud de son schéma qui porte le type. Opérations pures :
+`main/services/tree-ops.util.ts`, sur le rangement stocké (`TreeService.readLayout`), écrit par
+`TreeService.save` (règles GH180 inchangées).
+
+- **Chemin** `A/B` : segments nettoyés (`trim`), comparaison exacte ; segment vide →
+  `FOLDER_PATH_INVALID` ; deux dossiers frères homonymes → `FOLDER_AMBIGUOUS` ; ne traverse que des
+  dossiers (dossier sous un élément, nom avec `/` : non désignable, `path: null`).
+- `get_tree { objectTypeRef }` → `{ objectTypeRef, locked, root: TreeEntry[], unclassified }`.
+- `create_folders { paths }` (intermédiaires créés, existants réutilisés, ajout en fin de parent) ;
+  `rename_folder { renames: [{ path, name }] }` (`FOLDER_EXISTS`) ; `move_folder { moves: [{ path,
+  parent | null }] }` (`FOLDER_CYCLE`, `FOLDER_EXISTS`) ; `delete_folders { paths, recursive? }`
+  (`FOLDER_NOT_EMPTY` ; récursif : objets rendus non classés, jamais supprimés) ;
+  `move_to_folder { moves: [{ id, folder | null }], createMissing? }` (élément déplacé avec ses
+  enfants ; `null` = non classé, ses enfants prennent sa place ; `OBJECT_NOT_FOUND`,
+  `OBJECT_AMBIGUOUS`) ; `reorder_tree { folder | null, order: [{ folder } | { id }] }` (cités en
+  tête ; `NOT_A_CHILD`, `DUPLICATE_ENTRY` ; à la racine, un non classé cité est rangé).
+- Écritures : `dryRun` par défaut ; entrées dans l'ordre, une entrée en erreur sans effet ni
+  blocage des autres ; une seule écriture du fichier ; `READONLY_BRANCH` / `READONLY_REPO` (nœud
+  `readonly`, repo épinglé) refusés aussi en aperçu ; aucun commit.
+- **Verrou** (`main/services/tree-lock.util.ts`, fichiers sous `<gitdir>/polenta/locks/`, jamais
+  versionnés) : toute écriture prend le verrou court de l'arbre (fichier `.write` exclusif à jeton,
+  attente max 5 s), puis contrôle le verrou long de l'application ; tenu → `TREE_LOCKED` (message :
+  demander à l'utilisateur d'afficher un autre type), sans rien écrire. Aperçus et `get_tree`
+  signalent le verrou (`locked: { by: 'app', since }`). Verrou d'un processus mort ou échu : ignoré.
+  Côté application : `SPEC-ELECTRON-DESKTOP.md` §22.4.
 
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
 
@@ -612,6 +671,13 @@ Deux catégories (cf. §4) :
 
 ## 7. Limitations connues
 
+- **Rangement (GH361)** : verrou propre à un clone sur un poste (le client web et un autre poste
+  travaillent sur d'autres clones : conflits par fusion git). Une écriture MCP est refusée tant que
+  l'application affiche le type ; les services du main qui réécrivent un arbre hors affichage
+  (renommage / déplacement / suppression de type) ne prennent pas le verrou court.
+  Un bail de l'app expiré (veille de plus de 30 s) laisse, jusqu'à sa reprise, une fenêtre où un
+  enregistrement de l'app peut écraser une écriture MCP faite entre-temps.
+
 - **Mode mono-repo par défaut** (§2.3) : sans `--workspace`, un `objectTypeRef` vers un
   composant en repo séparé (nom de montage) retombe silencieusement sur le repo
   produit — pas une erreur, mais pas le comportement attendu pour un tel composant.
@@ -658,6 +724,11 @@ Deux catégories (cf. §4) :
 - **Packaging non vérifié de bout en bout** (§2.4) : bundle + mécanisme
   `ELECTRON_RUN_AS_NODE` vérifiés directement ; un build `electron-builder` complet
   (installeur réel) ne l'a pas été dans cet environnement.
+- **Passage released par le MCP (GH362)** : seul commit écrit par le serveur. Auteur du commit et du tag :
+  config git du repo, sinon `--user` (`McpAuthService`), sinon l'auteur par défaut de la marque — jamais le
+  compte de forge de l'app (`auth.json` hors de portée). Les files d'attente des services sont propres à
+  chaque process : un commit de l'app au même instant qu'un `release_version` peut se croiser avec lui
+  (branche, index, `polenta-pending-tags`) — même classe de course inter-process que ci-dessus.
 
 ---
 

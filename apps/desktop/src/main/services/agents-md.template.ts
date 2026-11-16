@@ -33,8 +33,10 @@ import type { BrandInfo } from '../../shared/brand-types'
  * GH203 (v9) : `.polenta/views/` maintenu par l'application.
  *
  * GH129 (v11) : outil `import_test_results` (import JUnit, champ `automationId`).
+ *
+ * GH362 (v12) : écriture des versions (release comprise) et des validations (sans signature).
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 11
+export const AGENTS_MD_TEMPLATE_VERSION = 12
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -186,15 +188,30 @@ Tools disponibles :
   par type/statut/texte) pour éviter les doublons avant un import.
 - \`list_issues\` / \`get_issue\` / \`create_issue\` / \`update_issue\` — issues (bug, non-conformité…) ; exigences impactées par liens \`issue-impact\` (\`create_links\`), de son composant seulement.
 - \`list_validations\` / \`get_validation\` — validations d'une version : décision par exigence, restes à décider.
-- \`propose_validation_decision\` — propose une décision, qu'un humain confirme ou rejette. Le MCP ne signe jamais.
-- \`list_versions\` / \`get_version\` / \`get_version_backlog\` — versions des composants et du
-  produit (lecture seule) : changements inclus, composants, backlog des changements jamais livrés.
-  Une version se crée, s'enrichit et passe released dans l'application, pas par le MCP.
+- \`create_validation\` / \`update_validation\` / \`cancel_validation\` — crée, modifie, annule une validation.
+- \`decide_validation\` (décision directe) / \`propose_validation_decision\` (à confirmer) /
+  \`confirm_validation_decision\` / \`reject_validation_decision\`. Le MCP ne signe jamais : la
+  signature se fait dans l'application.
+- \`list_versions\` / \`get_version\` / \`get_version_backlog\` / \`get_version_impact\` / \`get_version_tests\` —
+  versions des composants et du produit : changements inclus, composants, backlog, impact, tests à exécuter.
+- \`create_version\` / \`copy_version\` / \`update_version\` (champs, statut) / \`include_in_version\` /
+  \`remove_from_version\` / \`set_version_impact\` — crée et alimente une version en cours.
+- \`get_version_release_preview\` puis \`release_version\` — passage released (**irréversible** : gel et
+  tag git) ; les changements inclus doivent être commités.
 - \`get_history\` — historique des champs suivis d'un objet (statut par défaut), avec les
   entrées déduites (\`implicit: true\`) quand la valeur courante diffère de la dernière entrée.
 - \`bulk_import_requirements\` / \`bulk_import_tests\` / \`bulk_import_campaigns\` — import
   massif avec \`dryRun\` obligatoire par défaut (aperçu des IDs prévisionnels et des
   erreurs, sans rien écrire) ; \`dryRun: false\` écrit réellement, en série, best-effort.
+  \`folder\` (exigences, tests) range l'objet créé dans un dossier (voir ci-dessous).
+- \`get_tree\` / \`create_folders\` / \`rename_folder\` / \`move_folder\` / \`delete_folders\` /
+  \`move_to_folder\` / \`reorder_tree\` — rangement en dossiers des exigences, tests et issues
+  d'un type (\`.polenta/trees/\`). Un dossier se désigne par son chemin (\`Sécurité/Batterie\`) ;
+  \`get_tree\` montre les dossiers, les objets rangés et les non classés. Écritures avec \`dryRun\`
+  par défaut ; \`delete_folders\` ne supprime jamais d'objet (ils redeviennent non classés).
+  **\`TREE_LOCKED\`** : l'utilisateur affiche ce rangement dans ${name} — lui demander d'afficher un
+  autre type ou un autre onglet, puis réessayer (\`get_tree\` et les aperçus le signalent par
+  \`locked\`).
 - \`import_test_results\` — importe des rapports JUnit XML comme exécutions des cas de test
   (correspondance par le champ \`automationId\` du test, \`classname.name\` puis \`name\` ; secours par
   la propriété JUnit \`requirement\`). \`dryRun\` par défaut : relire les non mappés et ambigus, puis
@@ -265,8 +282,8 @@ passez par \`update_*\` et \`set_parameters\`.
 ## Invariants à respecter
 
 - \`.polenta/trees/<nœud>/<type>.yaml\` (ordre d'affichage des objets) est **maintenu par
-  ${name}** — ne jamais l'éditer à la main. De même pour \`.polenta/views/<nœud>/<type>.yaml\`
-  (vues enregistrées d'équipe).
+  ${name}** — ne jamais l'éditer à la main (avec MCP : outils de rangement ci-dessus). De
+  même pour \`.polenta/views/<nœud>/<type>.yaml\` (vues enregistrées d'équipe).
 - Un ID n'est **jamais réutilisé**, même si l'objet passe en statut terminal/obsolète. Il
   n'y a pas de compteur : le prochain numéro d'un préfixe est le plus grand numéro trouvé
   dans les fichiers **et** dans \`.polenta/tombstones/\` (un fichier vide par ID supprimé),

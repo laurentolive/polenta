@@ -142,10 +142,12 @@ ponctuels) ni les autres services hors périmètre (`ReviewsService`, `Traceabil
 `BaselineService`, `InterfaceComplianceService`, `SavedQueriesService`,
 `DashboardSeedService`).
 
-**GH180 : `TreeService` n'est plus construit.** T138 l'avait ajouté pour inscrire chaque objet
-créé dans `.polenta/trees/<nœud>/<type>.yaml`, faute de quoi SystemView/ExcelView ne l'affichaient
-pas. Depuis GH180, l'app complète l'arbre à la lecture avec les objets non classés : créer un objet
-n'écrit plus l'arbre, côté app comme côté MCP (`SPEC-ELECTRON-DESKTOP.md` §22.4).
+**GH180 / GH361 : `TreeService`.** T138 l'avait ajouté pour inscrire chaque objet créé dans
+`.polenta/trees/<nœud>/<type>.yaml` ; depuis GH180, l'app complète l'arbre à la lecture avec les
+objets non classés : créer un objet n'écrit plus l'arbre, côté app comme côté MCP
+(`SPEC-ELECTRON-DESKTOP.md` §22.4). GH361 le reconstruit (`tree`), branché comme dans l'app
+(`indexObjectLister` exigences + tests + issues, `serviceTitleAdopter`), pour les outils de
+rangement en dossiers (§4.12) — il n'écrit toujours rien à la création d'un objet.
 
 Synchrone (pas de `createContainer()` async) — pas de fenêtre à ouvrir, pas d'attente
 `app.whenReady()`.
@@ -285,6 +287,15 @@ ou modification par un tool porte `source: mcp`.
   ```
 
 `BulkEntryError` : `{ index: number; reason: string; field?: string }`.
+
+**GH361 — champ `folder`** (`bulk_import_requirements` / `bulk_import_tests`) : chemin de dossier
+où ranger l'objet créé (§4.12), hors DTO (jamais écrit dans le YAML). Contrôlé avant tout, en aperçu
+comme en écriture : chemin invalide / dossier ambigu / type sans rangement → erreur d'entrée
+(`field: 'folder'`), entrée exclue de l'import (les IDs prévus des suivantes sont ceux de
+l'écriture). `dryRun` : `folders: [{ objectTypeRef, toCreate, locked }]` (dossiers créés pour les
+seules entrées qui seraient créées). Écriture : objets créés puis rangés, une écriture d'arbre par
+type ; un échec de rangement (`TREE_LOCKED`, erreur d'E/S…) laisse l'objet créé et non classé,
+`FOLDER_PLACEMENT_FAILED: <cause>` dans `errors`, hors `summary.failed`.
 
 ### 4.3 Mutation de schéma (`tools/schema-mutation.tools.ts`)
 
@@ -558,6 +569,36 @@ importés : succès, détaillés dans le rapport ; erreur globale (`no_files`, `
 `campaign_closed`, `tested_version_required`…) : `isError`. Le container construit désormais
 `TestedConfigService` (version testée d'un run de campagne, GH202) et `ResultsImportService`.
 
+### 4.12 Rangement en dossiers (GH361, `tools/tree.tools.ts`)
+
+Types de catégorie `requirement`, `test`, `issue` (sinon `TYPE_NOT_SUPPORTED` ; inconnu :
+`TYPE_NOT_FOUND`). Arbre visé : celui qu'affiche l'app — pour un composant en repo séparé, le
+fichier du repo du composant, nœud de son schéma qui porte le type. Opérations pures :
+`main/services/tree-ops.util.ts`, sur le rangement stocké (`TreeService.readLayout`), écrit par
+`TreeService.save` (règles GH180 inchangées).
+
+- **Chemin** `A/B` : segments nettoyés (`trim`), comparaison exacte ; segment vide →
+  `FOLDER_PATH_INVALID` ; deux dossiers frères homonymes → `FOLDER_AMBIGUOUS` ; ne traverse que des
+  dossiers (dossier sous un élément, nom avec `/` : non désignable, `path: null`).
+- `get_tree { objectTypeRef }` → `{ objectTypeRef, locked, root: TreeEntry[], unclassified }`.
+- `create_folders { paths }` (intermédiaires créés, existants réutilisés, ajout en fin de parent) ;
+  `rename_folder { renames: [{ path, name }] }` (`FOLDER_EXISTS`) ; `move_folder { moves: [{ path,
+  parent | null }] }` (`FOLDER_CYCLE`, `FOLDER_EXISTS`) ; `delete_folders { paths, recursive? }`
+  (`FOLDER_NOT_EMPTY` ; récursif : objets rendus non classés, jamais supprimés) ;
+  `move_to_folder { moves: [{ id, folder | null }], createMissing? }` (élément déplacé avec ses
+  enfants ; `null` = non classé, ses enfants prennent sa place ; `OBJECT_NOT_FOUND`,
+  `OBJECT_AMBIGUOUS`) ; `reorder_tree { folder | null, order: [{ folder } | { id }] }` (cités en
+  tête ; `NOT_A_CHILD`, `DUPLICATE_ENTRY` ; à la racine, un non classé cité est rangé).
+- Écritures : `dryRun` par défaut ; entrées dans l'ordre, une entrée en erreur sans effet ni
+  blocage des autres ; une seule écriture du fichier ; `READONLY_BRANCH` / `READONLY_REPO` (nœud
+  `readonly`, repo épinglé) refusés aussi en aperçu ; aucun commit.
+- **Verrou** (`main/services/tree-lock.util.ts`, fichiers sous `<gitdir>/polenta/locks/`, jamais
+  versionnés) : toute écriture prend le verrou court de l'arbre (fichier `.write` exclusif à jeton,
+  attente max 5 s), puis contrôle le verrou long de l'application ; tenu → `TREE_LOCKED` (message :
+  demander à l'utilisateur d'afficher un autre type), sans rien écrire. Aperçus et `get_tree`
+  signalent le verrou (`locked: { by: 'app', since }`). Verrou d'un processus mort ou échu : ignoré.
+  Côté application : `SPEC-ELECTRON-DESKTOP.md` §22.4.
+
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
 
 ### 5.1 À la création d'un nouveau projet
@@ -629,6 +670,13 @@ Deux catégories (cf. §4) :
 ---
 
 ## 7. Limitations connues
+
+- **Rangement (GH361)** : verrou propre à un clone sur un poste (le client web et un autre poste
+  travaillent sur d'autres clones : conflits par fusion git). Une écriture MCP est refusée tant que
+  l'application affiche le type ; les services du main qui réécrivent un arbre hors affichage
+  (renommage / déplacement / suppression de type) ne prennent pas le verrou court.
+  Un bail de l'app expiré (veille de plus de 30 s) laisse, jusqu'à sa reprise, une fenêtre où un
+  enregistrement de l'app peut écraser une écriture MCP faite entre-temps.
 
 - **Mode mono-repo par défaut** (§2.3) : sans `--workspace`, un `objectTypeRef` vers un
   composant en repo séparé (nom de montage) retombe silencieusement sur le repo

@@ -74,6 +74,8 @@ app.whenReady().then(() => {
     if (target && !target.isDestroyed()) target.send(channel, ...args)
   })
   app.on('will-quit', () => terminal.killAll())
+  // GH361 — au mieux : un processus arrêté rend de toute façon ses verrous caducs (PID mort).
+  app.on('will-quit', () => { void container.treeEditLocks.releaseAll().catch(() => {}) })
   registerDesktopOnlyHandlers(container, update, terminal)
   initAppZoom(container.appSettings)
   restoreOrCreateWindows()

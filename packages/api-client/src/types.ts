@@ -521,6 +521,15 @@ export interface ApiClient {
     get(repoPath: string, nodeId: string, typeId: string): Promise<TypeTree>
     save(repoPath: string, tree: TypeTree): Promise<void>
     generateId(): Promise<string>
+    /**
+     * GH361 — bail du verrou long d'un rangement affiché en édition : tant qu'il est tenu (et
+     * renouvelé toutes les 10 s), le serveur MCP n'écrit pas ce rangement. Rend la main une fois
+     * l'éventuelle écriture MCP en cours terminée ; relire l'arbre ensuite.
+     */
+    lock(repoPath: string, nodeId: string, typeId: string): Promise<string>
+    /** `false` : bail expiré (purgé), en reprendre un. */
+    renewLock(leaseId: string): Promise<boolean>
+    unlock(leaseId: string): Promise<void>
   }
   /** GH45 S4 — forges Forgejo/Gitea du compte : repos, organisations, droits, membres. */
   forge: {

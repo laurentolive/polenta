@@ -2678,7 +2678,8 @@ porte que ce qu'un utilisateur a réellement rangé :
 - **Inventaire = fichiers objets.** `TreeService.get` complète l'arbre stocké avec les objets du
   type absents du fichier (« non classés »), triés par ID en fin de racine, nœud d'id stable
   `item-<ID>` (`hydrateTree`). `RequirementsService`/`TestsService.create` n'écrivent plus
-  l'arbre (fin de `appendToTree`, T138) ; le serveur MCP ne construit plus de `TreeService`.
+  l'arbre (fin de `appendToTree`, T138) ; le serveur MCP non plus (son `TreeService`, reconstruit
+  par GH361, ne sert qu'aux outils de rangement en dossiers).
 - **Pas de titre recopié.** Un nœud `item` lié à un objet est stocké sans `name` : le libellé est
   le `title` de l'objet, relu à chaque `get` (un ancien fichier avec `name` reste lisible ; repli
   sur l'ID pour un objet disparu). Seuls les dossiers ont un `name`.
@@ -2688,6 +2689,16 @@ porte que ce qu'un utilisateur a réellement rangé :
   laisse le fichier inchangé ; un arbre sans rangement n'est pas créé sur disque.
 - `moveTypeTree`/`renameTypeTree` déplacent le fichier stocké tel quel, sans complétion.
 - Renderer : une mise à jour de titre invalide la requête `['tree', repoPath]`.
+- **Verrou d'édition (GH361)** — tant que la barre latérale (`SystemPanel`, Exigences / Tests /
+  Issues) affiche l'arbre d'un type en édition, l'app tient un bail (`useTreeEditLock` →
+  `tree:lock` / `tree:lock-renew` toutes les 10 s / `tree:unlock`, `TreeEditLocksService`) : un
+  fichier `<gitdir>/polenta/locks/tree.<nœud>.<type>.app-<pid>.json` (échéance 30 s, un par
+  processus) qui fait refuser les écritures du serveur MCP (`SPEC-MCP-SERVER.md` §4.12). Le bail
+  est rendu au changement de type ou d'onglet et au démontage ; un renderer disparu cesse de le
+  renouveler (purgé à échéance), un processus mort est ignoré par son PID. À chaque prise, l'app
+  attend la fin d'une écriture MCP en cours puis **recharge l'arbre affiché** (`reloadTree` :
+  `root` et historique d'annulation repartent du disque) — sans cela, la copie en mémoire d'avant
+  l'écriture de l'agent serait réaffichée puis réécrite à la prochaine action.
 
 ### 22.5 Résolution des composants en repo séparé
 

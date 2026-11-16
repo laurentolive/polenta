@@ -203,6 +203,15 @@ Tools disponibles :
 - \`bulk_import_requirements\` / \`bulk_import_tests\` / \`bulk_import_campaigns\` — import
   massif avec \`dryRun\` obligatoire par défaut (aperçu des IDs prévisionnels et des
   erreurs, sans rien écrire) ; \`dryRun: false\` écrit réellement, en série, best-effort.
+  \`folder\` (exigences, tests) range l'objet créé dans un dossier (voir ci-dessous).
+- \`get_tree\` / \`create_folders\` / \`rename_folder\` / \`move_folder\` / \`delete_folders\` /
+  \`move_to_folder\` / \`reorder_tree\` — rangement en dossiers des exigences, tests et issues
+  d'un type (\`.polenta/trees/\`). Un dossier se désigne par son chemin (\`Sécurité/Batterie\`) ;
+  \`get_tree\` montre les dossiers, les objets rangés et les non classés. Écritures avec \`dryRun\`
+  par défaut ; \`delete_folders\` ne supprime jamais d'objet (ils redeviennent non classés).
+  **\`TREE_LOCKED\`** : l'utilisateur affiche ce rangement dans ${name} — lui demander d'afficher un
+  autre type ou un autre onglet, puis réessayer (\`get_tree\` et les aperçus le signalent par
+  \`locked\`).
 - \`import_test_results\` — importe des rapports JUnit XML comme exécutions des cas de test
   (correspondance par le champ \`automationId\` du test, \`classname.name\` puis \`name\` ; secours par
   la propriété JUnit \`requirement\`). \`dryRun\` par défaut : relire les non mappés et ambigus, puis
@@ -273,8 +282,8 @@ passez par \`update_*\` et \`set_parameters\`.
 ## Invariants à respecter
 
 - \`.polenta/trees/<nœud>/<type>.yaml\` (ordre d'affichage des objets) est **maintenu par
-  ${name}** — ne jamais l'éditer à la main. De même pour \`.polenta/views/<nœud>/<type>.yaml\`
-  (vues enregistrées d'équipe).
+  ${name}** — ne jamais l'éditer à la main (avec MCP : outils de rangement ci-dessus). De
+  même pour \`.polenta/views/<nœud>/<type>.yaml\` (vues enregistrées d'équipe).
 - Un ID n'est **jamais réutilisé**, même si l'objet passe en statut terminal/obsolète. Il
   n'y a pas de compteur : le prochain numéro d'un préfixe est le plus grand numéro trouvé
   dans les fichiers **et** dans \`.polenta/tombstones/\` (un fichier vide par ID supprimé),

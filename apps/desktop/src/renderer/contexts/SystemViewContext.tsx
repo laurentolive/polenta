@@ -229,6 +229,9 @@ export interface SystemViewState {
    *  de s'afficher, plutôt que de montrer l'arbre de l'ancien type sous le nouveau titre). */
   rootKey: string
   readOnly: boolean
+  /** GH361 — relit l'arbre sur disque et le remplace dans `root` (historique d'annulation compris) :
+   *  à la prise du verrou d'édition, pour afficher ce qu'un agent MCP a rangé entre-temps. */
+  reloadTree: () => Promise<void>
 
   // Save
   save: () => void
@@ -568,6 +571,9 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const [gotoTarget, setGotoTarget] = useState<{ nodeId: string | null; seq: number }>({ nodeId: null, seq: 0 })
 
   const savedRootRef = useRef<TypeTreeNode[]>([])
+  /** GH361 — dernier état disque dont `root` est issu (chargement, ou relecture identique à `root`
+   *  après un enregistrement de l'app) : une relecture qui en diffère vient d'ailleurs (agent MCP). */
+  const baseRootRef = useRef<string>('[]')
   // `rootKey` distinguishes a node/type switch (→ resetRoot) from a refetch after save
   // (→ update savedRootRef only, preserve undo history).
   // GH170 — synchronisé pendant le rendu, pas dans un effet : un effet laissait passer un rendu
@@ -580,6 +586,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     setSyncedTreeData(treeData)
     const key = `${effectiveNodeId}|${effectiveTypeId}`
     savedRootRef.current = treeData.root ?? []
+    const disk = JSON.stringify(treeData.root ?? [])
+    if (key !== rootKey || disk === JSON.stringify(root)) baseRootRef.current = disk
     if (key !== rootKey) {
       resetRoot(treeData.root ?? [])
       setRootKey(key)
@@ -589,8 +597,27 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
 
   const rootRef = useRef(root)
   useEffect(() => { rootRef.current = root }, [root])
+  const rootKeyRef = useRef(rootKey)
+  useEffect(() => { rootKeyRef.current = rootKey }, [rootKey])
 
   const isTreeDirty = JSON.stringify(root) !== JSON.stringify(savedRootRef.current)
+
+  // GH361 — une relecture déclenchée par une modification extérieure ne remplace pas `root` (même
+  // nœud/type : seul `savedRootRef` suit) ; à la prise du verrou, l'arbre affiché doit, lui, repartir
+  // du disque si un autre (agent MCP) l'a écrit entre-temps, sinon la prochaine action de
+  // l'utilisateur réécrirait l'arbre d'avant. Disque inchangé (simple reprise de bail) : `root`, ses
+  // modifications non enregistrées et l'historique d'annulation sont gardés.
+  const reloadTree = useCallback(async () => {
+    if (!repoPath || !effectiveNodeId || !effectiveTypeId) return
+    const key = ['tree', repoPath, effectiveNodeId, effectiveTypeId]
+    const data = await qc.fetchQuery({ queryKey: key, queryFn: () => api.tree.get(repoPath, effectiveNodeId, effectiveTypeId), staleTime: 0 })
+    if (`${effectiveNodeId}|${effectiveTypeId}` !== rootKeyRef.current) return // autre type affiché entre-temps
+    const disk = JSON.stringify(data.root ?? [])
+    if (disk === baseRootRef.current) return
+    baseRootRef.current = disk
+    savedRootRef.current = data.root ?? []
+    resetRoot(data.root ?? [])
+  }, [qc, repoPath, effectiveNodeId, effectiveTypeId, resetRoot])
   const { isReadonly: isBranchReadonly } = useVersioning()
 
   // ── Read-only for the selected repo (T72) ──────────────────────────────────
@@ -970,6 +997,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     treeLoading,
     rootKey,
     readOnly,
+    reloadTree,
     save,
     isSaving: saveMutation.isPending,
     filterVisible,

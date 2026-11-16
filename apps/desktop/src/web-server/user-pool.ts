@@ -196,6 +196,8 @@ export class UserPool {
 
   private dispose(rt: UserRuntime): void {
     rt.container.watcher.unwatchAll()
+    // GH361 — plus aucune vue de cet utilisateur : ses verrous de rangement sont rendus.
+    void rt.container.treeEditLocks.releaseAll().catch(err => console.error('[UserPool] verrous de rangement :', err))
     this.runtimes.delete(rt.login)
   }
 

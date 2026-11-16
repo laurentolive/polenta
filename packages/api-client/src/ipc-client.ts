@@ -92,6 +92,9 @@ export function createIpcClient(
       get: (p, nodeId, typeId) => invoke('tree:get', p, nodeId, typeId),
       save: (p, tree) => invoke('tree:save', p, tree),
       generateId: () => invoke('tree:generate-id'),
+      lock: (p, nodeId, typeId) => invoke('tree:lock', p, nodeId, typeId),
+      renewLock: (leaseId) => invoke('tree:lock-renew', leaseId),
+      unlock: (leaseId) => invoke('tree:unlock', leaseId),
     },
     forge: {
       accounts: () => invoke('forge:accounts'),

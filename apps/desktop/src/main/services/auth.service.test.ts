@@ -155,6 +155,10 @@ describe('comptes', () => {
     const store = JSON.parse(await fsP.readFile(path.join(dir, 'auth.json'), 'utf-8'))
     expect(store.defaultAccount).toBe('github.com:octo')
     expect(store.accounts).toHaveLength(1)
+    // Clé déjà déconnectée (autre fenêtre) : aucun autre compte n'est déconnecté à sa place.
+    await auth.logout(`${forgeHost()}:bob`)
+    expect((await auth.currentAccount())?.login).toBe('octo')
+    expect(tokens.map.get('github.com')).toBe('ghp_x')
   })
 
   it('jeton « nu » d’une ancienne version, sans compte : la déconnexion le retire', async () => {

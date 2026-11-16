@@ -12,6 +12,12 @@ import { api } from '../api'
  */
 let lastMarked: string | null = null
 
+/** Accueil atteint après « Fermer le projet » (remontage parasite passé) : revenir ensuite au même
+ *  projet dans cette fenêtre (Précédent, onglet rouvert) le marque de nouveau. */
+export function resetRecentMark(): void {
+  lastMarked = null
+}
+
 export function markRecentOnce(workspaceDir: string): void {
   if (workspaceDir === lastMarked) return
   lastMarked = workspaceDir

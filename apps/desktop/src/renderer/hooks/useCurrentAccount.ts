@@ -6,6 +6,7 @@ import { api } from '../api'
 import { isWeb } from '../platform'
 import { loadWebSessionIdentity, webLogout } from '../lib/webSession'
 import { decodeProjectId } from '../lib/projectId'
+import { deriveCurrentProjectId } from '../components/layout/AppLayout'
 
 export interface CurrentAccount {
   login: string
@@ -30,12 +31,15 @@ export interface CurrentAccount {
  */
 export function useCurrentAccount(): { account: CurrentAccount | null; loading: boolean; logout: () => Promise<void> } {
   const qc = useQueryClient()
-  const projectId = useRouterState({ select: s => new URLSearchParams(s.location.searchStr).get('projectId') })
+  const projectId = useRouterState({ select: s => deriveCurrentProjectId(s.location.searchStr) })
   const [account, setAccount] = useState<CurrentAccount | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
+    // Autre projet : plus de compte affiché (ni de déconnexion possible) tant que le sien n'est pas lu.
+    setAccount(null)
+    setLoading(true)
     async function remoteOfProject(): Promise<string | undefined> {
       if (!projectId) return undefined
       // Même requête que le panneau Projet : déjà en cache la plupart du temps.

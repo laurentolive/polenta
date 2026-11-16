@@ -109,8 +109,12 @@ function WithProjectPanel({ projectId }: { projectId: string }) {
   // fenêtre ne l'affiche : fermer le projet ici ne touche pas aux autres fenêtres.
   const handleClose = async () => {
     markProjectJustClosed()
-    const elsewhere = await api.app.projectShownElsewhere(projectId).catch(() => false)
-    if (!elsewhere) await api.workspace.clearLastOpened(decodeProjectId(projectId))
+    try {
+      const elsewhere = await api.app.projectShownElsewhere(projectId).catch(() => false)
+      if (!elsewhere) await api.workspace.clearLastOpened(decodeProjectId(projectId))
+    } catch {
+      // projectId illisible ou écriture impossible : le projet se ferme quand même dans la fenêtre.
+    }
     navigate({ to: '/' })
   }
 

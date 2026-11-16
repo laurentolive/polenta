@@ -287,8 +287,11 @@ export class AuthService {
   async logout(key?: string): Promise<void> {
     const store = await this.readStore()
     // GH343 — compte désigné (celui du projet affiché dans la fenêtre), sinon le compte courant.
+    // Compte désigné déjà retiré (déconnecté depuis une autre fenêtre) : rien à faire — surtout pas
+    // déconnecter un autre compte à sa place.
     const chosen = key ? store.accounts.find(a => keyOf(a) === key) : undefined
-    const account = chosen ?? (await this.connectedAccount()) ?? store.accounts.find(a => keyOf(a) === store.defaultAccount) ?? store.accounts[0]
+    if (key && !chosen) return
+    const account = chosen ??(await this.connectedAccount()) ?? store.accounts.find(a => keyOf(a) === store.defaultAccount) ?? store.accounts[0]
     if (!account) {
       // Jetons « nus » d'anciennes versions, sans compte : la déconnexion doit les retirer aussi.
       for (const h of LEGACY_BARE_TOKEN_HOSTS) await this.host.tokenStore.delete(h)

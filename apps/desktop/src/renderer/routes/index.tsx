@@ -7,6 +7,7 @@ import { api } from '../api'
 import { encodeProjectId } from '../lib/projectId'
 import { consumeProjectJustClosed } from '../lib/projectCloseSignal'
 import { consumeStartupJump } from '../lib/startupJump'
+import { resetRecentMark } from '../lib/recentProject'
 import { DEMO_PROJECT_URL } from '../lib/demoProject'
 import { TextPromptModal } from '../components/home/TextPromptModal'
 import { RepoPickerModal } from '../components/home/RepoPickerModal'
@@ -119,6 +120,8 @@ function HomePage() {
       const justClosed = consumeProjectJustClosed()
       const jump = consumeStartupJump()
       if (justClosed || !jump) {
+        // Window settled on the home page: coming back to a project marks it again (recentProject).
+        resetRecentMark()
         setReady(true)
         return
       }

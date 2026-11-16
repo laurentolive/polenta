@@ -3,6 +3,7 @@ import { useRouterState } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { decodeProjectId } from '../lib/projectId'
 import { isInsideWorkspace } from '../lib/pathScope'
+import { deriveCurrentProjectId } from '../components/layout/AppLayout'
 import { EVENTS_RECONNECTED } from '../lib/webEvents'
 import { WORKSPACE_LINK_QUERY_KEYS } from './useWorkspaceLinks'
 
@@ -37,7 +38,7 @@ export function useLiveFileSync(): void {
   // GH343 — fenêtre sur un projet : les changements des repos d'un autre projet (ouvert dans une
   // autre fenêtre) ne la concernent pas — sans ce filtre, toute écriture là-bas relançait ici les
   // lectures des clés globales (couverture, widgets, versions…). Sans projet (accueil) : tout passe.
-  const projectId = useRouterState({ select: s => new URLSearchParams(s.location.searchStr).get('projectId') })
+  const projectId = useRouterState({ select: s => deriveCurrentProjectId(s.location.searchStr) })
   const workspaceDirRef = useRef<string | null>(null)
   workspaceDirRef.current = workspaceDirOf(projectId)
 

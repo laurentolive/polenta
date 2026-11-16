@@ -26,6 +26,7 @@ import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
 import { TestedConfigService } from './services/tested-config.service'
 import { TreeService, indexObjectLister, serviceTitleAdopter } from './services/tree.service'
+import { TreeEditLocksService } from './services/tree-edit-locks.service'
 import { BaselineService } from './services/baseline.service'
 import { PolentaRepoService } from './services/polenta-repo.service'
 import { WorkspaceTreeService } from './services/workspace-tree.service'
@@ -241,6 +242,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     executionHistory,
     testedConfig,
     tree,
+    treeEditLocks: new TreeEditLocksService(),
     baseline,
     polentaRepo,
     workspaceTree,

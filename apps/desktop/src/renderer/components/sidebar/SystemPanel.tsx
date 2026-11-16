@@ -23,6 +23,7 @@ import { FilterOptionsToggle } from '../FilterOptionsToggle'
 import { buildFilterRegex } from '../../lib/textFilter'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { api } from '../../api'
+import { useTreeEditLock } from '../../hooks/useTreeEditLock'
 import type { TypeTreeNode } from '@polenta/types'
 import { NoTypeForCategory } from '../system/NoTypeForCategory'
 import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
@@ -269,6 +270,9 @@ const CATEGORY_TITLE_KEY: Record<string, string> = {
 
 // ── SystemPanel ───────────────────────────────────────────────────────────────
 
+/** GH361 — catégories dont le rangement est modifiable par le serveur MCP (et donc verrouillé ici). */
+const TREE_LOCK_CATEGORIES = new Set(['requirement', 'test', 'issue'])
+
 export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -299,7 +303,16 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
     clearGoto,
     gotoNodeId,
     gotoSeq,
+    reloadTree,
   } = useSystemView()
+
+  // GH361 — arbre affiché ici en édition : le serveur MCP ne l'écrit pas tant qu'il est verrouillé.
+  // Le panneau n'est monté que sur Exigences / Tests / Campagnes / Issues (replié : masqué, pas démonté).
+  useTreeEditLock({
+    repoPath, nodeId: effectiveNodeId, typeId: effectiveTypeId,
+    enabled: !readOnly && TREE_LOCK_CATEGORIES.has(effectiveType?.category ?? ''),
+    onAcquired: reloadTree,
+  })
 
   const qc = useQueryClient()
 

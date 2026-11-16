@@ -94,6 +94,7 @@ import type {
 import type { RequirementFilters } from '../services/requirements-index.service'
 import type { CreateReviewDto } from '../services/reviews.service'
 import type { TreeService } from '../services/tree.service'
+import type { TreeEditLocksService } from '../services/tree-edit-locks.service'
 import type { BaselineService } from '../services/baseline.service'
 import type { AppSettingsService } from '../services/app-settings.service'
 import type { ForgeConfigService } from '../services/forge-config.service'
@@ -134,6 +135,8 @@ export interface Container {
   executionHistory: ExecutionHistoryService
   testedConfig: TestedConfigService
   tree: TreeService
+  /** GH361 — verrou long d'un rangement affiché en édition (refus des écritures MCP). */
+  treeEditLocks: TreeEditLocksService
   baseline: BaselineService
   polentaRepo: PolentaRepoService
   workspaceTree: WorkspaceTreeService
@@ -857,6 +860,13 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.tree.save(repoPath, tree as import('@polenta/types').TypeTree))
   r.handle('tree:generate-id', () =>
     c.tree.generateId())
+  // GH361 — bail du verrou long d'un rangement affiché en édition.
+  r.handle('tree:lock', (_e, repoPath: string, nodeId: string, typeId: string) =>
+    c.treeEditLocks.acquire(repoPath, nodeId, typeId))
+  r.handle('tree:lock-renew', (_e, leaseId: string) =>
+    c.treeEditLocks.renew(leaseId))
+  r.handle('tree:unlock', (_e, leaseId: string) =>
+    c.treeEditLocks.release(leaseId))
 
   // ── Flat workspace (T69 Sprint 1) ─────────────────────────────────────────────
   r.handle('workspace:detect', (_e, dir: string) =>

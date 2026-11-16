@@ -315,7 +315,7 @@ réponse précédente).
 | Tool | Entrée | Refuse si |
 |---|---|---|
 | `add_component` | `{ name, label, description?, readonly?, parentName? }` | `name` déjà pris par un `SystemNode` existant à n'importe quelle profondeur (y compris `"root"`) — `NODE_NAME_TAKEN` ; `parentName` fourni mais introuvable dans le repo courant — `NODE_NOT_FOUND` |
-| `add_object_type` | `{ nodeName, objectType: ObjectTypeDefinition }` | nœud introuvable (`NODE_NOT_FOUND`) ou `readonly` (`NODE_READONLY`) ; `objectType.name` déjà pris dans ce nœud (`TYPE_NAME_TAKEN`) ; `objectType.prefix` déjà utilisé par un type de **n'importe quel** nœud du projet (`PREFIX_TAKEN`, règle 10 CLAUDE.md) |
+| `add_object_type` | `{ nodeName, objectType: ObjectTypeDefinition }` | nœud introuvable (`NODE_NOT_FOUND`) ou `readonly` (`NODE_READONLY`) ; `objectType.name` déjà pris dans ce nœud (`TYPE_NAME_TAKEN`) ; `objectType.prefix` déjà utilisé par un type de **n'importe quel** nœud du projet (`PREFIX_TAKEN`, règle 10 CLAUDE.md) ; type version / validation (GH377, ci-dessous) mal formé (`VERSION_TYPE_INVALID` / `VALIDATION_TYPE_INVALID`, `FIELD_NAME_TAKEN`, `REQUIRED_WHEN_INVALID`) |
 | `add_field` | `{ nodeName, typeName, field: SchemaField }` | nœud/type introuvables, nœud `readonly`, `field.name` déjà présent (`FIELD_NAME_TAKEN`) |
 | `add_status` | `{ nodeName, typeName, status: SchemaStatus }` | nœud/type introuvables, nœud `readonly`, `status.name` déjà présent (`STATUS_NAME_TAKEN`) |
 | `add_link_type` | `{ linkType: LinkTypeDefinition }` | `linkType.name` déjà pris (`LINK_TYPE_NAME_TAKEN`) |
@@ -332,6 +332,25 @@ refus : `{ isError: true, content: [{ type: 'text', text: '[<CODE>] <message>' }
 `SchemaValidationErrorCode` : `NODE_NAME_TAKEN | NODE_NOT_FOUND | NODE_READONLY |
 TYPE_NAME_TAKEN | TYPE_NOT_FOUND | PREFIX_TAKEN | FIELD_NAME_TAKEN |
 STATUS_NAME_TAKEN | LINK_TYPE_NAME_TAKEN`.
+
+**GH377 — type version ou validation par `add_object_type`.** Catégories `version` et `validation` admises,
+ainsi que `decisions` (`ValidationDecisionDef[]`) et `entryFields` (`SchemaField[]`) pour le type validation.
+Préparation dans `SchemaService.addObjectType` (`prepareNewObjectType`), avant `save` :
+
+- `statuses` absent → statuts par défaut de l'éditeur ; `decisions` absent (validation) → décisions par défaut.
+  Source unique `packages/types/src/schema-defaults.ts` (`DEFAULT_VERSION_STATUSES`,
+  `DEFAULT_VALIDATION_STATUSES`, `DEFAULT_VALIDATION_DECISIONS`), dont l'éditeur dérive ses constantes. Une
+  liste fournie (même vide) est prise telle quelle, sans fusion.
+- `prefix` obligatoire (`VERSION_TYPE_INVALID` / `VALIDATION_TYPE_INVALID`) ; type version : exactement un
+  statut `isApproval` (`VERSION_TYPE_INVALID`) — contrôle propre au MCP, l'éditeur n'est pas concerné.
+- `entryFields` : `trackHistory` / `defaultVisible` retirés (comme l'éditeur) ; `entryFieldsError`
+  (`@polenta/types`) : nom unique et ≠ `decision` (`FIELD_NAME_TAKEN`), `requiredWhen` sans erreur ni
+  référence inconnue — clés : autres champs d'entrée et `decision` (valeurs : noms des décisions)
+  (`REQUIRED_WHEN_INVALID`).
+- `decisions` / `entryFields` sur une autre catégorie → `VALIDATION_TYPE_INVALID`.
+- Garde-fous communs de `save` : un seul type de chaque catégorie, sur `root` ; `validationTypeError`.
+
+Les autres catégories ne reçoivent pas de statuts par défaut (comportement inchangé).
 
 ### 4.4 Liens (`tools/links.tools.ts`, GH16)
 

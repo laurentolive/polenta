@@ -172,6 +172,34 @@ describe('ForgeService', () => {
     expect(await service.orgTeams(`${host}:bob`, 'acme')).toEqual([{ name: 'devs', label: 'devs' }])
   })
 
+  it('GH354 — checkMembers : comptes et équipes vérifiés, problèmes tous nommés, rien sans membre', async () => {
+    const key = `${host}:bob`
+    await service.checkMembers(key, 'acme', 'org', [])
+    expect(forge.requests).toHaveLength(0)
+    forge.route('GET', '/api/v1/users/ann', () => ({ status: 200, json: { login: 'ann' } }))
+    forge.route('GET', '/api/v1/orgs/acme/teams', () => ({ status: 200, json: [{ name: 'devs', permission: 'write' }] }))
+    await service.checkMembers(key, 'acme', 'org', [{ kind: 'user', name: 'ann', level: 'write' }, { kind: 'team', name: 'Devs', level: 'read' }])
+    await expect(service.checkMembers(key, 'acme', 'org', [
+      { kind: 'user', name: 'zed', level: 'write' }, { kind: 'team', name: 'ops', level: 'read' },
+    ])).rejects.toThrow('Membres à corriger (rien n\'a été créé) :\nzed : Aucun compte « zed » sur le serveur.\nops : aucune équipe de ce nom dans l\'organisation acme.')
+    // Repo personnel (déduit du compte quand ownerKind manque) : ni équipe, ni le propriétaire lui-même.
+    await expect(service.checkMembers(key, 'bob', undefined, [
+      { kind: 'user', name: 'Bob', level: 'write' }, { kind: 'team', name: 'devs', level: 'read' },
+    ])).rejects.toThrow(/Bob : propriétaire du repo[\s\S]*devs : pas d'équipe sur un repo personnel/)
+    // Équipes illisibles : non vérifiées, pas de blocage.
+    forge.route('GET', '/api/v1/orgs/acme/teams', () => ({ status: 403, json: { message: 'token does not have required scope' } }))
+    await service.checkMembers(key, 'acme', 'org', [{ kind: 'team', name: 'ops', level: 'read' }])
+  })
+
+  it('GH354 — refus 403 sur un membre : erreur lisible, compte non marqué révoqué', async () => {
+    forge.route('PUT', '/api/v1/repos/acme/proj/collaborators/ann', () => ({ status: 403, json: { message: 'user is not allowed to be a collaborator' } }))
+    await expect(service.grantMember(`${host}:bob`, 'acme', 'proj', { kind: 'user', name: 'ann', level: 'write' }))
+      .rejects.toThrow(`Le serveur ${host} a refusé l'opération (HTTP 403 : user is not allowed to be a collaborator).`)
+    forge.route('GET', '/api/v1/users/ann', () => ({ status: 403, json: { message: 'not allowed' } }))
+    await expect(service.checkMembers(`${host}:bob`, 'acme', 'org', [{ kind: 'user', name: 'ann', level: 'write' }])).rejects.toThrow(/HTTP 403/)
+    expect(auth.isAccessRevoked(host)).toBe(false)
+  })
+
   it('listRepos : le repo de configuration n\'est pas proposé', async () => {
     forge.route('GET', '/api/v1/user/repos', () => ({ status: 200, json: [apiRepo('acme/polenta-config'), apiRepo('acme/demo')] }))
     expect((await service.listRepos(`${host}:bob`)).map(r => r.fullName)).toEqual(['acme/demo'])

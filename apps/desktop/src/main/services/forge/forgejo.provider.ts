@@ -168,6 +168,16 @@ export const forgejoProvider: ForgeProvider = {
       .sort((a, b) => a.name.localeCompare(b.name))
   },
 
+  async userExists(baseUrl, token, login) {
+    try {
+      await forgeRequest(`${baseUrl}/api/v1/users/${encodeURIComponent(login)}`, { token })
+      return true
+    } catch (err) {
+      if (err instanceof ForgeHttpError && err.status === 404) return false
+      throw err
+    }
+  },
+
   async listOrgTeams(baseUrl, token, org) {
     const teams = await paginate<ApiTeam>(`${baseUrl}/api/v1/orgs/${encodeURIComponent(org)}/teams`, token)
     return teams.map(t => ({ name: t.name, label: t.name })).sort((a, b) => a.name.localeCompare(b.name))

@@ -1,8 +1,9 @@
-import { parseMultiEnumValue, prepareFieldsWrite } from '@polenta/types'
+import { prepareFieldsWrite } from '@polenta/types'
 import type { ObjectCategory, ProjectSchema } from '@polenta/types'
 import { findLocalNodeByRefPrefix, findObjectTypeDef, findOwningNode } from './schema-lookup.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
 import { mergeFields } from './field-merge.util'
+import { fieldValuesError } from './field-values.util'
 
 /**
  * GH150 — validation d'une entrée `update_requirements` / `update_tests` (MCP) contre l'objet
@@ -12,7 +13,7 @@ import { mergeFields } from './field-merge.util'
  * 1. type de l'objet connu (`'unresolvable'` — ref cross-composant — accepté, sans contrôle de champs) ;
  * 2. nœud propriétaire pas `readonly` ;
  * 3. `status` parmi les statuts du type (s'il en déclare) ;
- * 4. chaque clé de `fields` déclarée par le type, valeurs d'`enum` / `multi_enum` dans `values` ;
+ * 4. valeurs de `fields` : `field-values.util.ts::fieldValuesError` (GH372, même règle que l'import) ;
  * 5. champs **modifiés** : un champ `required` n'est pas vidé, un champ `validator: EARS` reste conforme.
  *    Seuls les champs touchés par l'entrée sont contrôlés : un énoncé existant non conforme ne bloque
  *    pas la modification d'un autre champ.
@@ -73,16 +74,8 @@ export function planUpdate(
         reason: `statut inconnu : "${entry.status}" (statuts du type : ${resolved.statuses!.map(s => s.name).join(', ')})`,
       }
     }
-    for (const [name, value] of Object.entries(entry.fields ?? {})) {
-      const def = resolved.fields.find(f => f.name === name)
-      if (!def) return { ok: false, field: name, reason: `champ '${name}' non déclaré par le type ${existing.objectTypeRef}` }
-      if (value === null || !def.values?.length) continue
-      const values = def.type === 'enum' ? [value] : def.type === 'multi_enum' ? parseMultiEnumValue(value) : []
-      const bad = values.find(v => !def.values!.includes(String(v)))
-      if (bad !== undefined) {
-        return { ok: false, field: name, reason: `valeur "${String(bad)}" hors liste pour '${name}' (${def.values.join(', ')})` }
-      }
-    }
+    const valueError = fieldValuesError(schema, resolved, existing.objectTypeRef, entry.fields)
+    if (valueError) return { ok: false, ...valueError }
     for (const name of Object.keys(entry.fields ?? {})) {
       const def = resolved.fields.find(f => f.name === name)!
       const value = entry.fields![name]

@@ -242,6 +242,8 @@ ou modification par un tool porte `source: mcp`.
 
 > **GH195** — un champ `link` accepte l'objet `{label?, url}`, la liste, ou la forme texte `libellé | URL` (une ligne par lien), convertie avant écriture ; URL hors `http(s)://`, `file://`, `\\serveur\partage` refusée. `requiredWhen` est contrôlé comme à l'écriture réelle (`prepareFieldsWrite`), en `dryRun` comme en écriture, et pour `update_requirements` / `update_tests`. `add_field` accepte `type: link`, `multiple`, `requiredWhen` (référence ou valeur inconnue refusée : `REQUIRED_WHEN_INVALID`).
 
+> **GH372** — valeurs des `fields` contrôlées par entrée, à l'import (`bulk_import_*`, en `dryRun` comme en écriture) comme à la modification (`update_requirements` / `update_tests`), par une seule règle (`field-values.util.ts::fieldValuesError`) : clé déclarée par le type ; `enum` / `multi_enum` dans `values` (catalogue de rôles pour `roles`, T110 ; pas de contrôle si la liste est vide) ; `number` = nombre fini ou chaîne numérique (format enregistré par l'éditeur) ; `boolean` = `true`/`false` ; `date` = `AAAA-MM-JJ` valide. Valeur vide non contrôlée (obligation : contrôle `required`). Refus : `{ index, field, reason }`.
+
 `bulk_import_requirements` / `bulk_import_tests` / `bulk_import_campaigns` :
 
 ```ts

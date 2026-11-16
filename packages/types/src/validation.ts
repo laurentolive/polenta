@@ -1,6 +1,6 @@
 import type { ObjectHistory } from './history'
 import type { ObjectTypeDefinition, SchemaField } from './schema'
-import { isFieldRequiredNow, isFieldValueFilled } from './required-when'
+import { isFieldRequiredNow, isFieldValueFilled, requiredWhenIssues } from './required-when'
 import type { VersionImpactSource, VersionState } from './product-version'
 import type { CoverageStatus } from './traceability'
 import type { TestRunResult } from './test'
@@ -121,6 +121,29 @@ export function validationTypeError(typeDef: Pick<ObjectTypeDefinition, 'name' |
   // Le signataire et la date de signature sont lus dans l'historique du statut.
   if (typeDef.trackStatusHistory === false) return `Le type validation "${typeDef.name}" doit historiser son statut (signataire et date de signature).`
   return null
+}
+
+/**
+ * GH377 — contrôle strict des `entryFields` d'un type validation, à la déclaration par le MCP (l'éditeur
+ * reste permissif, GH195) : noms uniques et différents de `decision` (pseudo-champ des `requiredWhen`
+ * d'entrée, GH266), `requiredWhen` sans erreur ni référence inconnue (clés : autres champs d'entrée et
+ * `decision`, valeurs : les décisions du type).
+ */
+export function entryFieldsError(
+  typeDef: Pick<ObjectTypeDefinition, 'name' | 'decisions' | 'entryFields'>,
+): { code: 'FIELD_NAME_TAKEN' | 'REQUIRED_WHEN_INVALID'; message: string } | null {
+  const fields = typeDef.entryFields ?? []
+  const seen = new Set<string>()
+  for (const f of fields) {
+    if (f.name === 'decision') {
+      return { code: 'FIELD_NAME_TAKEN', message: `Le nom de champ d'entrée "decision" est réservé (type "${typeDef.name}").` }
+    }
+    if (seen.has(f.name)) return { code: 'FIELD_NAME_TAKEN', message: `Le champ d'entrée "${f.name}" est déclaré deux fois (type "${typeDef.name}").` }
+    seen.add(f.name)
+  }
+  const values = (typeDef.decisions ?? []).map(d => d.name)
+  const issue = requiredWhenIssues({ fields, statuses: [], category: 'validation' }, { key: 'decision', values })[0]
+  return issue ? { code: 'REQUIRED_WHEN_INVALID', message: `Type "${typeDef.name}", champ d'entrée : ${issue.message}` } : null
 }
 
 export type ValidationProblemCode =

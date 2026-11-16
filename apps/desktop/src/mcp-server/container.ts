@@ -1,6 +1,7 @@
 import type { HostContext } from '../main/host/host-context'
 import { AuthService } from '../main/services/auth.service'
-import { GitService } from '../main/services/git.service'
+import { GitService, type GitAuthor } from '../main/services/git.service'
+import { BRAND } from '../shared/brand'
 import { SyncService } from '../main/services/sync.service'
 import { PolentaRepoService } from '../main/services/polenta-repo.service'
 import { WorkspaceTreeService } from '../main/services/workspace-tree.service'
@@ -42,13 +43,13 @@ export interface McpContainer {
   requirements: RequirementsService
   tests: TestsService
   campaigns: CampaignsService
-  /** GH201 — versions, en lecture seule côté MCP. */
+  /** GH201 — versions ; écriture et passage released par le MCP depuis GH362. */
   versions: VersionsService
   /** GH244 — issues : lecture et écriture. */
   issues: IssuesService
   /** GH206 — contraintes de transition : `dryRun` des écritures. */
   transitionGuard: TransitionGuardService
-  /** GH204 — validations : lecture et décisions proposées, jamais signées. */
+  /** GH204 — validations : lecture et écriture (GH362), jamais signées par le MCP. */
   validations: ValidationsService
   workspaceTree: WorkspaceTreeService
   /** GH16 — exposés pour invalider le cache quand un ID est introuvable (objet créé par
@@ -93,6 +94,19 @@ const mcpHostContext: HostContext = {
 }
 
 /**
+ * GH362 — auteur des commits / tags écrits par le MCP (passage released). Les comptes de l'app
+ * (`userData`) ne sont pas lisibles ici : config git du repo, sinon le `--user` du serveur, sinon
+ * l'auteur par défaut de la marque.
+ */
+class McpAuthService extends AuthService {
+  constructor(private readonly user?: string) { super(mcpHostContext) }
+
+  protected override defaultAuthor(): GitAuthor {
+    return this.user ? { name: this.user, email: `${this.user}@${BRAND.id}.local` } : super.defaultAuthor()
+  }
+}
+
+/**
  * DI headless pour le serveur MCP (T122 sprint 1).
  *
  * Réutilise EXACTEMENT les mêmes classes que `main/container.ts::createContainer()`
@@ -109,15 +123,13 @@ const mcpHostContext: HostContext = {
  * Synchrone — pas de fenêtre à ouvrir, pas d'attente d'`app.whenReady()`.
  *
  * `AuthService`/`SyncService` sont construits (requis transitivement par
- * `WorkspaceTreeService`/`SchemaService`) mais aucune de leurs méthodes touchant
- * `userData`/les jetons (`mcpHostContext`, GH44) n'est jamais appelée par les tools de ce sprint (lecture
- * seule, pas de clone/push/pull/commit) — cf. specs/T122-design.md §2.1 pour
- * l'analyse de sûreté et specs/T122-sprint1.md pour la dette technique documentée
- * (des `Noop*Service` typés seraient un durcissement à prévoir si un futur sprint
- * élargit le périmètre au point d'appeler ces méthodes).
+ * `WorkspaceTreeService`/`SchemaService`). Aucun clone/push/pull ; seuls commits locaux : passage
+ * released d'une version (GH362, `commitSingleFile` + tag annoté) et signature, que le MCP n'expose pas.
+ * `getAuthor` y lit `auth.json` (`userData` indisponible : erreur absorbée), puis la config git, puis
+ * `--user` (`McpAuthService`). Cf. specs/T122-design.md §2.1 pour l'analyse de sûreté initiale.
  */
 export function createMcpContainer(repoPath: string, workspaceDir?: string, user?: string): McpContainer {
-  const auth = new AuthService(mcpHostContext)
+  const auth = new McpAuthService(user)
   const git = new GitService()
   const reqIndex = new RequirementsIndexService(git)
   const testsIndex = new TestsIndexService(git)
@@ -138,7 +150,7 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
   const dashboards = new DashboardsService(git)
   const savedQueries = new SavedQueriesService(git, dashboards)
-  // GH201 — versions : le MCP les lit (aucun outil d'écriture).
+  // GH201 — versions : lecture ; écriture et passage released depuis GH362.
   const versions = new VersionsService(
     git, sync, schema, new VersionTrackingService(git, schema), history, workspaceTree,
     (rootRepoPath, wsDir) => revalidation.readonlyRepoPaths(rootRepoPath, wsDir),

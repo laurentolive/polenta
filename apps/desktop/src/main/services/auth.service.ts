@@ -386,6 +386,11 @@ export class AuthService {
       // fall through
     }
 
+    return this.defaultAuthor()
+  }
+
+  /** Auteur faute de compte et de config git (GH362 : le serveur MCP y met son `--user`). */
+  protected defaultAuthor(): GitAuthor {
     return { name: `${BRAND.productName} User`, email: `user@${BRAND.id}.local` }
   }
 

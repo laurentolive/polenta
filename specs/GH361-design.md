@@ -28,8 +28,8 @@ MCP pour le verrou court d'écriture, l'application pour le verrou long.
 (tests unitaires, dossier non initialisé) : `os.tmpdir()/polenta-locks/<sha1 du chemin absolu
 normalisé>` — repli seulement, aucun repo Polenta réel n'est dans ce cas.
 
-Clé d'arbre : `tree.<enc(nœud)>.<enc(type)>` (`encodeURIComponent`, puis `%` → `_` pour rester un
-nom de fichier valide sous Windows ; collision impossible car `_` est lui-même encodé d'abord).
+Clé d'arbre : `tree.<enc(nœud)>.<enc(type)>` (`encodeURIComponent`, puis `_` → `__` et `%` → `_`
+pour rester un nom de fichier valide sous Windows ; injectif, `__` et `_XX` ne se confondent pas).
 
 ### 2.2 Fichiers
 
@@ -134,16 +134,18 @@ mis à jour.
 
 ```ts
 async readLayout(repoPath, nodeId, typeId): Promise<{
-  root: TypeTreeNode[]                       // arbre hydraté complet (rangement + queue non classée)
-  placedCount: number                        // nb d'entrées de racine du rangement stocké
-  objects: Array<{ id: string; title: string }>
+  placed: TypeTreeNode[]                     // rangement stocké, noms hydratés (titres)
+  unclassified: Array<{ id: string; title: string }>   // queue non classée, triée par ID
+  objects: Array<{ id: string; title: string }>        // tous les objets du type
 }>
 ```
 
-Les outils travaillent sur l'arbre **hydraté complet** (chaque objet du type y est, la queue
-non classée en fin de racine avec ids `item-<ID>`) et l'enregistrent avec `save`, qui retire de
-lui-même la queue encore triée (GH180). Ranger un objet non classé = déplacer son élément de
-queue ; le remettre en non classé = retirer son élément. Aucune règle de stockage n'est dupliquée.
+Les outils travaillent sur le **rangement** (`placed`, partie stockée de l'arbre hydraté) et
+l'enregistrent avec `save`, qui applique les règles GH180 (pas de `name` sur les éléments, queue
+triée retirée). Ranger un objet non classé = créer son élément ; le remettre en non classé =
+retirer son élément. Travailler sur l'arbre hydraté complet a été écarté : un dossier ajouté « à la
+fin de la racine » se placerait après la queue non classée, qui ne serait alors plus coupée par
+`stripTree` et serait écrite en entier dans le fichier.
 
 ### 4.3 Opérations pures (`main/services/tree-ops.util.ts`, nouveau)
 
@@ -194,8 +196,8 @@ Erreurs par entrée : `{ index, …, reason: '[CODE] message' }` (convention des
   dossiers rangés sous lui) prennent sa place, dans l'ordre — rien d'autre ne sort du rangement.
 - **Déplacement « déjà en place »** : objet dont l'unique élément a pour parent le dossier cible →
   `unchanged`, l'ordre n'est pas modifié.
-- **`reorder_tree` à la racine** : la racine hydratée contient la queue non classée ; citer un objet
-  non classé le place donc naturellement à la racine (`save` ne coupe que la queue encore triée).
+- **`reorder_tree` à la racine** : citer un objet non classé crée son élément à la position
+  demandée (il devient rangé à la racine).
 - **Rien n'a changé** (tout `unchanged` / `existing`) : pas d'écriture.
 
 ### 4.6 `bulk_import_requirements` / `bulk_import_tests`

@@ -86,6 +86,25 @@ export class TreeService {
     }
   }
 
+  /**
+   * GH361 — rangement d'un type pour les outils MCP : la partie stockée de l'arbre d'affichage
+   * (noms hydratés), les objets non classés et tous les objets du type. Contrairement à `get`, une
+   * erreur de listage des objets remonte : une écriture fondée sur un inventaire vide perdrait les
+   * titres et classerait mal.
+   */
+  async readLayout(repoPath: string, nodeId: string, typeId: string): Promise<{
+    placed: TypeTreeNode[]
+    unclassified: Array<{ id: string; title: string }>
+    objects: Array<{ id: string; title: string }>
+  }> {
+    const stored = await this.readStored(repoPath, nodeId, typeId)
+    const objects = this.listObjects ? await this.listObjects(repoPath, `${nodeId}::${typeId}`) : []
+    const hydrated = hydrateTree(stored.root, objects)
+    const placed = hydrated.slice(0, stored.root.length)
+    const unclassified = hydrated.slice(stored.root.length).map(n => ({ id: n.objectId!, title: n.name }))
+    return { placed, unclassified, objects }
+  }
+
   // ── Write ─────────────────────────────────────────────────────────────────────
 
   /**

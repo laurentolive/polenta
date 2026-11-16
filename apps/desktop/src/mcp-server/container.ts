@@ -29,6 +29,7 @@ import { WorkspaceLinksService } from '../main/services/workspace-links.service'
 import { ParametersService } from '../main/services/parameters.service'
 import { TestedConfigService } from '../main/services/tested-config.service'
 import { ResultsImportService } from '../main/services/results-import.service'
+import { TreeService, indexObjectLister, serviceTitleAdopter } from '../main/services/tree.service'
 
 export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
@@ -73,6 +74,8 @@ export interface McpContainer {
   parameters: ParametersService
   /** GH129 — import JUnit sans interface (outil `import_test_results`, CLI `import-results`). */
   resultsImport: ResultsImportService
+  /** GH361 — rangement en dossiers (`.polenta/trees/`), outils `get_tree`, `create_folders`… */
+  tree: TreeService
 }
 
 /**
@@ -102,9 +105,9 @@ const mcpHostContext: HostContext = {
  * `ExportService`, `WorkspaceService`, `BaselineService`, `InterfaceComplianceService`,
  * `DashboardSeedService`). `TraceabilityService`, `QueryEngineService`,
  * `DashboardsService` et `SavedQueriesService` sont construits depuis GH18 (vue Suivi).
- * Pas de `TreeService` non plus : depuis GH180, un objet créé n'est plus inscrit dans
- * `.polenta/trees/<node>/<type>.yaml` — l'app l'affiche quand même (objets « non classés »
- * complétés à la lecture de l'arbre), ce qui couvre le besoin de T138.
+ * `TreeService` : depuis GH180, un objet créé n'est plus inscrit dans `.polenta/trees/<node>/<type>.yaml`
+ * (l'app l'affiche « non classé ») ; GH361 le reconstruit pour les outils de rangement en dossiers,
+ * branché comme dans `main/container.ts`.
  *
  * Synchrone — pas de fenêtre à ouvrir, pas d'attente d'`app.whenReady()`.
  *
@@ -164,9 +167,13 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   // sans effet sur les écritures de paramètres).
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
   const resultsImport = new ResultsImportService({ git, tests, testsIndex, reqIndex, campaigns, workspaceLinks, workspaceTree, testedConfig })
+  const tree = new TreeService(
+    indexObjectLister(reqIndex, testsIndex, p => issues.findAll(p)),
+    serviceTitleAdopter(requirements, tests, issues),
+  )
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, issues, validations, transitionGuard, workspaceTree, reqIndex, testsIndex,
-    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters, resultsImport,
+    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters, resultsImport, tree,
   }
 }

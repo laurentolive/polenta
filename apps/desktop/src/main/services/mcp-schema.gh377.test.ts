@@ -159,6 +159,19 @@ describe('refus, sans écriture', () => {
     await expectRefused(ver({ statuses: [{ name: 'a' }] }), 'VERSION_TYPE_INVALID')
     await expectRefused(ver({ statuses: [] }), 'VERSION_TYPE_INVALID')
     await expectRefused(ver({ statuses: [{ name: 'a', isApproval: true }, { name: 'b', isApproval: true }] }), 'VERSION_TYPE_INVALID')
+    // Revue : premier statut released ou abandonné → version née sans tag ni gel.
+    await expectRefused(ver({ statuses: [{ name: 'rel', isApproval: true }, { name: 'wip' }] }), 'VERSION_TYPE_INVALID')
+    await expectRefused(ver({ statuses: [{ name: 'ab', isTerminal: true }, { name: 'rel', isApproval: true }] }), 'VERSION_TYPE_INVALID')
+  })
+
+  it('statut déclaré deux fois (revue)', async () => {
+    await expectRefused(ver({ statuses: [{ name: 'a' }, { name: 'a', isApproval: true }] }), 'STATUS_NAME_TAKEN')
+    await expectRefused(val({ statuses: [{ name: 'a' }, { name: 'a', isApproval: true }, { name: 'x', isTerminal: true }] }), 'STATUS_NAME_TAKEN')
+  })
+
+  it('entryFields vide : clé omise, comme l\'éditeur (revue)', async () => {
+    const schema = await call<ProjectSchema>('add_object_type', { nodeName: 'root', objectType: val({ entryFields: [] }) })
+    expect('entryFields' in typeOf(schema, 'val')).toBe(false)
   })
 
   it('second type, ou déclaration sur un composant local (7)', async () => {

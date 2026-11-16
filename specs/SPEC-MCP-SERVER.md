@@ -342,8 +342,9 @@ Préparation dans `SchemaService.addObjectType` (`prepareNewObjectType`), avant 
   `DEFAULT_VALIDATION_STATUSES`, `DEFAULT_VALIDATION_DECISIONS`), dont l'éditeur dérive ses constantes. Une
   liste fournie (même vide) est prise telle quelle, sans fusion.
 - `prefix` obligatoire (`VERSION_TYPE_INVALID` / `VALIDATION_TYPE_INVALID`) ; type version : exactement un
-  statut `isApproval` (`VERSION_TYPE_INVALID`) — contrôle propre au MCP, l'éditeur n'est pas concerné.
-- `entryFields` : `trackHistory` / `defaultVisible` retirés (comme l'éditeur) ; `entryFieldsError`
+  statut `isApproval`, premier statut non marqué (`VERSION_TYPE_INVALID`) ; version et validation : noms de
+  statuts uniques (`STATUS_NAME_TAKEN`) — contrôles propres au MCP, l'éditeur n'est pas concerné.
+- `entryFields` : `trackHistory` / `defaultVisible` retirés, liste vide omise (comme l'éditeur) ; `entryFieldsError`
   (`@polenta/types`) : nom unique et ≠ `decision` (`FIELD_NAME_TAKEN`), `requiredWhen` sans erreur ni
   référence inconnue — clés : autres champs d'entrée et `decision` (valeurs : noms des décisions)
   (`REQUIRED_WHEN_INVALID`).

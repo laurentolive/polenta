@@ -757,17 +757,22 @@ function prepareNewObjectType(input: ObjectTypeDefinition): ObjectTypeDefinition
   const code = category === 'version' ? 'VERSION_TYPE_INVALID' : 'VALIDATION_TYPE_INVALID'
   if (!input.prefix?.trim()) throw new SchemaValidationError(code, `Le type ${category} "${input.name}" doit avoir un préfixe (IDs de ses objets).`)
   const defaults = category === 'version' ? DEFAULT_VERSION_STATUSES : DEFAULT_VALIDATION_STATUSES
-  const type: ObjectTypeDefinition = { ...input, statuses: input.statuses ?? defaults.map(s => ({ ...s })) }
+  const statuses = input.statuses ?? defaults.map(s => ({ ...s }))
+  const type: ObjectTypeDefinition = { ...input, statuses }
+  // L'état d'un objet se lit par nom de statut : un nom en double masquerait la marque du second.
+  const duplicate = statuses.find((s, i) => statuses.findIndex(o => o.name === s.name) !== i)
+  if (duplicate) throw new SchemaValidationError('STATUS_NAME_TAKEN', `Le statut "${duplicate.name}" est déclaré deux fois (type "${type.name}").`)
   if (category === 'version') {
-    const released = (type.statuses ?? []).filter(s => s.isApproval).length
+    const released = statuses.filter(s => s.isApproval).length
     if (released !== 1) throw new SchemaValidationError(code, `Le type version "${type.name}" doit avoir exactement un statut d'approbation (released) (${released}).`)
+    // Statut de création : une version née released ou abandonnée n'aurait ni tag ni gel.
+    if (statuses[0].isApproval || statuses[0].isTerminal) throw new SchemaValidationError(code, `Le premier statut du type version "${type.name}" doit être un statut en cours.`)
     return type
   }
   type.decisions = input.decisions ?? DEFAULT_VALIDATION_DECISIONS.map(d => ({ ...d }))
-  if (input.entryFields !== undefined) {
-    // Ni historique ni colonne pour un champ d'entrée (comme l'éditeur, `editableToObjType`).
-    type.entryFields = input.entryFields.map(({ trackHistory: _h, defaultVisible: _v, ...f }) => f)
-  }
+  // Ni historique ni colonne pour un champ d'entrée, liste vide omise (comme l'éditeur, `editableToObjType`).
+  if (input.entryFields?.length) type.entryFields = input.entryFields.map(({ trackHistory: _h, defaultVisible: _v, ...f }) => f)
+  else delete type.entryFields
   const error = entryFieldsError(type)
   if (error) throw new SchemaValidationError(error.code, error.message)
   return type

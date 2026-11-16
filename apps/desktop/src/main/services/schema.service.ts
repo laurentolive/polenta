@@ -11,6 +11,7 @@ import type {
   SchemaField,
   SchemaStatus,
   SystemNode,
+  ValidationDecisionDef,
 } from '@polenta/types'
 import { ISSUE_IMPACT_LINK, displayIdFieldError, transitionRuleIssues, findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues, runFieldIssues } from '@polenta/types'
 import type { AuthService } from './auth.service'
@@ -46,6 +47,12 @@ export type SchemaValidationErrorCode =
   | 'VERSION_TYPE_INVALID'
   | 'DISPLAY_ID_FIELD_INVALID'
   | 'TRANSITION_INVALID'
+  // GH371 — modification des statuts et des décisions d'un type existant.
+  | 'STATUS_NOT_FOUND'
+  | 'STATUS_IN_USE'
+  | 'STATUS_LIST_INVALID'
+  | 'DECISION_NOT_FOUND'
+  | 'DECISION_NAME_TAKEN'
 
 /**
  * Levée par les méthodes `addNode`/`addObjectType`/`addField`/`addStatus`/
@@ -105,6 +112,19 @@ export class SchemaService {
   }
 
   async save(repoPath: string, schema: ProjectSchema): Promise<void> {
+    const toWrite = await this.assertSaveable(repoPath, schema)
+    const dir = path.join(repoPath, '.polenta')
+    await fsP.mkdir(dir, { recursive: true })
+    const filePath = path.join(dir, 'schema.yaml')
+    await fsP.writeFile(filePath, yaml.dump(toWrite, { lineWidth: 120 }), 'utf-8')
+    this.cache.set(repoPath, toWrite)
+  }
+
+  /**
+   * Garde-fous de `save`, sans écrire (GH371 — `dryRun` des outils MCP : mêmes refus que l'appel
+   * réel) ; renvoie le schéma tel qu'il serait écrit.
+   */
+  private async assertSaveable(repoPath: string, schema: ProjectSchema): Promise<ProjectSchema> {
     this.assertUniquePrefixes(schema)
     this.assertRequiredWhen(schema)
     this.assertTransitions(schema)
@@ -115,12 +135,7 @@ export class SchemaService {
     await this.assertValidationTypeStable(repoPath, schema)
     const previous = await this.get(repoPath).catch(() => null)
     this.assertValidDisplayIdFields(schema, previous)
-    const toWrite = this.mirrorRootRolesImplements(withIssueImpactLink(schema, previous))
-    const dir = path.join(repoPath, '.polenta')
-    await fsP.mkdir(dir, { recursive: true })
-    const filePath = path.join(dir, 'schema.yaml')
-    await fsP.writeFile(filePath, yaml.dump(toWrite, { lineWidth: 120 }), 'utf-8')
-    this.cache.set(repoPath, toWrite)
+    return this.mirrorRootRolesImplements(withIssueImpactLink(schema, previous))
   }
 
   /**
@@ -197,9 +212,7 @@ export class SchemaService {
     const typeOf = (s: ProjectSchema | null) => s?.nodes?.find(n => n.name === 'root')?.objectTypes?.find(t => t.category === 'validation')
     const before = typeOf(await this.get(repoPath).catch(() => null))
     if (!before) return
-    const dir = path.join(repoPath, 'validations')
-    const entries = await fsP.readdir(dir, { withFileTypes: true }).catch(() => [])
-    const files = entries.filter(e => e.isFile() && e.name.endsWith('.yaml')).map(e => e.name)
+    const files = await this.readValidationEntries(repoPath)
     if (files.length === 0) return
     const after = typeOf(schema)
     const marked = (t: typeof before) => JSON.stringify((t?.statuses ?? []).filter(s => s.isApproval || s.isTerminal)
@@ -209,11 +222,33 @@ export class SchemaService {
     }
     const declared = new Set((after.decisions ?? []).map(d => d.name))
     for (const file of files) {
+      const used = file.decisions.find(d => !declared.has(d))
+      if (used) throw new SchemaValidationError('DECISION_IN_USE', `La décision "${used}" est utilisée par ${file.name} : elle ne se retire pas et ne se renomme pas.`)
+    }
+  }
+
+  /**
+   * Fichiers `validations/*.yaml` du repo et décisions portées par leurs entrées (confirmées ou
+   * proposées), lus directement (pas de dépendance vers `ValidationsService`, qui dépend de ce
+   * service). `name` : nom du fichier sans extension (= ID de la validation).
+   */
+  private async readValidationEntries(repoPath: string): Promise<Array<{ name: string; decisions: string[] }>> {
+    const dir = path.join(repoPath, 'validations')
+    const entries = await fsP.readdir(dir, { withFileTypes: true }).catch(() => [])
+    const files = entries.filter(e => e.isFile() && e.name.endsWith('.yaml')).map(e => e.name).sort()
+    const out: Array<{ name: string; decisions: string[] }> = []
+    for (const file of files) {
       const text = await fsP.readFile(path.join(dir, file), 'utf8').catch(() => '')
       const data = (() => { try { return yaml.load(text) as { entries?: Array<{ decision?: string }> } | null } catch { return null } })()
-      const used = data?.entries?.find(e => e.decision && !declared.has(e.decision))
-      if (used) throw new SchemaValidationError('DECISION_IN_USE', `La décision "${used.decision}" est utilisée par ${file.replace(/\.yaml$/, '')} : elle ne se retire pas et ne se renomme pas.`)
+      const decisions = (Array.isArray(data?.entries) ? data.entries : []).map(e => e?.decision).filter((d): d is string => !!d)
+      out.push({ name: file.replace(/\.yaml$/, ''), decisions })
     }
+    return out
+  }
+
+  /** GH371 — validations du repo dont une entrée porte `decision` (signées et annulées comprises). */
+  private async validationsUsingDecision(repoPath: string, decision: string): Promise<string[]> {
+    return (await this.readValidationEntries(repoPath)).filter(f => f.decisions.includes(decision)).map(f => f.name)
   }
 
   /**
@@ -495,13 +530,19 @@ export class SchemaService {
   async addField(
     repoPath: string,
     /** GH196 — `list` : liste visée (défaut `fields`) ; `runFields` / `stepFields` réservés aux types de test. */
-    dto: { nodeName: string; typeName: string; field: SchemaField; list?: 'fields' | 'runFields' | 'stepFields' },
+    /** GH371 — `entryFields` : champs d'entrée du type validation (pseudo-champ `decision` réservé). */
+    dto: { nodeName: string; typeName: string; field: SchemaField; list?: 'fields' | 'runFields' | 'stepFields' | 'entryFields' },
   ): Promise<ProjectSchema> {
     return this.withMutationQueue(repoPath, async () => {
       const schema = await this.get(repoPath)
       const node = this.requireNode(schema, dto.nodeName)
       this.requireNotReadonly(node)
       const type = this.requireObjectType(node, dto.typeName)
+      if (dto.list === 'entryFields') {
+        const updated = this.replaceObjectType(schema, node, type, this.withEntryField(type, dto.field))
+        await this.save(repoPath, updated)
+        return updated
+      }
       if (dto.list === 'runFields' || dto.list === 'stepFields') {
         if (type.category !== 'test') {
           throw new SchemaValidationError('RUN_FIELD_INVALID', `Les ${dto.list} sont réservés aux types de test ("${dto.typeName}" est ${type.category}).`)
@@ -560,6 +601,216 @@ export class SchemaService {
         statuses: [...(type.statuses ?? []), dto.status],
       }
       const updated = this.replaceObjectType(schema, node, type, updatedType)
+      await this.save(repoPath, updated)
+      return updated
+    })
+  }
+
+  // ── GH371 — modification d'un type existant (specs/GH371-design.md §5–6) ─────────
+
+  /** GH371 — type validation avec `field` ajouté en fin d'`entryFields` (contrôles de la spec §1). */
+  private withEntryField(type: ObjectTypeDefinition, field: SchemaField): ObjectTypeDefinition {
+    if (type.category !== 'validation') {
+      throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Les entryFields sont réservés au type validation ("${type.name}" est ${type.category}).`)
+    }
+    const list = type.entryFields ?? []
+    if (field.name === DECISION_PSEUDO_FIELD) {
+      throw new SchemaValidationError('FIELD_NAME_TAKEN', `"${DECISION_PSEUDO_FIELD}" est réservé aux conditions requiredWhen des champs d'entrée : choisir un autre nom.`)
+    }
+    if (list.some((f) => f.name === field.name)) {
+      throw new SchemaValidationError('FIELD_NAME_TAKEN', `Le champ "${field.name}" existe déjà dans entryFields du type "${type.name}".`)
+    }
+    const entryFields = [...list, field]
+    // Déclaration MCP : une référence ou une valeur inconnue est refusée aussi (comme `fields`, GH195).
+    const issue = requiredWhenIssues(
+      { ...type, fields: entryFields },
+      { key: DECISION_PSEUDO_FIELD, values: (type.decisions ?? []).map((d) => d.name) },
+    ).find((i) => i.field === field.name)
+    if (issue) throw new SchemaValidationError('REQUIRED_WHEN_INVALID', issue.message)
+    return { ...type, entryFields }
+  }
+
+  /** Nœud et type ciblés, nœud modifiable. */
+  private requireWritableType(schema: ProjectSchema, nodeName: string, typeName: string): { node: SystemNode; type: ObjectTypeDefinition } {
+    const node = this.requireNode(schema, nodeName)
+    this.requireNotReadonly(node)
+    return { node, type: this.requireObjectType(node, typeName) }
+  }
+
+  private requireValidationType(type: ObjectTypeDefinition): ValidationDecisionDef[] {
+    if (type.category !== 'validation') {
+      throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Les décisions sont réservées au type validation ("${type.name}" est ${type.category}).`)
+    }
+    return type.decisions ?? []
+  }
+
+  private requireDecision(type: ObjectTypeDefinition, name: string): ValidationDecisionDef {
+    const decision = this.requireValidationType(type).find((d) => d.name === name)
+    if (!decision) throw new SchemaValidationError('DECISION_NOT_FOUND', `Décision "${name}" introuvable dans le type "${type.name}".`)
+    return decision
+  }
+
+  /** Statuts du type ; une campagne a des statuts fixes (`statuses[]` ignoré). */
+  private requireStatusList(type: ObjectTypeDefinition): SchemaStatus[] {
+    if (type.category === 'campaign') {
+      throw new SchemaValidationError('STATUS_LIST_INVALID', `Les statuts d'une campagne sont fixes ("${type.name}") : ils ne se modifient pas.`)
+    }
+    return type.statuses ?? []
+  }
+
+  /** GH371 — ajoute une décision de validation en fin de `decisions`. */
+  async addDecision(
+    repoPath: string,
+    dto: { nodeName: string; typeName: string; decision: ValidationDecisionDef },
+  ): Promise<ProjectSchema> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const decisions = this.requireValidationType(type)
+      if (decisions.some((d) => d.name === dto.decision.name)) {
+        throw new SchemaValidationError('DECISION_NAME_TAKEN', `La décision "${dto.decision.name}" existe déjà dans le type "${type.name}".`)
+      }
+      const pending = decisions.find((d) => d.isPending)
+      if (dto.decision.isPending && pending) {
+        throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Le type "${type.name}" a déjà une décision en attente ("${pending.name}") : utiliser update_decision { isPending: true } pour déplacer la marque.`)
+      }
+      const { isPending, proposesIssue, ...rest } = dto.decision
+      const decision: ValidationDecisionDef = { ...rest, ...(isPending && { isPending: true }), ...(proposesIssue && { proposesIssue: true }) }
+      const updated = this.replaceObjectType(schema, node, type, { ...type, decisions: [...decisions, decision] })
+      await this.save(repoPath, updated)
+      return updated
+    })
+  }
+
+  /**
+   * GH371 — modifie une décision : libellé, couleur, `proposesIssue`, marque « en attente » (déplacée
+   * depuis l'ancienne), nom. Renommage et marque « en attente » refusés si une entrée porte la
+   * décision (S1, S3 : comme l'application) ; aucun objet n'est réécrit.
+   */
+  async updateDecision(
+    repoPath: string,
+    dto: {
+      nodeName: string; typeName: string; name: string; to?: string
+      label?: string | null; color?: string | null; isPending?: true; proposesIssue?: boolean
+    },
+  ): Promise<ProjectSchema> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const current = this.requireDecision(type, dto.name)
+      const decisions = type.decisions ?? []
+      const rename = dto.to !== undefined && dto.to !== dto.name ? dto.to : undefined
+      if (rename && decisions.some((d) => d.name === rename)) {
+        throw new SchemaValidationError('DECISION_NAME_TAKEN', `La décision "${rename}" existe déjà dans le type "${type.name}".`)
+      }
+      const markPending = dto.isPending === true && !current.isPending
+      if (rename || markPending) {
+        const users = await this.validationsUsingDecision(repoPath, dto.name)
+        if (users.length > 0) {
+          const what = rename ? 'elle ne se renomme pas' : 'elle ne devient pas « en attente »'
+          throw new SchemaValidationError('DECISION_IN_USE', `La décision "${dto.name}" est portée par des entrées de ${idList(users)} : ${what}.`)
+        }
+      }
+      const next: ValidationDecisionDef = { ...current }
+      if (rename) next.name = rename
+      setOrDelete(next, 'label', dto.label)
+      setOrDelete(next, 'color', dto.color)
+      if (dto.proposesIssue === true) next.proposesIssue = true
+      if (dto.proposesIssue === false) delete next.proposesIssue
+      if (markPending) next.isPending = true
+      const updatedDecisions = decisions.map((d) => {
+        if (d === current) return next
+        if (markPending && d.isPending) {
+          const { isPending: _drop, ...rest } = d
+          return rest
+        }
+        return d
+      })
+      const updatedType: ObjectTypeDefinition = {
+        ...type,
+        decisions: updatedDecisions,
+        ...(rename && type.entryFields && { entryFields: renamePseudoRefs(type.entryFields, DECISION_PSEUDO_FIELD, dto.name, rename) }),
+      }
+      const updated = this.replaceObjectType(schema, node, type, updatedType)
+      await this.save(repoPath, updated)
+      return updated
+    })
+  }
+
+  /** GH371 — retire une décision non utilisée, non en attente, non citée par un `requiredWhen` d'entrée (Q1). */
+  async removeDecision(repoPath: string, dto: { nodeName: string; typeName: string; name: string }): Promise<ProjectSchema> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const current = this.requireDecision(type, dto.name)
+      if (current.isPending) {
+        throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `La décision "${dto.name}" est la décision en attente du type "${type.name}" : marquer d'abord une autre décision en attente (update_decision).`)
+      }
+      const users = await this.validationsUsingDecision(repoPath, dto.name)
+      if (users.length > 0) {
+        throw new SchemaValidationError('DECISION_IN_USE', `La décision "${dto.name}" est portée par des entrées de ${idList(users)} : elle ne se retire pas.`)
+      }
+      const citing = fieldsCiting(type.entryFields ?? [], DECISION_PSEUDO_FIELD, dto.name)
+      if (citing.length > 0) {
+        throw new SchemaValidationError('REQUIRED_WHEN_INVALID', `La décision "${dto.name}" est citée par le requiredWhen de ${idList(citing)} (entryFields) : elle ne se retire pas.`)
+      }
+      const updated = this.replaceObjectType(schema, node, type, { ...type, decisions: (type.decisions ?? []).filter((d) => d !== current) })
+      await this.save(repoPath, updated)
+      return updated
+    })
+  }
+
+  /** GH371 — réordonne les statuts (permutation exacte) ; le premier est le statut de création. */
+  async reorderStatuses(repoPath: string, dto: { nodeName: string; typeName: string; order: string[] }): Promise<ProjectSchema> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const statuses = this.requireStatusList(type)
+      const names = statuses.map((s) => s.name)
+      const duplicates = [...new Set(dto.order.filter((n, i) => dto.order.indexOf(n) !== i))]
+      const unknown = dto.order.filter((n) => !names.includes(n))
+      const missing = names.filter((n) => !dto.order.includes(n))
+      if (duplicates.length || unknown.length || missing.length) {
+        const parts = [
+          missing.length ? `manquant(s) : ${idList(missing)}` : '',
+          unknown.length ? `inconnu(s) : ${idList(unknown)}` : '',
+          duplicates.length ? `en double : ${idList(duplicates)}` : '',
+        ].filter(Boolean)
+        throw new SchemaValidationError('STATUS_LIST_INVALID', `order doit lister une fois chaque statut du type "${type.name}" (${names.join(', ')}) — ${parts.join(' ; ')}.`)
+      }
+      const reordered = dto.order.map((n) => statuses.find((s) => s.name === n)!)
+      const updated = this.replaceObjectType(schema, node, type, { ...type, statuses: reordered })
+      await this.save(repoPath, updated)
+      return updated
+    })
+  }
+
+  /**
+   * GH371 — propriétés d'un type existant : libellé, couleur, `displayIdField` (GH229),
+   * `trackStatusHistory` (GH77, écrit seulement à `false`). `null` retire la clé.
+   */
+  async updateObjectType(
+    repoPath: string,
+    dto: { nodeName: string; typeName: string; label?: string | null; color?: string | null; displayIdField?: string | null; trackStatusHistory?: boolean },
+  ): Promise<ProjectSchema> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const next: ObjectTypeDefinition = { ...type }
+      setOrDelete(next, 'label', dto.label)
+      setOrDelete(next, 'color', dto.color)
+      setOrDelete(next, 'displayIdField', dto.displayIdField)
+      if (dto.trackStatusHistory === true) delete next.trackStatusHistory
+      if (dto.trackStatusHistory === false) {
+        if (type.category === 'validation') {
+          throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Le type validation "${type.name}" doit historiser son statut (signataire et date de signature).`)
+        }
+        next.trackStatusHistory = false
+      }
+      // Contrôle direct : `assertValidDisplayIdFields` ne refuse qu'une erreur nouvelle.
+      const displayError = dto.displayIdField ? displayIdFieldError(next) : null
+      if (displayError) throw new SchemaValidationError('DISPLAY_ID_FIELD_INVALID', displayError)
+      const updated = this.replaceObjectType(schema, node, type, next)
       await this.save(repoPath, updated)
       return updated
     })
@@ -723,6 +974,41 @@ export class SchemaService {
       })),
     }
   }
+}
+
+/** GH266 — pseudo-champ des `requiredWhen` des champs d'entrée d'une validation. */
+const DECISION_PSEUDO_FIELD = 'decision'
+
+/** GH371 — éléments cités dans un message : 5 au plus, puis « … et N autres ». */
+export function idList(ids: string[]): string {
+  if (ids.length <= 5) return ids.join(', ')
+  return `${ids.slice(0, 5).join(', ')} … et ${ids.length - 5} autres`
+}
+
+/** `undefined` : inchangé ; `null` : clé retirée ; sinon valeur posée. */
+function setOrDelete<T extends object, K extends keyof T>(obj: T, key: K, value: T[K] | null | undefined): void {
+  if (value === undefined) return
+  if (value === null) delete obj[key]
+  else obj[key] = value
+}
+
+/** Champs dont `requiredWhen[key]` cite `value`. */
+function fieldsCiting(fields: SchemaField[], key: string, value: string): string[] {
+  return fields.filter((f) => (f.requiredWhen?.[key] ?? []).some((v) => String(v) === value)).map((f) => f.name)
+}
+
+/**
+ * GH371 — remplace `from` par `to` dans `requiredWhen[key]` (pseudo-champ `decision` ou `status`),
+ * valeurs dédoublonnées ; un champ sans référence est rendu tel quel. `renameRequiredWhenRefs`
+ * (éditeur) ignore volontairement les renommages visant le pseudo-champ d'une liste d'entrée.
+ */
+function renamePseudoRefs(fields: SchemaField[], key: string, from: string, to: string): SchemaField[] {
+  return fields.map((f) => {
+    const values = f.requiredWhen?.[key]
+    if (!values || !values.some((v) => String(v) === from)) return f
+    const renamed = [...new Set(values.map((v) => (String(v) === from ? to : v)))]
+    return { ...f, requiredWhen: { ...f.requiredWhen, [key]: renamed } }
+  })
 }
 
 /**

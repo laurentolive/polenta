@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { ProjectSchema } from '@polenta/types'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js'
 import type { McpContainer } from '../container'
 import { jsonToolResult, errorToolResult } from '../mcp-types'
 import { SchemaValidationError } from '../../main/services/schema.service'
@@ -18,6 +18,10 @@ import { SchemaValidationError } from '../../main/services/schema.service'
  * vocabulaire du spec/UI ("composant"), nom de méthode aligné sur le type de
  * données (`SystemNode` → `addNode`) ; différence assumée, documentée ici pour
  * éviter la confusion à la prochaine lecture (cf. design §4.2).
+ *
+ * GH371 — modification d'un type existant : `add_field { list: 'entryFields' }`, décisions de
+ * validation (`add_decision` / `update_decision` / `remove_decision`), statuts (`update_status` /
+ * `remove_status` / `reorder_statuses`) et `update_object_type` (specs/GH371-design.md).
  */
 
 // ─── Zod schemas d'entrée ───────────────────────────────────────────────────────
@@ -107,8 +111,9 @@ const addFieldInput = {
   nodeName: z.string().min(1),
   typeName: z.string().min(1),
   field: schemaFieldSchema,
-  /** GH196 — liste visée : champs de l'objet (défaut), champs d'exécution ou d'étape (types de test). */
-  list: z.enum(['fields', 'runFields', 'stepFields']).optional(),
+  /** GH196 — liste visée : champs de l'objet (défaut), champs d'exécution ou d'étape (types de test) ;
+   *  GH371 — champs d'entrée d'une validation. */
+  list: z.enum(['fields', 'runFields', 'stepFields', 'entryFields']).optional(),
 }
 
 const addStatusInput = {
@@ -121,6 +126,57 @@ const addLinkTypeInput = {
   linkType: linkTypeDefinitionSchema,
 }
 
+// ── GH371 — modification d'un type existant ────────────────────────────────────
+
+const typeTarget = {
+  nodeName: z.string().min(1),
+  typeName: z.string().min(1),
+}
+
+/** `null` retire la clé du YAML. */
+const removableString = z.string().min(1).nullable().optional()
+
+const validationDecisionSchema = z.object({
+  name: z.string().min(1),
+  label: z.string().optional(),
+  color: z.string().optional(),
+  isPending: z.boolean().optional(),
+  proposesIssue: z.boolean().optional(),
+})
+
+const addDecisionInput = { ...typeTarget, decision: validationDecisionSchema }
+
+const updateDecisionInput = {
+  ...typeTarget,
+  name: z.string().min(1),
+  to: z.string().min(1).optional().describe('Nouveau nom (refusé si une entrée porte la décision)'),
+  label: removableString,
+  color: removableString,
+  isPending: z.literal(true).optional().describe('Déplace la marque « en attente » sur cette décision'),
+  proposesIssue: z.boolean().optional(),
+}
+
+const removeDecisionInput = { ...typeTarget, name: z.string().min(1) }
+
+const reorderStatusesInput = { ...typeTarget, order: z.array(z.string().min(1)) }
+
+const updateObjectTypeInput = {
+  ...typeTarget,
+  label: removableString,
+  color: removableString,
+  displayIdField: removableString.describe('`title` ou un champ text / number / enum du type ; null : ID affiché'),
+  trackStatusHistory: z.boolean().optional(),
+}
+
+/**
+ * « Au moins une propriété à modifier » : l'API `registerTool` prend une forme zod brute, sans
+ * `refine` au niveau de l'objet — même réponse que l'échec de validation d'entrée du SDK.
+ */
+function requireSomeChange(tool: string, dto: Record<string, unknown>, keys: string[]): void {
+  if (keys.some((k) => dto[k] !== undefined)) return
+  throw new McpError(ErrorCode.InvalidParams, `Input validation error: Invalid arguments for tool ${tool}: au moins une propriété à modifier (${keys.join(', ')}).`)
+}
+
 type SchemaMutationToolResult = ReturnType<typeof jsonToolResult> | ReturnType<typeof errorToolResult>
 
 /**
@@ -130,7 +186,7 @@ type SchemaMutationToolResult = ReturnType<typeof jsonToolResult> | ReturnType<t
  * suivaient tous exactement le même schéma. Une erreur inattendue (pas
  * `SchemaValidationError`) continue de remonter telle quelle, jamais avalée.
  */
-async function runSchemaMutation(op: () => Promise<ProjectSchema>): Promise<SchemaMutationToolResult> {
+async function runSchemaMutation(op: () => Promise<unknown>): Promise<SchemaMutationToolResult> {
   try {
     return jsonToolResult(await op())
   } catch (e) {
@@ -178,7 +234,9 @@ export function registerSchemaMutationTools(server: McpServer, container: McpCon
       description:
         "Ajoute un champ (SchemaField) à un type d'objet existant. Refusé si le composant " +
         "ou le type est introuvable, si le composant est readonly, ou si un champ de ce " +
-        'nom existe déjà dans ce type.',
+        'nom existe déjà dans ce type. `list` : `fields` (défaut), `runFields` / `stepFields` (types de test), ' +
+        '`entryFields` (champs d\'entrée du type validation ; nom `decision` réservé ; `requiredWhen` sur les autres ' +
+        'champs d\'entrée ou sur le pseudo-champ `decision` et ses valeurs, sinon REQUIRED_WHEN_INVALID).',
       inputSchema: addFieldInput,
     },
     async (dto) => runSchemaMutation(() => container.schema.addField(container.repoPath, dto)),
@@ -207,5 +265,78 @@ export function registerSchemaMutationTools(server: McpServer, container: McpCon
       inputSchema: addLinkTypeInput,
     },
     async (dto) => runSchemaMutation(() => container.schema.addLinkType(container.repoPath, dto)),
+  )
+
+  server.registerTool(
+    'add_decision',
+    {
+      title: 'Add validation decision',
+      description:
+        "Ajoute une décision (decisions[]) au type validation, en fin de liste. Refusé : type d'une autre catégorie " +
+        '(VALIDATION_TYPE_INVALID), nom déjà pris (DECISION_NAME_TAKEN), `isPending: true` alors qu\'une décision en ' +
+        'attente existe (VALIDATION_TYPE_INVALID — update_decision déplace la marque).',
+      inputSchema: addDecisionInput,
+    },
+    async (dto) => runSchemaMutation(() => container.schema.addDecision(container.repoPath, dto)),
+  )
+
+  server.registerTool(
+    'update_decision',
+    {
+      title: 'Update validation decision',
+      description:
+        "Modifie une décision du type validation : `label` / `color` (null retire), `proposesIssue` (false retire), " +
+        '`isPending: true` (la marque « en attente » quitte l\'ancienne décision), `to` (renommage ; les requiredWhen ' +
+        'des entryFields qui la citent suivent). Renommage et `isPending` refusés si une entrée d\'une validation ' +
+        '(signées comprises) porte la décision (DECISION_IN_USE). Autres refus : DECISION_NOT_FOUND, DECISION_NAME_TAKEN.',
+      inputSchema: updateDecisionInput,
+    },
+    async (dto) => {
+      requireSomeChange('update_decision', dto, ['to', 'label', 'color', 'isPending', 'proposesIssue'])
+      return runSchemaMutation(() => container.schema.updateDecision(container.repoPath, dto))
+    },
+  )
+
+  server.registerTool(
+    'remove_decision',
+    {
+      title: 'Remove validation decision',
+      description:
+        'Retire une décision du type validation. Refusé : décision en attente (VALIDATION_TYPE_INVALID), portée par ' +
+        "une entrée d'une validation (DECISION_IN_USE, IDs cités), citée par le requiredWhen d'un entryField " +
+        '(REQUIRED_WHEN_INVALID), introuvable (DECISION_NOT_FOUND).',
+      inputSchema: removeDecisionInput,
+    },
+    async (dto) => runSchemaMutation(() => container.schema.removeDecision(container.repoPath, dto)),
+  )
+
+  server.registerTool(
+    'reorder_statuses',
+    {
+      title: 'Reorder statuses',
+      description:
+        "Réordonne les statuts d'un type : `order` = permutation exacte de leurs noms (sinon STATUS_LIST_INVALID). " +
+        'Le premier statut est celui de création ; sur le type validation il ne peut être ni signée ni annulée ' +
+        "(VALIDATION_TYPE_INVALID). Aucun objet modifié. Type campagne (statuts fixes) : STATUS_LIST_INVALID.",
+      inputSchema: reorderStatusesInput,
+    },
+    async (dto) => runSchemaMutation(() => container.schema.reorderStatuses(container.repoPath, dto)),
+  )
+
+  server.registerTool(
+    'update_object_type',
+    {
+      title: 'Update object type',
+      description:
+        "Modifie un type d'objet existant : `label`, `color`, `displayIdField` (champ affiché à la place de l'ID " +
+        "dans les liens : `title` ou un champ text / number / enum du type, sinon DISPLAY_ID_FIELD_INVALID), " +
+        '`trackStatusHistory` (false : statut non historisé, refusé sur le type validation ; l\'historique existant ' +
+        'reste). `null` retire la clé. Nom, préfixe et catégorie ne se modifient pas ici.',
+      inputSchema: updateObjectTypeInput,
+    },
+    async (dto) => {
+      requireSomeChange('update_object_type', dto, ['label', 'color', 'displayIdField', 'trackStatusHistory'])
+      return runSchemaMutation(() => container.schema.updateObjectType(container.repoPath, dto))
+    },
   )
 }

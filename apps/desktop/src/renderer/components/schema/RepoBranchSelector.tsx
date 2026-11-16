@@ -21,7 +21,8 @@ import type { WorkspaceTreeNode } from '@polenta/types'
  *
  *  GH106 — the only branch control of the row: the designated integration branch is labelled in
  *  the list (creating an `int-*` here designates it), and in detached HEAD (component pinned on a
- *  commit) the combo shows the abbreviated commit instead of disappearing. */
+ *  commit) the combo stays, showing the pinned tag if any, else (GH359) the designated integration
+ *  branch rather than a meaningless commit hash — the commit is in the tooltip. */
 export function RepoBranchSelector({
   node, workspaceDir, flatNodes,
 }: {
@@ -48,7 +49,7 @@ export function RepoBranchSelector({
     enabled: !!node.repoPath,
     refetchInterval: 10_000,
   })
-  // Detached HEAD: the baseline (tag) checked out if any, else the abbreviated commit.
+  // Detached HEAD: the baseline (tag) checked out if any, else the integration branch (GH359).
   const detachedOid = !currentBranch ? integration?.headOid : undefined
   const { data: refs } = useQuery({
     queryKey: ['sync:resolve-refs', node.repoPath],
@@ -59,7 +60,7 @@ export function RepoBranchSelector({
   // Several tags on the commit: the one the parent pins, if it is one of them.
   const tagsAtHead = detachedOid ? (refs ?? []).filter(r => r.type === 'tag' && r.sha === detachedOid).map(r => r.name) : []
   const atTag = tagsAtHead.find(name => name === node.pin) ?? tagsAtHead[0]
-  const shown = currentBranch || atTag || detachedOid?.slice(0, 7) || ''
+  const shown = currentBranch || atTag || integration?.configured || detachedOid?.slice(0, 7) || ''
 
   if (!shown) return null
 
@@ -96,7 +97,9 @@ export function RepoBranchSelector({
       <BranchCombobox
         branches={allBranches}
         tags={allTags}
-        currentBranch={shown}
+        currentBranch={currentBranch || atTag || ''}
+        displayValue={shown}
+        title={detachedOid ? t('schema.integrationIndicator.detachedHint', { commit: detachedOid.slice(0, 7) }) : undefined}
         integrationBranch={integration?.configured}
         onCheckout={handleCheckout}
         onCheckoutCommit={handleCheckoutCommit}

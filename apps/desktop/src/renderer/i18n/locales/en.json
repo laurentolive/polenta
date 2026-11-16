@@ -2822,6 +2822,7 @@
       "list": "Added members",
       "login": "Account to add",
       "loginPlaceholder": "account login",
+      "suggestions": "Suggestions",
       "team": "Team to add",
       "teamPlaceholder": "Choose a team…",
       "teamPrefix": "Team {{name}}",

@@ -45,6 +45,8 @@ export interface ForgeProvider {
   repoPermissions?(baseUrl: string, token: string, owner: string, repo: string): Promise<{ pull: boolean; push: boolean; admin: boolean } | null>
   /** `null` : `owner` n'est pas une organisation. */
   orgMembers?(baseUrl: string, token: string, owner: string): Promise<ForgeMember[] | null>
+  /** GH368 — organisations dont le compte est membre (login de l'organisation). */
+  listUserOrgs?(baseUrl: string, token: string): Promise<string[]>
   /** GH106 — branche par défaut et droit admin du compte ; `null` : pas d'accès (404/403). */
   repoInfo?(baseUrl: string, token: string, owner: string, repo: string): Promise<{ defaultBranch: string; admin: boolean } | null>
   /** GH106 — la branche doit déjà exister sur le serveur. */

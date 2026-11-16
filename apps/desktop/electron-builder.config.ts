@@ -112,6 +112,9 @@ export function builderConfig(brand: LoadedBrand): Configuration {
       // ${version} : extraMetadata.version, posée par scripts/package.ts depuis le tag git (GH158)
       // — même string que celle exposée en renderer via app:get-version (barre de titre).
       artifactName: artifactBaseName(info.productName) + '-Setup-${version}.${ext}',
+      // GH337 — Git for Windows portable élagué (pnpm git:fetch → vendor/git), hors asar : moteur
+      // git de Polenta et Git Bash du terminal. Résolu par src/main/git/git-binary.ts.
+      extraResources: [{ from: 'vendor/git', to: 'git' }],
     },
     nsis: {
       oneClick: true,

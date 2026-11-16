@@ -1,0 +1,103 @@
+# GH337 — élagage du Git for Windows portable embarqué (scripts/fetch-git.ts).
+# Un motif par ligne, relatif à la racine de PortableGit ; `*` autorisé dans le dernier segment.
+# Garde-fous vérifiés par le script : cmd/git.exe, bin/bash.exe, usr/bin/ssh.exe.
+# Doivent aussi continuer à démarrer (contrôle du spike) : vim, less, perl.
+# Depuis Git for Windows 2.5x, les binaires natifs sont sous ucrt64/ (mingw64/ avant).
+
+# Lanceurs et installation (le terminal lance bin/bash.exe dans un pseudo-terminal)
+git-bash.exe
+git-cmd.exe
+post-install.bat
+README.portable
+cmd/git-gui.exe
+cmd/gitk.exe
+cmd/scalar.exe
+
+# Git Credential Manager (.NET, Avalonia) : Polenta fournit ses identifiants par GIT_ASKPASS
+ucrt64/bin/git-credential-manager*
+ucrt64/bin/git-credential-helper-selector.exe
+ucrt64/bin/git-askyesno.exe
+ucrt64/bin/Atlassian.*
+ucrt64/bin/Avalonia*
+ucrt64/bin/GitHub.dll
+ucrt64/bin/GitLab.dll
+ucrt64/bin/HarfBuzzSharp.dll
+ucrt64/bin/libHarfBuzzSharp.dll
+ucrt64/bin/SkiaSharp.dll
+ucrt64/bin/libSkiaSharp.dll
+ucrt64/bin/MicroCom.Runtime.dll
+ucrt64/bin/Microsoft.*
+ucrt64/bin/System.*
+ucrt64/bin/gcmcore.dll
+ucrt64/bin/msalruntime.dll
+ucrt64/bin/av_libglesv2.dll
+ucrt64/libexec/git-core/Atlassian.*
+ucrt64/libexec/git-core/Avalonia*
+ucrt64/libexec/git-core/GitHub.dll
+ucrt64/libexec/git-core/GitLab.dll
+ucrt64/libexec/git-core/HarfBuzzSharp.dll
+ucrt64/libexec/git-core/libHarfBuzzSharp.dll
+ucrt64/libexec/git-core/SkiaSharp.dll
+ucrt64/libexec/git-core/libSkiaSharp.dll
+ucrt64/libexec/git-core/MicroCom.Runtime.dll
+ucrt64/libexec/git-core/Microsoft.*
+ucrt64/libexec/git-core/System.*
+ucrt64/libexec/git-core/gcmcore.dll
+ucrt64/libexec/git-core/msalruntime.dll
+ucrt64/libexec/git-core/av_libglesv2.dll
+ucrt64/libexec/git-core/git-credential-manager*
+
+# Interfaces graphiques Tcl/Tk (gitk, git-gui)
+ucrt64/bin/gitk
+ucrt64/bin/wish*
+ucrt64/bin/tclsh*
+ucrt64/bin/tcl86.dll
+ucrt64/bin/tk86.dll
+ucrt64/bin/sqlite3_analyzer.sh
+ucrt64/lib/tcl*
+ucrt64/lib/tk*
+ucrt64/lib/itcl*
+ucrt64/lib/tdbc*
+ucrt64/lib/thread*
+ucrt64/lib/sqlite3*
+ucrt64/share/gitk
+ucrt64/share/git-gui
+ucrt64/libexec/git-core/tcl86.dll
+ucrt64/libexec/git-core/tk86.dll
+ucrt64/libexec/git-core/git-gui*
+ucrt64/libexec/git-core/git-citool*
+ucrt64/libexec/git-core/gitk*
+
+# Git LFS, scalar, mise à jour de Git for Windows, outils de conversion de documents (diff textconv)
+ucrt64/bin/git-lfs.exe
+ucrt64/bin/scalar.exe
+ucrt64/libexec/git-core/scalar.exe
+ucrt64/bin/git-update-git-for-windows
+ucrt64/libexec/git-core/git-update-git-for-windows
+ucrt64/bin/WhoUses.exe
+ucrt64/bin/blocked-file-util.exe
+ucrt64/bin/create-shortcut.exe
+ucrt64/bin/proxy-lookup.exe
+ucrt64/bin/edit_test*.exe
+ucrt64/bin/antiword.exe
+ucrt64/bin/docx2txt.exe
+ucrt64/bin/docx-strip-pii.exe
+ucrt64/bin/odt2txt.exe
+ucrt64/bin/pdftotext.exe
+
+# Documentation et traductions (messages de git en anglais, LC_ALL=C pour Polenta)
+ucrt64/doc
+ucrt64/share/doc
+ucrt64/share/man
+ucrt64/share/info
+ucrt64/share/gtk-doc
+ucrt64/share/locale
+ucrt64/share/antiword
+usr/share/doc
+usr/share/man
+usr/share/info
+usr/share/locale
+usr/share/vim/vim*/doc
+usr/share/vim/vim*/tutor
+usr/share/vim/vim*/spell
+usr/share/vim/vim*/lang

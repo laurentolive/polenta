@@ -144,10 +144,14 @@ export interface CreateWindowOptions {
   /** Page à ouvrir (`pathname?search`) ; absente = démarrage habituel (accueil / dernier projet). */
   route?: string
   placement?: WindowPlacement
+  /** GH343 — la fenêtre peut sauter vers le dernier projet ouvert (`__jump`) : seulement une fenêtre
+   *  de lancement. Défaut : vrai sans `route` (premier lancement, macOS sans fenêtre), faux sinon. */
+  jump?: boolean
 }
 
 export function createAppWindow(opts: CreateWindowOptions = {}): BrowserWindow {
   const { route, placement } = opts
+  const jump = opts.jump ?? route === undefined
   const win = new BrowserWindow({
     ...(placement
       ? { x: placement.x, y: placement.y, width: placement.width, height: placement.height }
@@ -214,7 +218,10 @@ export function createAppWindow(opts: CreateWindowOptions = {}): BrowserWindow {
 
   // GH342 — page d'ouverture passée au renderer comme `__print` (T43) : `index.html` est le seul
   // point d'entrée en `file://`.
-  const search = route && isValidAppRoute(route) ? `__open=${encodeURIComponent(route)}` : ''
+  const params = new URLSearchParams()
+  if (route && isValidAppRoute(route)) params.set('__open', route)
+  if (jump) params.set('__jump', '1')
+  const search = params.toString()
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(search ? `${process.env['ELECTRON_RENDERER_URL']}?${search}` : process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -250,9 +257,11 @@ export function restoreOrCreateWindows(): void {
   }
   const displays = screen.getAllDisplays()
   const primary = screen.getPrimaryDisplay()
-  for (const w of saved) {
-    startupInviteWindow = createAppWindow({ route: w.route, placement: fitToDisplays(w, displays, primary) })
-  }
+  // GH343 — seule la première fenêtre rouverte peut sauter vers le dernier projet (repli si sa page
+  // n'est plus valide) : les suivantes restent sur l'accueil.
+  saved.forEach((w, i) => {
+    startupInviteWindow = createAppWindow({ route: w.route, placement: fitToDisplays(w, displays, primary), jump: i === 0 })
+  })
 }
 
 /** Fenêtre qui prend une invitation reçue avant que l'interface ne soit prête : fixée au lancement
@@ -359,4 +368,14 @@ export function isAutoPullOwner(sender: WebContents): boolean {
     if (routeProjectId(e.route) === project) return w === win
   }
   return true
+}
+
+/** GH343 — une autre fenêtre affiche ce projet (« Fermer le projet » garde alors le dernier projet ouvert). */
+export function projectShownElsewhere(sender: WebContents, projectId: string): boolean {
+  const self = BrowserWindow.fromWebContents(sender)
+  for (const [w, e] of registry) {
+    if (w === self || w.isDestroyed() || !e.route) continue
+    if (routeProjectId(e.route) === projectId) return true
+  }
+  return false
 }

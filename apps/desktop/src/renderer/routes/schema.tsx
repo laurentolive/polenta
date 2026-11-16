@@ -7,6 +7,7 @@ import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { useVersioning } from '../contexts/VersioningContext'
 import { decodeProjectId } from '../lib/projectId'
+import { markRecentOnce } from '../lib/recentProject'
 import { StructureTab } from '../components/schema/StructureTab'
 import { ConfirmDelete, CancelConfirmModal } from '../components/schema/objectTypeEditor'
 import { ViewHeader } from '../components/layout/ViewHeader'
@@ -254,7 +255,7 @@ function SchemaEditorPage() {
   const repoPath = repoPathParam || contextRepoPath
 
   useEffect(() => {
-    if (workspaceDir) api.workspace.markRecent(workspaceDir)
+    if (workspaceDir) markRecentOnce(workspaceDir)   // GH343 — une fois par fenêtre
   }, [workspaceDir])
 
   const { data: schema, isLoading } = useProjectSchema(repoPath)

@@ -18,6 +18,7 @@ export const DESKTOP_ONLY_CHANNELS = [
   'app:window-state',
   'app:close-window',
   'app:auto-pull-owner',
+  'app:project-shown-elsewhere',
   'update:get-state',
   'update:download',
   'update:prepare-install',

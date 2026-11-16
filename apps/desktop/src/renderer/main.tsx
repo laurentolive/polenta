@@ -6,6 +6,7 @@ import { routeTree } from './routeTree.gen'
 import { api } from './api'
 import { isWeb } from './platform'
 import { decodeProjectId } from './lib/projectId'
+import { initStartupJump } from './lib/startupJump'
 import { isValidAppRoute, routeProjectId, splitAppRoute } from '../shared/app-route'
 import './index.css'
 import './i18n'
@@ -67,9 +68,13 @@ async function boot() {
     bootParams.delete('__print')
     await router.navigate({ to: printTarget as never, search: Object.fromEntries(bootParams) as never, replace: true })
   } else if (openTarget && await canOpen(openTarget)) {
+    initStartupJump(false)
     const { pathname, search } = splitAppRoute(openTarget)
     await router.navigate({ to: pathname as never, search: search as never, replace: true })
   } else {
+    // GH343 — saut vers le dernier projet : fenêtre de lancement seulement (desktop : `__jump` posé
+    // par le main ; web : premier chargement de `/`, sauf « Nouvelle fenêtre », `__home`).
+    initStartupJump(isWeb ? !bootParams.has('__home') : bootParams.get('__jump') === '1')
     // T114 — same file://-entry-URL quirk as above, hitting the normal (non-print) boot path too:
     // on a cold boot, TanStack Router's very first match is sometimes computed against the raw
     // `file://.../index.html` entry location instead of "/", landing on a dead-end "Not Found"

@@ -66,9 +66,11 @@ describe('GH342 routes', () => {
     expect(isValidAppRoute(42)).toBe(false)
   })
 
-  it('R7 — seules les pages d’un projet sont restaurées', () => {
+  it('R7 — seules les pages d’un projet et l’accueil (GH343) sont restaurés', () => {
     expect(isRestorableRoute('/product?projectId=abc&repo=x')).toBe(true)
-    expect(isRestorableRoute('/')).toBe(false)
+    expect(isRestorableRoute('/')).toBe(true)
+    expect(parseSavedWindows({ windows: [{ x: 0, y: 0, width: 900, height: 700, route: '/' }] })[0].route).toBe('/')
+    expect(isRestorableRoute('/?x=1')).toBe(false)
     expect(isRestorableRoute('/login')).toBe(false)
     expect(isRestorableRoute('/product?repo=x')).toBe(false)
   })

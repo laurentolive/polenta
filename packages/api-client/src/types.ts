@@ -473,6 +473,8 @@ export interface ApiClient {
     /** GH342 — pull automatique une fois par projet : cette fenêtre le fait-elle (desktop : la plus
      *  ancienne ouverte sur le projet ; web : toujours) ? */
     isAutoPullOwner(): Promise<boolean>
+    /** GH343 — une autre fenêtre affiche-t-elle ce projet (desktop) ? Web : toujours faux. */
+    projectShownElsewhere(projectId: string): Promise<boolean>
   }
   /** GH26 — mise à jour automatique ; les changements d'état arrivent par l'événement
    *  'update:state-changed' (window.polenta.on). */
@@ -578,7 +580,8 @@ export interface ApiClient {
     listRecents(): Promise<ProjectRecent[]>
     markRecent(workspaceDir: string): Promise<void>
     getLastOpened(): Promise<ProjectRecent | null>
-    clearLastOpened(): Promise<void>
+    /** GH343 — avec `workspaceDir` : n'efface le dernier projet ouvert que s'il désigne ce projet. */
+    clearLastOpened(workspaceDir?: string): Promise<void>
     resolve(workspaceDir: string): Promise<ProjectInfo>
     openProject(dir: string): Promise<WorkspaceOpenResult>
     createNew(containerDir: string, name: string): Promise<WorkspaceOpenResult>
@@ -620,9 +623,10 @@ export interface ApiClient {
     /** GH45 — connexion identifiant + mot de passe (+ 2FA) : la forge crée un jeton, seul conservé. */
     loginWithPassword(serverUrl: string, login: string, password: string, otp?: string): Promise<PasswordLoginResult>
     /** GH45 — compte courant, sans réseau ; null si aucun compte connecté. */
-    currentAccount(): Promise<ForgeAccount | null>
-    /** GH45 — desktop : déconnexion du compte courant (jetons locaux supprimés). */
-    logout(): Promise<void>
+    currentAccount(remoteUrl?: string): Promise<ForgeAccount | null>
+    /** GH45 — desktop : déconnexion du compte courant (jetons locaux supprimés) ; GH343 : ou du
+     *  compte désigné par sa clé `<hôte>:<login>`. */
+    logout(key?: string): Promise<void>
     /** GH45 — desktop : ouvre la page de changement de mot de passe annoncée par la forge à la dernière connexion. */
     openPasswordChange(): Promise<void>
   }

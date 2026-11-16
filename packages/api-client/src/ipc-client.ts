@@ -58,6 +58,7 @@ export function createIpcClient(
       setWindowState: (patch) => invoke('app:window-state', patch),
       closeWindow: (action) => invoke('app:close-window', action),
       isAutoPullOwner: () => invoke('app:auto-pull-owner') as Promise<boolean>,
+      projectShownElsewhere: (projectId) => invoke('app:project-shown-elsewhere', projectId) as Promise<boolean>,
     },
     update: {
       getState: () => invoke('update:get-state'),
@@ -124,7 +125,7 @@ export function createIpcClient(
       listRecents: () => invoke('workspace:list-recents'),
       markRecent: (workspaceDir) => invoke('workspace:mark-recent', workspaceDir),
       getLastOpened: () => invoke('workspace:get-last-opened'),
-      clearLastOpened: () => invoke('workspace:clear-last-opened'),
+      clearLastOpened: (workspaceDir) => invoke('workspace:clear-last-opened', workspaceDir),
       resolve: (workspaceDir) => invoke('workspace:resolve', workspaceDir),
       openProject: (dir) => invoke('workspace:open-project', dir),
       createNew: (containerDir, name) => invoke('workspace:create-new', containerDir, name),
@@ -162,8 +163,8 @@ export function createIpcClient(
       pollDeviceFlow: (r, d) => invoke('auth:device-flow-poll', r, d),
       detectForge: (serverUrl) => invoke('auth:detect-forge', serverUrl),
       loginWithPassword: (serverUrl, login, password, otp) => invoke('auth:login-password', serverUrl, login, password, otp),
-      currentAccount: () => invoke('auth:current-account'),
-      logout: () => invoke('auth:logout'),
+      currentAccount: (remoteUrl) => invoke('auth:current-account', remoteUrl),
+      logout: (key) => invoke('auth:logout', key),
       openPasswordChange: () => invoke('auth:open-password-change'),
     },
     conformity: {

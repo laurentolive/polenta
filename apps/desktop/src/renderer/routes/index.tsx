@@ -6,6 +6,7 @@ import { Download, FolderOpen, Plus, Sparkles, type LucideIcon } from 'lucide-re
 import { api } from '../api'
 import { encodeProjectId } from '../lib/projectId'
 import { consumeProjectJustClosed } from '../lib/projectCloseSignal'
+import { consumeStartupJump } from '../lib/startupJump'
 import { DEMO_PROJECT_URL } from '../lib/demoProject'
 import { TextPromptModal } from '../components/home/TextPromptModal'
 import { RepoPickerModal } from '../components/home/RepoPickerModal'
@@ -113,7 +114,11 @@ function HomePage() {
       // T105 — a deliberate close just ran `clearLastOpened()` a moment ago; trust that over a
       // fresh disk read, which has been observed (under `pnpm dev`, repeated/rapid clicks) to
       // still see the pre-clear value and redirect straight back into the closed project.
-      if (consumeProjectJustClosed()) {
+      // GH343 — and the jump to the last project only happens at launch, in the window allowed to
+      // (`startupJump`): a window coming back here during the session stays on the home page.
+      const justClosed = consumeProjectJustClosed()
+      const jump = consumeStartupJump()
+      if (justClosed || !jump) {
         setReady(true)
         return
       }

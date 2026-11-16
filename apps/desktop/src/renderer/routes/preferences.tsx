@@ -6,6 +6,7 @@ import { api } from '../api'
 import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useVersioning } from '../contexts/VersioningContext'
 import { decodeProjectId } from '../lib/projectId'
+import { markRecentOnce } from '../lib/recentProject'
 import { CancelConfirmModal } from '../components/schema/objectTypeEditor'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { HistoryBackfillPanel } from '../components/history/HistoryBackfillPanel'
@@ -66,7 +67,7 @@ function PreferencesPage() {
   const repoPath = repoPathParam || contextRepoPath
 
   useEffect(() => {
-    if (workspaceDir) api.workspace.markRecent(workspaceDir)
+    if (workspaceDir) markRecentOnce(workspaceDir)   // GH343 — une fois par fenêtre
   }, [workspaceDir])
 
   const { data: schema, isLoading } = useProjectSchema(repoPath)

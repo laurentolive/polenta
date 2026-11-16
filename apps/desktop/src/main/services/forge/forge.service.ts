@@ -11,7 +11,7 @@ import type {
 import type { AuthService } from '../auth.service'
 import type { SyncService } from '../sync.service'
 import type { WorkspaceService } from '../workspace.service'
-import { AdminRequiredError, assertRepoName, LastAdminError, RepoNameTakenError, type ForgeProvider } from './forge-provider'
+import { AdminRequiredError, assertRepoName, LastAdminError, RepoNameTakenError, UnknownAccountError, type ForgeProvider } from './forge-provider'
 import { forgejoProvider } from './forgejo.provider'
 import { githubProvider } from './github.provider'
 import { ForgeHttpError } from './forge-http'
@@ -94,16 +94,47 @@ export class ForgeService {
     await this.guard(account, () => provider.updateRepo!(account.baseUrl, token, owner, repo, patch))
   }
 
+  /**
+   * GH354 — membres vérifiés avant toute écriture : chaque compte existe sur la forge, chaque équipe
+   * dans l'organisation ; ni équipe ni propriétaire comme collaborateur sur un repo personnel. Lève
+   * une erreur qui les nomme tous. Équipes illisibles (jeton sans `read:org`) : non vérifiées.
+   */
+  async checkMembers(accountKey: string, owner: string, ownerKind: 'user' | 'org' | undefined, members: RepoMemberGrant[]): Promise<void> {
+    if (members.length === 0) return
+    const { account, token, provider } = await this.require(accountKey)
+    const personal = (ownerKind ?? (owner.toLowerCase() === account.login.toLowerCase() ? 'user' : 'org')) === 'user'
+    const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+    const problems = await this.guard(account, async () => {
+      const users = members.filter(m => m.kind === 'user')
+      const teams = members.filter(m => m.kind === 'team')
+      const known = !personal && teams.length > 0
+        ? await provider.listOrgTeams!(account.baseUrl, token, owner).catch(() => null)
+        : null
+      const out: string[] = []
+      for (const m of users) {
+        if (personal && same(m.name, owner)) out.push(`${m.name} : propriétaire du repo, il y a déjà accès.`)
+        else if (!(await provider.userExists!(account.baseUrl, token, m.name))) out.push(`${m.name} : ${new UnknownAccountError(m.name).message}`)
+      }
+      for (const m of teams) {
+        if (personal) out.push(`${m.name} : pas d'équipe sur un repo personnel.`)
+        else if (known && !known.some(t => same(t.name, m.name))) out.push(`${m.name} : aucune équipe de ce nom dans l'organisation ${owner}.`)
+      }
+      return out
+    }, { revokeOnForbidden: false })
+    if (problems.length) throw new Error(`Membres à corriger (rien n'a été créé) :\n${problems.join('\n')}`)
+  }
+
   /** GH107 — accès d'un compte ou d'une équipe ; `'invited'` : invitation à accepter (GitHub). */
   async grantMember(accountKey: string, owner: string, repo: string, grant: RepoMemberGrant): Promise<'added' | 'invited'> {
     const { account, token, provider } = await this.require(accountKey)
+    // GH354 — un refus (403) sur un membre ne dit rien du jeton : le compte n'est pas marqué révoqué.
     return this.guard(account, async () => {
       if (grant.kind === 'team') {
         await provider.setRepoTeam!(account.baseUrl, token, owner, repo, grant.name, grant.level)
         return 'added'
       }
       return provider.setCollaborator!(account.baseUrl, token, owner, repo, grant.name, grant.level)
-    })
+    }, { revokeOnForbidden: false })
   }
 
   /** Droits du compte sur le repo `origin` de `repoPath` ; `null` dans les cas sans objet. */
@@ -302,12 +333,12 @@ export class ForgeService {
    * hôte marqué « accès révoqué » et erreur qui déclenche la bannière de reconnexion ; réseau →
    * message lisible ; autre réponse → statut et message de la forge, sans URL technique.
    */
-  private async guard<T>(account: ForgeAccount, op: () => Promise<T>): Promise<T> {
+  private async guard<T>(account: ForgeAccount, op: () => Promise<T>, { revokeOnForbidden = true } = {}): Promise<T> {
     try {
       return await op()
     } catch (err) {
       if (err instanceof ForgeHttpError) {
-        if (err.status === 401 || (err.status === 403 && /prohibited|not allowed/i.test(err.forgeMessage))) {
+        if (err.status === 401 || (revokeOnForbidden && err.status === 403 && /prohibited|not allowed/i.test(err.forgeMessage))) {
           this.auth.markAccessRevoked(account.host)
           throw revokedError(account.host, account.baseUrl)
         }

@@ -269,7 +269,15 @@ Tools disponibles :
   des invariants (nom déjà pris, \`prefix\` unique sur tout le projet, nœud
   \`readonly: true\`) avant toute écriture. \`add_object_type\` crée aussi le type version et
   le type validation (un de chaque, sur \`root\`, statuts et décisions par défaut de l'application
-  si absents).
+  si absents). \`add_field\` avec \`list: "entryFields"\` déclare les
+  champs d'entrée du type validation.
+- \`update_object_type\` (libellé, couleur, \`displayIdField\`, \`trackStatusHistory\`),
+  \`update_status\` / \`remove_status\` / \`reorder_statuses\` (statuts d'un type existant),
+  \`add_decision\` / \`update_decision\` / \`remove_decision\` (décisions du type validation) —
+  modification d'un type existant. Renommer un statut (\`update_status\` avec \`to\`) ou le retirer
+  avec \`replaceWith\` migre les objets du type (statut, historique, copies de campagne) ; essayer
+  d'abord avec \`dryRun: true\`. Une décision portée par une entrée de validation ne se renomme pas
+  et ne se retire pas.
 
 Comme le reste de ${name}, le serveur MCP n'effectue **jamais de commit/push
 automatique** — les fichiers créés/modifiés restent en attente, l'utilisateur les

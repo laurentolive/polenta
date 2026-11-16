@@ -232,6 +232,9 @@ export interface BranchInfo {
   name: string
   isCurrent: boolean
   type: 'int' | 'dev' | 'other'
+  /** GH367 — present only as `origin/<name>` (pushed by someone else, never checked out here).
+   *  Checking it out goes through `origin/<name>`, which creates the local tracking branch (GH138). */
+  remoteOnly?: boolean
 }
 
 export interface BaselineComponentRecord {

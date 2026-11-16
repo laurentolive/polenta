@@ -490,6 +490,8 @@
       "refreshConflict_one": "Conflict with the remote branch ({{count}} file): nothing was changed.",
       "refreshConflict_other": "Conflict with the remote branch ({{count}} files): nothing was changed.",
       "integrationTag": "integration",
+      "remoteOnlyTag": "server",
+      "remoteOnlyHint": "Only on the server: picking it creates the local branch tracking it",
       "terminal": "Terminal (Ctrl+`)",
       "conformity": {
         "title": "Polenta needs to update this repository:",

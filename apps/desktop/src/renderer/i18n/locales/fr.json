@@ -490,6 +490,8 @@
       "refreshConflict_one": "Conflit avec la branche distante ({{count}} fichier) : rien n'a été modifié.",
       "refreshConflict_other": "Conflit avec la branche distante ({{count}} fichiers) : rien n'a été modifié.",
       "integrationTag": "intégration",
+      "remoteOnlyTag": "serveur",
+      "remoteOnlyHint": "Présente seulement sur le serveur : la choisir crée la branche locale qui la suit",
       "terminal": "Terminal (Ctrl+ù)",
       "conformity": {
         "title": "Polenta doit mettre à jour ce dépôt :",

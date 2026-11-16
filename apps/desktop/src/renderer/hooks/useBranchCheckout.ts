@@ -80,15 +80,17 @@ export function useBranchCheckout(
   // track (two separate mutations left a stale error from one visible after the other succeeded,
   // since TanStack Query only resets a mutation's error on its own next call — T82).
   const checkoutMutation = useMutation({
+    // Resolves to the ref actually checked out: `origin/int-B` (branch only on the server, GH367)
+    // checks out the local `int-B` — the ref parents must pin, never the remote-tracking label.
     mutationFn: async (target: { value: string; isCommit: boolean }) => {
-      if (target.isCommit) await api.sync.checkoutCommit(repoPath, target.value)
-      else await api.sync.checkoutBranch(repoPath, target.value)
+      if (target.isCommit) { await api.sync.checkoutCommit(repoPath, target.value); return target.value }
+      return (await api.sync.checkoutBranch(repoPath, target.value)).branch
     },
-    onSuccess: async (_data, target) => {
+    onSuccess: async (checkedOut) => {
       invalidate()
       invalidateIntegration(qc, repoPath)
       // Awaited so `isPending` stays true for the whole cascade, not just the checkout itself.
-      const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, target.value)
+      const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, checkedOut)
       // The parents' manifests just changed: re-read the tree, whose displayed pins come from them.
       if (outcome.updated.length > 0) qc.invalidateQueries({ queryKey: ['workspace-open', workspaceDir] })
       setPinWarning(outcome)

@@ -516,18 +516,30 @@ avec l'objet changeset (`specs/MILESTONE-D.md`). Reste : le contenu d'un éléme
 d'abord le statut (réouverture, `version + 1`), puis le contenu. `get_history` : `kind` parmi
 `requirement`, `test`, `campaign`.
 
-### 4.8 Versions (GH201, `tools/versions.tools.ts`)
+### 4.8 Versions (GH201, GH245, GH362 — `tools/versions.tools.ts`)
 
-Lecture seule (SPEC-REQ §11) : `list_versions` (par composant : versions du plus récent au plus
+Lecture (SPEC-REQ §11) : `list_versions` (par composant : versions du plus récent au plus
 ancien, état, `basedOn`, `freeze`, nombre d'éléments au backlog ; filtre `component`),
 `get_version` (`id`, `component` : champs, composants retenus, changements avec `base` et `toSha`),
 `get_version_backlog` (`component`). `component` = nom du repo dans le workspace, absent = repo
-ouvert. Le MCP ne crée pas de version, n'inclut pas de changement et ne passe pas une version
-released. Listés dans `AGENTS.md`.
+ouvert (résolution commune : `tools/component-repo.ts`). Listés dans `AGENTS.md`.
 
 GH245 : `get_version_impact { id, component? }` (analyse figée ou live : racines, lignes avec statut,
 `reached`, `sources` ; arbres omis) et `get_version_tests { id, component? }` (tests à exécuter,
-instances, sources, `alreadyIn`, `uncovered`). Pas d'écriture des statuts d'impact par le MCP.
+instances, sources, `alreadyIn`, `uncovered`).
+
+GH362 — écriture, par les méthodes de `VersionsService` de l'IPC (mêmes contrôles et erreurs
+`CODE: détail`, renvoyées en `isError` par le SDK) :
+`create_version { title, basedOn?, components?, fields? }`, `copy_version { id }`,
+`update_version { id, title?, basedOn?, components?, fields?, status? }` (statut released →
+`RELEASE_REQUIRED` ; released seulement abandonnable, `VERSION_LOCKED`), `include_in_version` /
+`remove_from_version { id, elementIds }`, `set_version_impact { id, elementId, status, comment? }`
+(version en cours), `get_version_release_preview { id, tag? }` et `release_version { id, tag? }`
+(tag suggéré par défaut ; gel, commit du seul fichier, tag annoté — irréversible, refusé sur
+`DIRTY_CHANGES`, `TAG_EXISTS`, composant non released…). Tous acceptent `component`. `update_version` fusionne
+`fields` et remplace `components` ; `include_in_version` renvoie `notFound` (IDs introuvables, ignorés). Chaque
+écriture relit le schéma et les index du repo (`freshComponentRepoResolver` : pas de watcher dans ce process).
+Auteur du commit de release : §7.
 
 ### 4.9 Issues (GH244, `tools/issues.tools.ts`)
 
@@ -539,7 +551,13 @@ passent par `create_links`, type `issue-impact` (`NOT_OWN_ELEMENT` hors du compo
 
 `list_validations`, `get_validation` (lignes, décisions restantes, motifs de refus), `propose_validation_decision`.
 Une proposition (`proposed`, `proposedBy` = `--user`) n'écrit que sur une exigence sans décision confirmée d'une
-validation en cours, et bloque la signature. Le MCP ne confirme, ne rejette et ne signe pas (SPEC-REQ §13).
+validation en cours, et bloque la signature.
+
+GH362 : `create_validation { versionId, title, fields? }`, `update_validation { id, title?, fields? }`,
+`decide_validation { id, requirementId, decision, comment?, fields? }` (décision confirmée directement,
+`decidedBy` = `--user`), `confirm_validation_decision` / `reject_validation_decision { id, requirementId }`,
+`cancel_validation { id }`. **Le MCP ne signe pas** : aucun outil n'appelle `sign` et aucun ne prend de `status`
+(le seul changement de statut est l'annulation) ; la signature reste un geste humain (SPEC-REQ §13).
 
 ### 4.11 Import de résultats JUnit (GH129, `tools/results-import.tools.ts`)
 
@@ -706,6 +724,11 @@ Deux catégories (cf. §4) :
 - **Packaging non vérifié de bout en bout** (§2.4) : bundle + mécanisme
   `ELECTRON_RUN_AS_NODE` vérifiés directement ; un build `electron-builder` complet
   (installeur réel) ne l'a pas été dans cet environnement.
+- **Passage released par le MCP (GH362)** : seul commit écrit par le serveur. Auteur du commit et du tag :
+  config git du repo, sinon `--user` (`McpAuthService`), sinon l'auteur par défaut de la marque — jamais le
+  compte de forge de l'app (`auth.json` hors de portée). Les files d'attente des services sont propres à
+  chaque process : un commit de l'app au même instant qu'un `release_version` peut se croiser avec lui
+  (branche, index, `polenta-pending-tags`) — même classe de course inter-process que ci-dessus.
 
 ---
 

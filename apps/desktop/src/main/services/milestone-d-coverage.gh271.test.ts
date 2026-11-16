@@ -118,11 +118,18 @@ describe('outils MCP (GH201 L16, GH245 critère 8)', () => {
     expect(toRun.uncovered).toEqual([])
   })
 
-  it('le MCP ne passe pas une version released et ne signe pas : aucun outil, et une proposition bloque la signature', async () => {
+  it('le MCP ne signe pas : aucun outil, et une proposition bloque la signature', async () => {
+    // GH362 : écriture des versions (release comprise) et des validations, sans signature.
     const names = Object.keys(tools)
-    expect(names.filter(n => /version/.test(n)).sort()).toEqual(['get_version', 'get_version_backlog', 'get_version_impact', 'get_version_tests', 'list_versions'])
-    expect(names.filter(n => /validation/.test(n)).sort()).toEqual(['get_validation', 'list_validations', 'propose_validation_decision'])
-    expect(names.filter(n => /release|sign|confirm/.test(n))).toEqual([])
+    expect(names.filter(n => /version/.test(n)).sort()).toEqual([
+      'copy_version', 'create_version', 'get_version', 'get_version_backlog', 'get_version_impact', 'get_version_release_preview',
+      'get_version_tests', 'include_in_version', 'list_versions', 'release_version', 'remove_from_version', 'set_version_impact', 'update_version',
+    ])
+    expect(names.filter(n => /validation/.test(n)).sort()).toEqual([
+      'cancel_validation', 'confirm_validation_decision', 'create_validation', 'decide_validation', 'get_validation', 'list_validations',
+      'propose_validation_decision', 'reject_validation_decision', 'update_validation',
+    ])
+    expect(names.filter(n => /sign/.test(n))).toEqual([])
 
     const reqId = await newReq()
     const v = await released('1.0', [reqId])

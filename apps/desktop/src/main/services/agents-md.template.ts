@@ -33,8 +33,10 @@ import type { BrandInfo } from '../../shared/brand-types'
  * GH203 (v9) : `.polenta/views/` maintenu par l'application.
  *
  * GH129 (v11) : outil `import_test_results` (import JUnit, champ `automationId`).
+ *
+ * GH362 (v12) : écriture des versions (release comprise) et des validations (sans signature).
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 11
+export const AGENTS_MD_TEMPLATE_VERSION = 12
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -186,10 +188,16 @@ Tools disponibles :
   par type/statut/texte) pour éviter les doublons avant un import.
 - \`list_issues\` / \`get_issue\` / \`create_issue\` / \`update_issue\` — issues (bug, non-conformité…) ; exigences impactées par liens \`issue-impact\` (\`create_links\`), de son composant seulement.
 - \`list_validations\` / \`get_validation\` — validations d'une version : décision par exigence, restes à décider.
-- \`propose_validation_decision\` — propose une décision, qu'un humain confirme ou rejette. Le MCP ne signe jamais.
-- \`list_versions\` / \`get_version\` / \`get_version_backlog\` — versions des composants et du
-  produit (lecture seule) : changements inclus, composants, backlog des changements jamais livrés.
-  Une version se crée, s'enrichit et passe released dans l'application, pas par le MCP.
+- \`create_validation\` / \`update_validation\` / \`cancel_validation\` — crée, modifie, annule une validation.
+- \`decide_validation\` (décision directe) / \`propose_validation_decision\` (à confirmer) /
+  \`confirm_validation_decision\` / \`reject_validation_decision\`. Le MCP ne signe jamais : la
+  signature se fait dans l'application.
+- \`list_versions\` / \`get_version\` / \`get_version_backlog\` / \`get_version_impact\` / \`get_version_tests\` —
+  versions des composants et du produit : changements inclus, composants, backlog, impact, tests à exécuter.
+- \`create_version\` / \`copy_version\` / \`update_version\` (champs, statut) / \`include_in_version\` /
+  \`remove_from_version\` / \`set_version_impact\` — crée et alimente une version en cours.
+- \`get_version_release_preview\` puis \`release_version\` — passage released (**irréversible** : gel et
+  tag git) ; les changements inclus doivent être commités.
 - \`get_history\` — historique des champs suivis d'un objet (statut par défaut), avec les
   entrées déduites (\`implicit: true\`) quand la valeur courante diffère de la dernière entrée.
 - \`bulk_import_requirements\` / \`bulk_import_tests\` / \`bulk_import_campaigns\` — import

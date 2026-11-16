@@ -1,5 +1,5 @@
 import type {
-  AdoptRepoRequest, ReadmeState, ReadmeSyncOutcome, RepoAccessLevel, RepoSettings, RepoVisibility, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  AdoptRepoRequest, ReadmeState, ReadmeSyncOutcome, RepoAccessLevel, RepoSettings, RepoVisibility, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, ForgeMemberSuggestion, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, WidgetParamValues, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
@@ -232,6 +232,9 @@ export interface BranchInfo {
   name: string
   isCurrent: boolean
   type: 'int' | 'dev' | 'other'
+  /** GH367 — present only as `origin/<name>` (pushed by someone else, never checked out here).
+   *  Checking it out goes through `origin/<name>`, which creates the local tracking branch (GH138). */
+  remoteOnly?: boolean
 }
 
 export interface BaselineComponentRecord {
@@ -548,6 +551,8 @@ export interface ApiClient {
     nameAvailable(accountKey: string, owner: string, name: string): Promise<boolean>
     /** GH107 — équipes d'une organisation (widget Membres). */
     orgTeams(accountKey: string, org: string): Promise<ForgeTeam[]>
+    /** GH368 — membres des organisations du compte (complétion du login) ; `[]` en cas d'échec. */
+    memberSuggestions(accountKey: string): Promise<ForgeMemberSuggestion[]>
     /** GH107 — crée le repo : distant, local sur `int-x`, push, branche par défaut, membres, ouverture. */
     createRepo(req: CreateRepoRequest): Promise<CreateRepoResult>
     /** GH107 — ce que contient un repo existant, sans rien écrire. */

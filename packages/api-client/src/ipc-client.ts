@@ -105,6 +105,7 @@ export function createIpcClient(
       owners: (accountKey) => invoke('forge:owners', accountKey),
       nameAvailable: (accountKey, owner, name) => invoke('forge:name-available', accountKey, owner, name),
       orgTeams: (accountKey, org) => invoke('forge:org-teams', accountKey, org),
+      memberSuggestions: (accountKey) => invoke('forge:member-suggestions', accountKey),
       createRepo: (req) => invoke('forge:create-repo', req),
       inspectRepo: (accountKey, owner, name) => invoke('forge:inspect-repo', accountKey, owner, name),
       adoptRepo: (req) => invoke('forge:adopt-repo', req),

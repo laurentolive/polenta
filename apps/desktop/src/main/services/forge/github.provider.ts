@@ -70,20 +70,17 @@ export const githubProvider: ForgeProvider = {
     return members.map(m => ({ login: m.login, name: m.login })).sort((a, b) => a.login.localeCompare(b.login))
   },
 
+  async listUserOrgs(baseUrl, token) {
+    const scopeMissing = await githubProvider.teamScopeMissing!(baseUrl, token)
+    return (await userOrgs(baseUrl, token, scopeMissing)).map(o => o.login)
+  },
+
   async listOwners(baseUrl, token, login) {
     // `GET /user/memberships/orgs` donne le rôle ; il exige `read:org` (mesuré : GH107-sprint1 §2).
     const scopeMissing = await githubProvider.teamScopeMissing!(baseUrl, token)
     // Repo personnel : un collaborateur a toujours l'écriture, GitHub refuse un autre niveau (GH356).
     const user: ForgeOwner = { name: login, label: '', kind: 'user', canCreate: true, fixedCollaboratorLevel: 'write' }
-    let orgs: Array<{ login: string; role: 'admin' | 'member' }>
-    if (scopeMissing) {
-      const pub = await paginate<{ login: string }>(baseUrl, '/user/orgs', token)
-      orgs = pub.map(o => ({ login: o.login, role: 'member' }))
-    } else {
-      const memberships = await paginate<{ role: 'admin' | 'member'; organization: { login: string } }>(
-        baseUrl, '/user/memberships/orgs?state=active', token)
-      orgs = memberships.map(m => ({ login: m.organization.login, role: m.role }))
-    }
+    const orgs = await userOrgs(baseUrl, token, scopeMissing)
     const owners = await Promise.all(orgs.map(async (o): Promise<ForgeOwner | null> => {
       if (o.role === 'admin') return { name: o.login, label: '', kind: 'org', canCreate: true }
       // `members_can_create_*` n'est garanti que pour un admin : sinon proposée, refus expliqué.
@@ -332,6 +329,20 @@ function toForgeRepo(r: ApiRepo): ForgeRepo {
     fullName: r.full_name, owner: r.owner?.login ?? r.full_name.split('/')[0], name: r.name, description: r.description?.trim() ?? '',
     cloneUrl: r.clone_url, readOnly: r.permissions ? !r.permissions.push : false, private: r.private,
   }
+}
+
+/**
+ * Organisations du compte, avec son rôle. `GET /user/memberships/orgs` donne le rôle mais exige
+ * `read:org` ; sans ce scope, `GET /user/orgs` (appartenances publiques seulement, rôle inconnu).
+ */
+async function userOrgs(baseUrl: string, token: string, scopeMissing: boolean): Promise<Array<{ login: string; role: 'admin' | 'member' }>> {
+  if (scopeMissing) {
+    const pub = await paginate<{ login: string }>(baseUrl, '/user/orgs', token)
+    return pub.map(o => ({ login: o.login, role: 'member' }))
+  }
+  const memberships = await paginate<{ role: 'admin' | 'member'; organization: { login: string } }>(
+    baseUrl, '/user/memberships/orgs?state=active', token)
+  return memberships.map(m => ({ login: m.organization.login, role: m.role }))
 }
 
 /** Toutes les pages (100 par page, maximum de GitHub), bornées à 2 000 éléments. */

@@ -1,10 +1,21 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ImplementsDeclaration, RoleDefinition } from '@polenta/types'
+import type { ImplementsDeclaration, ObjectCategory, RoleDefinition } from '@polenta/types'
 import { RolesExposedFields, ImplementedInterfacesFields } from './RolesImplementsFields'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { CreateComponentRepo } from '../repo/CreateComponentRepo'
 import { backdropDismiss } from '../../lib/backdropDismiss'
+import { COMPONENT_DEFAULT_CATEGORIES, REPO_ROOT_ONLY_CATEGORIES } from './objectTypeEditor'
+
+/** GH365 — libellé (pluriel) de chaque case « Types d'objets créés par défaut ». */
+const INCLUDE_LABEL_KEY: Record<ObjectCategory, string> = {
+  requirement: 'schema.addDependency.includeRequirementsLabel',
+  test: 'schema.addDependency.includeTestsLabel',
+  campaign: 'schema.addDependency.includeCampaignsLabel',
+  issue: 'schema.addDependency.includeIssuesLabel',
+  version: 'schema.addDependency.includeVersionsLabel',
+  validation: 'schema.addDependency.includeValidationsLabel',
+}
 
 export interface AddDependencyValues {
   url: string
@@ -28,13 +39,11 @@ export interface AddDependencyValues {
    *  lives as a plain SystemNode in the current repo's own schema.yaml instead of a separate
    *  git repo. `url`/`branch` are meaningless in that case and left blank. */
   isLocal: boolean
-  /** Which default ObjectTypeDefinition categories to seed the new component with (checked
-   *  by default) — applies whether it's added as a local component or a remote git dependency.
-   *  Only meaningful when adding a component (kind === 'component', add mode); ignored (and not
-   *  rendered) otherwise. */
-  includeRequirements: boolean
-  includeTests: boolean
-  includeCampaigns: boolean
+  /** Default ObjectTypeDefinition categories to seed the new component with (all checked by
+   *  default, GH365), in creation order — without version/validation for a local component (one
+   *  per repo, on `root`). Only meaningful when adding a component (kind === 'component', add
+   *  mode); empty otherwise. */
+  defaultCategories: ObjectCategory[]
 }
 
 interface Props {
@@ -73,9 +82,11 @@ export function AddDependencyModal({
   const [label, setLabel] = useState(initialValues?.label ?? '')
   const [description, setDescription] = useState(initialValues?.description ?? '')
   const [isLocal, setIsLocal] = useState(false)
-  const [includeRequirements, setIncludeRequirements] = useState(initialValues?.includeRequirements ?? true)
-  const [includeTests, setIncludeTests] = useState(initialValues?.includeTests ?? true)
-  const [includeCampaigns, setIncludeCampaigns] = useState(initialValues?.includeCampaigns ?? true)
+  // GH365 — cases cochées ; celles réservées à `root` gardent leur état quand « Composant local »
+  // les masque, pour le cas où la case est décochée ensuite.
+  const [checkedCategories, setCheckedCategories] = useState<ReadonlySet<ObjectCategory>>(
+    () => new Set(initialValues?.defaultCategories ?? COMPONENT_DEFAULT_CATEGORIES),
+  )
   const [formError, setFormError] = useState<string | null>(null)
 
   // Only offered when creating a component (not editing — an interface inherently needs a
@@ -84,6 +95,15 @@ export function AddDependencyModal({
   // caller only ever varies which node the result nests under (parentName/localParent), never
   // whether the choice itself is offered.
   const canBeLocal = !isEdit && kind === 'component'
+
+  // GH365 — version / validation : un seul type par repo, sur `root` — pas pour un composant local.
+  const offeredCategories = COMPONENT_DEFAULT_CATEGORIES.filter(c => !(isLocal && REPO_ROOT_ONLY_CATEGORIES.includes(c)))
+  const toggleCategory = (category: ObjectCategory, checked: boolean) => setCheckedCategories(prev => {
+    const next = new Set(prev)
+    if (checked) next.add(category)
+    else next.delete(category)
+    return next
+  })
 
   // Rôles hérités hors catalogue (T110) — présents côté parent mais ne correspondant à aucune
   // entrée du catalogue en cours d'édition (legacy texte libre pré-T110, ou catalogue vidé
@@ -112,7 +132,7 @@ export function AddDependencyModal({
     onSubmit({
       url: url.trim(), name: name.trim(), branch: branch.trim(), catalogRoles, parentRoles, implementsList,
       label: label.trim(), description: description.trim(), isLocal,
-      includeRequirements, includeTests, includeCampaigns,
+      defaultCategories: canBeLocal ? offeredCategories.filter(c => checkedCategories.has(c)) : [],
     })
   }
 
@@ -187,18 +207,12 @@ export function AddDependencyModal({
             <div>
               <p className="text-xs text-ink-2 mb-1">{t('schema.addDependency.defaultObjectTypesLabel')}</p>
               <div className="flex flex-col gap-1">
-                <label className="flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
-                  <input type="checkbox" checked={includeRequirements} onChange={e => setIncludeRequirements(e.target.checked)} />
-                  {t('schema.addDependency.includeRequirementsLabel')}
-                </label>
-                <label className="flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
-                  <input type="checkbox" checked={includeTests} onChange={e => setIncludeTests(e.target.checked)} />
-                  {t('schema.addDependency.includeTestsLabel')}
-                </label>
-                <label className="flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
-                  <input type="checkbox" checked={includeCampaigns} onChange={e => setIncludeCampaigns(e.target.checked)} />
-                  {t('schema.addDependency.includeCampaignsLabel')}
-                </label>
+                {offeredCategories.map(category => (
+                  <label key={category} className="flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
+                    <input type="checkbox" checked={checkedCategories.has(category)} onChange={e => toggleCategory(category, e.target.checked)} />
+                    {t(INCLUDE_LABEL_KEY[category])}
+                  </label>
+                ))}
               </div>
             </div>
           )}

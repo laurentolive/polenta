@@ -7,6 +7,7 @@ import type { ForgeCollaborator, ForgeRepoTeam, RepoAccessLevel, RepoSettings, R
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { backdropDismiss } from '../../lib/backdropDismiss'
+import { MemberLoginInput } from './MemberLoginInput'
 
 const LEVELS: RepoAccessLevel[] = ['read', 'write', 'admin']
 type Loaded = Extract<RepoSettings, { available: true }>
@@ -224,12 +225,19 @@ function MembersSection({ repoPath, settings, queryKey }: SectionProps) {
   }
   const rowError = (key: string) => failure?.key === key && <p className="text-xs text-status-danger whitespace-pre-line pl-1">{failure.message}</p>
 
-  const add = () => act('add', async () => {
-    const name = login.trim()
+  const add = (who: string) => act('add', async () => {
+    const name = who.trim()
     const outcome = await api.forge.setCollaborator(repoPath, name, fixedLevel ?? level)
-    setLogin('')
     if (outcome === 'invited') setNotice(t('repoSettings.invited', { login: name }))
   })
+  // GH368 — champ vidé dès l'ajout (spec §1.5) ; pendant une action en cours, le login choisi reste
+  // dans le champ, à valider ensuite, au lieu d'être perdu.
+  const submitLogin = (who: string) => {
+    if (!who.trim()) return
+    if (busy) { setLogin(who); return }
+    setLogin('')
+    void add(who)
+  }
   const remove = (who: string) => act(`user:${who}`, () => api.forge.removeCollaborator(repoPath, who))
   const self = settings.collaborators.find(c => c.login.toLowerCase() === settings.login.toLowerCase())
   const freeTeams = settings.orgTeams.filter(o => !settings.teams.some(tm => tm.name === o.name))
@@ -296,12 +304,12 @@ function MembersSection({ repoPath, settings, queryKey }: SectionProps) {
         {settings.collaborators.length === 0 && !settings.membersRestricted && <p className="text-xs text-ink-3">{t('repoSettings.noCollaborator')}</p>}
         <ul className="space-y-1" aria-label={t('repoSettings.collaborators')}>{settings.collaborators.map(collaboratorRow)}</ul>
         {isAdmin && (
-          <form className="flex items-center gap-2" onSubmit={e => { e.preventDefault(); if (login.trim()) void add() }}>
-            <input value={login} onChange={e => setLogin(e.target.value)} list="repo-settings-members" placeholder={t('repoWizard.members.loginPlaceholder')}
-              aria-label={t('repoWizard.members.login')} className="input-field flex-1 text-sm py-1" />
-            <datalist id="repo-settings-members">
-              {settings.orgMembers.map(m => <option key={m.login} value={m.login}>{m.name}</option>)}
-            </datalist>
+          <form className="flex items-center gap-2" onSubmit={e => { e.preventDefault(); submitLogin(login) }}>
+            <MemberLoginInput accountKey={settings.accountKey} ownerOrg={settings.isOrg ? settings.fullName.split('/')[0] : undefined}
+              exclude={[...settings.collaborators.map(c => c.login), ...settings.invitations.map(i => i.login)]}
+              value={login} onChange={setLogin} onSubmit={submitLogin}
+              placeholder={t('repoWizard.members.loginPlaceholder')} aria-label={t('repoWizard.members.login')}
+              className="input-field w-full text-sm py-1" />
             {!fixedLevel && <LevelSelect value={level} label={t('repoWizard.members.level.label')} onChange={setLevel} />}
             <button type="submit" className="btn-secondary btn-sm" disabled={busy || !login.trim()}>{t('repoWizard.members.add')}</button>
           </form>

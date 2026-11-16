@@ -112,7 +112,9 @@ test('description : enregistrée sur la forge, README mis à jour après confirm
 
 test('membres : ajouter (autocomplétion), changer le niveau, retirer ; dernier admin protégé ; équipe attribuée puis retirée', async () => {
   const m = modal()
-  await expect(m.locator('#repo-settings-members option')).toHaveCount(2)
+  // GH368 — suggestions : membres des organisations du compte, l'organisation propriétaire d'abord.
+  await m.getByLabel(/Compte à ajouter|Account to add/).fill('a')
+  await expect(m.getByRole('listbox', { name: 'Suggestions' }).getByRole('option')).toHaveText([/^ann/, /^carol/])
   await m.getByLabel(/Compte à ajouter|Account to add/).fill('ann')
   await m.getByRole('button', { name: /^(Ajouter|Add)$/ }).click()
   const list = m.getByRole('list', { name: /Collaborateurs|Collaborators/ })

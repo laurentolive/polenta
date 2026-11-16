@@ -242,6 +242,8 @@ ou modification par un tool porte `source: mcp`.
 
 > **GH195** — un champ `link` accepte l'objet `{label?, url}`, la liste, ou la forme texte `libellé | URL` (une ligne par lien), convertie avant écriture ; URL hors `http(s)://`, `file://`, `\\serveur\partage` refusée. `requiredWhen` est contrôlé comme à l'écriture réelle (`prepareFieldsWrite`), en `dryRun` comme en écriture, et pour `update_requirements` / `update_tests`. `add_field` accepte `type: link`, `multiple`, `requiredWhen` (référence ou valeur inconnue refusée : `REQUIRED_WHEN_INVALID`).
 
+> **GH372** — valeurs des `fields` contrôlées par entrée, à l'import (`bulk_import_*`, en `dryRun` comme en écriture) comme à la modification (`update_requirements` / `update_tests`), par une seule règle (`field-values.util.ts::fieldValuesError`) : clé déclarée par le type ; `enum` / `multi_enum` dans `values` (catalogue de rôles pour `roles`, T110 ; pas de contrôle si la liste est vide) ; `number` = nombre fini ou chaîne numérique (format enregistré par l'éditeur) ; `boolean` = `true`/`false` ; `date` = `AAAA-MM-JJ` valide. Valeur vide non contrôlée (obligation : contrôle `required`). Refus : `{ index, field, reason }`.
+
 `bulk_import_requirements` / `bulk_import_tests` / `bulk_import_campaigns` :
 
 ```ts
@@ -313,7 +315,7 @@ réponse précédente).
 | Tool | Entrée | Refuse si |
 |---|---|---|
 | `add_component` | `{ name, label, description?, readonly?, parentName? }` | `name` déjà pris par un `SystemNode` existant à n'importe quelle profondeur (y compris `"root"`) — `NODE_NAME_TAKEN` ; `parentName` fourni mais introuvable dans le repo courant — `NODE_NOT_FOUND` |
-| `add_object_type` | `{ nodeName, objectType: ObjectTypeDefinition }` | nœud introuvable (`NODE_NOT_FOUND`) ou `readonly` (`NODE_READONLY`) ; `objectType.name` déjà pris dans ce nœud (`TYPE_NAME_TAKEN`) ; `objectType.prefix` déjà utilisé par un type de **n'importe quel** nœud du projet (`PREFIX_TAKEN`, règle 10 CLAUDE.md) |
+| `add_object_type` | `{ nodeName, objectType: ObjectTypeDefinition }` | nœud introuvable (`NODE_NOT_FOUND`) ou `readonly` (`NODE_READONLY`) ; `objectType.name` déjà pris dans ce nœud (`TYPE_NAME_TAKEN`) ; `objectType.prefix` déjà utilisé par un type de **n'importe quel** nœud du projet (`PREFIX_TAKEN`, règle 10 CLAUDE.md) ; type version / validation (GH377, ci-dessous) mal formé (`VERSION_TYPE_INVALID` / `VALIDATION_TYPE_INVALID`, `FIELD_NAME_TAKEN`, `REQUIRED_WHEN_INVALID`) |
 | `add_field` | `{ nodeName, typeName, field: SchemaField, list?: 'fields' \| 'runFields' \| 'stepFields' \| 'entryFields' }` | nœud/type introuvables, nœud `readonly`, `field.name` déjà présent (`FIELD_NAME_TAKEN`) ; GH371 — `entryFields` : type non validation (`VALIDATION_TYPE_INVALID`), nom `decision` réservé (`FIELD_NAME_TAKEN`), `requiredWhen` avec clé ou valeur inconnue — clés : autres `entryFields` et pseudo-champ `decision` (valeurs = décisions du type) — (`REQUIRED_WHEN_INVALID`) |
 | `add_status` | `{ nodeName, typeName, status: SchemaStatus }` | nœud/type introuvables, nœud `readonly`, `status.name` déjà présent (`STATUS_NAME_TAKEN`) |
 | `add_link_type` | `{ linkType: LinkTypeDefinition }` | `linkType.name` déjà pris (`LINK_TYPE_NAME_TAKEN`) |
@@ -361,6 +363,26 @@ STATUS_NAME_TAKEN | LINK_TYPE_NAME_TAKEN | REQUIRED_WHEN_INVALID | RUN_FIELD_INV
 VERSION_TYPE_INVALID | VALIDATION_TYPE_INVALID | DECISION_IN_USE | DISPLAY_ID_FIELD_INVALID |
 TRANSITION_INVALID | STATUS_NOT_FOUND | STATUS_IN_USE | STATUS_LIST_INVALID | DECISION_NOT_FOUND |
 DECISION_NAME_TAKEN` (les cinq derniers : GH371).
+
+**GH377 — type version ou validation par `add_object_type`.** Catégories `version` et `validation` admises,
+ainsi que `decisions` (`ValidationDecisionDef[]`) et `entryFields` (`SchemaField[]`) pour le type validation.
+Préparation dans `SchemaService.addObjectType` (`prepareNewObjectType`), avant `save` :
+
+- `statuses` absent → statuts par défaut de l'éditeur ; `decisions` absent (validation) → décisions par défaut.
+  Source unique `packages/types/src/schema-defaults.ts` (`DEFAULT_VERSION_STATUSES`,
+  `DEFAULT_VALIDATION_STATUSES`, `DEFAULT_VALIDATION_DECISIONS`), dont l'éditeur dérive ses constantes. Une
+  liste fournie (même vide) est prise telle quelle, sans fusion.
+- `prefix` obligatoire (`VERSION_TYPE_INVALID` / `VALIDATION_TYPE_INVALID`) ; type version : exactement un
+  statut `isApproval`, premier statut non marqué (`VERSION_TYPE_INVALID`) ; version et validation : noms de
+  statuts uniques (`STATUS_NAME_TAKEN`) — contrôles propres au MCP, l'éditeur n'est pas concerné.
+- `entryFields` : `trackHistory` / `defaultVisible` retirés, liste vide omise (comme l'éditeur) ; `entryFieldsError`
+  (`@polenta/types`) : nom unique et ≠ `decision` (`FIELD_NAME_TAKEN`), `requiredWhen` sans erreur ni
+  référence inconnue — clés : autres champs d'entrée et `decision` (valeurs : noms des décisions)
+  (`REQUIRED_WHEN_INVALID`).
+- `decisions` / `entryFields` sur une autre catégorie → `VALIDATION_TYPE_INVALID`.
+- Garde-fous communs de `save` : un seul type de chaque catégorie, sur `root` ; `validationTypeError`.
+
+Les autres catégories ne reçoivent pas de statuts par défaut (comportement inchangé).
 
 ### 4.4 Liens (`tools/links.tools.ts`, GH16)
 

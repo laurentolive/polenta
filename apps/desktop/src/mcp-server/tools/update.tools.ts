@@ -173,7 +173,8 @@ export function registerUpdateTools(server: McpServer, container: McpContainer):
       description:
         "Modifie des exigences existantes, par ID : title, status, fields (fusion partielle ; une clé " +
         "à null retire le champ). dryRun (défaut true) : valide chaque entrée (statut connu du type, " +
-        "champs déclarés, valeurs d'enum, champs required non vidés, syntaxe EARS des champs modifiés) " +
+        "champs déclarés, valeurs d'enum / multi_enum, number, boolean et date bien formés, champs required " +
+        "non vidés, syntaxe EARS des champs modifiés) " +
         "et retourne l'avant/après par champ SANS RIEN ÉCRIRE. dryRun: false : écrit en série, " +
         "best-effort, par les règles de l'appli (historique, version, revalidation des éléments liés " +
         "en sortie d'approbation). modificationComment (facultatif) : conservé sur les entrées d'historique " +

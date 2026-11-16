@@ -279,7 +279,7 @@ uniquement » (création locale ci-dessus). Le serveur ouvre l'**assistant « Aj
   frappe (`forge:name-available`) et une dernière fois avant la création ;
 - visibilité (privé par défaut), **description obligatoire** (forge et `README.md`), **branche
   d'intégration** `int-<x>` pré-remplie avec le nom, membres facultatifs (`RepoMembersEditor` :
-  comptes et équipes de l'organisation, `forge:org-teams`) ;
+  comptes avec complétion du login — §9.5 —, équipes de l'organisation, `forge:org-teams`) ;
 - `forge:create-repo(req)` → `CreateRepoResult` (`RepoProvisioningService.create`), étapes dans
   cet ordre, **tout étant validé avant la première écriture** :
   1. `remote` : repo vide créé (`auto_init: false`) ; un échec arrête tout, rien n'est écrit ;
@@ -320,15 +320,34 @@ ou `forgejo` d'un compte connecté (`forge:repo-settings-available`, sans appel 
   autre branche ou modification en attente : rien n'est écrit, la fenêtre le dit.
 - **Visibilité** : le passage en public demande une confirmation. Une forge du kit
   (`FORCE_PRIVATE=true`) le refuse : le refus est affiché.
-- **Membres** : collaborateurs (autocomplétion sur les membres de l'organisation, saisie libre), invitations
+- **Membres** : collaborateurs (complétion du login, §9.5, saisie libre), invitations
   GitHub annulables, équipes d'un repo d'organisation. GitHub : niveau par repo. Forgejo : niveau de
   l'équipe en lecture, attribution et retrait, équipes « tous les repos » non retirables. Lien vers les
   équipes sur la forge. `triage` et `maintain` sont affichés tels quels, pas proposés.
 
+### 9.5 Complétion du login d'un membre (GH368)
+
+Champ login des collaborateurs dans l'assistant (§9.1) et dans les Paramètres du repo (§9.4) :
+`MemberLoginInput` (combobox ARIA), spec `GH368.md`.
+
+- **Source** : `forge:member-suggestions(accountKey)` → `ForgeMemberSuggestion[]` (`login`, `name`,
+  `orgs`) : membres de **toutes les organisations du compte** (`listUserOrgs` : Forgejo
+  `/user/orgs` ; GitHub `/user/memberships/orgs`, ou `/user/orgs` sans `read:org`), fusionnés par
+  login, le compte lui-même exclu. Jamais d'annuaire du serveur (`/users/search`, `/search/users`) :
+  une forge multi-clients exposerait les comptes des autres clients. Jamais d'exception : une
+  organisation en échec est ignorée, tout en échec rend `[]`, sans message.
+- **Cache** : membres par `(compte, organisation)` pendant 10 min dans le main ; liste rechargée par
+  le renderer à la réouverture après 5 min. Aucun appel pendant la frappe.
+- **Classement** (`rankMemberSuggestions`) : texte cherché dans le login ou le nom, sans casse ni
+  accents ; membres de l'organisation propriétaire d'abord, puis logins qui commencent par le texte,
+  puis ordre alphabétique ; 8 au plus ; membres déjà présents (et invitations) exclus.
+- **Interaction** : ↓/↑ (rouvre la liste après Échap), Entrée (suggestion choisie, sinon texte
+  saisi), Échap ferme la liste sans fermer la fenêtre, clic. Saisie libre toujours acceptée.
+
 ### 9.3 Champ `user` et diagnostic des droits (GH45 S4)
 
 - `forge:org-members(repoPath)` : membres de l'organisation propriétaire du repo `origin` (login,
-  nom affiché), en cache par `(hôte, organisation)` pour la durée du processus ; `null` pour un repo
+  nom affiché), en cache par `(compte, organisation)` pendant 10 min (GH368) ; `null` pour un repo
   personnel, hors ligne, ou hors Forgejo. Utilisé par le champ `user` (SPEC-REQ-requirements §3).
 - `forge:repo-access(repoPath)` : droits du compte sur le repo `origin` ; `null` dans les cas sans
   objet (jamais d'erreur). À l'ouverture d'un projet, si le compte n'a que la lecture sur le repo

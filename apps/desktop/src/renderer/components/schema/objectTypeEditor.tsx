@@ -2,6 +2,8 @@ import type { ValidationDecisionDef } from '@polenta/types'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  DEFAULT_VALIDATION_DECISIONS as SHARED_VALIDATION_DECISIONS, DEFAULT_VALIDATION_STATUSES as SHARED_VALIDATION_STATUSES,
+  DEFAULT_VERSION_STATUSES as SHARED_VERSION_STATUSES,
   DISPLAY_ID_FIELD_TYPES, HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES,
   TRANSITION_CATEGORIES, displayIdFieldCandidates, historyModeFor, renameRequiredWhenRefs, renameTransitionRefs, renameValues, requiredWhenIssues,
 } from '@polenta/types'
@@ -352,12 +354,11 @@ export const DEFAULT_REQ_STATUSES: EditableStatus[] = [
   { name: 'obsolete', label: 'Obsolète', color: '#dc2626', isApproval: false, isTerminal: true },
 ]
 
-/** GH201 — cycle de vie par défaut d'une version : released (`isApproval`) pose le tag et fige. */
-export const DEFAULT_VERSION_STATUSES: EditableStatus[] = [
-  { name: 'en_cours', label: 'En cours', color: '#2563eb', isApproval: false, isTerminal: false },
-  { name: 'released', label: 'Released', color: '#16a34a', isApproval: true, isTerminal: false },
-  { name: 'abandonnee', label: 'Abandonnée', color: '#6b7280', isApproval: false, isTerminal: true },
-]
+/** GH201 / GH377 — défauts partagés avec le serveur MCP (`@polenta/types`, schema-defaults.ts). */
+const toEditableStatus = (s: SchemaStatus): EditableStatus => ({
+  name: s.name, label: s.label ?? '', color: s.color ?? '', isApproval: !!s.isApproval, isTerminal: !!s.isTerminal,
+})
+export const DEFAULT_VERSION_STATUSES: EditableStatus[] = SHARED_VERSION_STATUSES.map(toEditableStatus)
 
 /** GH244 — `corrigee` n'est pas terminal : un terminal sort du backlog, une correction doit pouvoir entrer dans une version. */
 export const DEFAULT_ISSUE_STATUSES: EditableStatus[] = [
@@ -367,21 +368,9 @@ export const DEFAULT_ISSUE_STATUSES: EditableStatus[] = [
   { name: 'rejetee', label: 'Rejetée', color: '#6b7280', isApproval: false, isTerminal: true },
 ]
 
-/** GH204 — cycle de vie d'une validation : `signee` (`isApproval`) est le feu vert, `annulee` en sort. */
-export const DEFAULT_VALIDATION_STATUSES: EditableStatus[] = [
-  { name: 'en_cours', label: 'En cours', color: '#2563eb', isApproval: false, isTerminal: false },
-  { name: 'signee', label: 'Signée', color: '#16a34a', isApproval: true, isTerminal: false },
-  { name: 'annulee', label: 'Annulée', color: '#6b7280', isApproval: false, isTerminal: true },
-]
+export const DEFAULT_VALIDATION_STATUSES: EditableStatus[] = SHARED_VALIDATION_STATUSES.map(toEditableStatus)
 
-/** GH204 — jeu de décisions par défaut (MILESTONE-D §5.1). */
-export const DEFAULT_VALIDATION_DECISIONS: ValidationDecisionDef[] = [
-  { name: 'en_attente', label: 'En attente', isPending: true },
-  { name: 'conforme', label: 'Conforme' },
-  { name: 'non_conforme', label: 'Non conforme', proposesIssue: true },
-  { name: 'hors_scope', label: 'Hors scope' },
-  { name: 'derogation', label: 'Dérogation', proposesIssue: true },
-]
+export const DEFAULT_VALIDATION_DECISIONS: ValidationDecisionDef[] = SHARED_VALIDATION_DECISIONS.map(d => ({ ...d }))
 
 export const DEFAULT_TEST_STATUSES: EditableStatus[] = [
   { name: 'draft', label: 'Brouillon', color: '#475569', isApproval: false, isTerminal: false },
@@ -410,9 +399,9 @@ export function emptyStatus(): EditableStatus {
   return { name: '', label: '', color: '', isApproval: false, isTerminal: false }
 }
 
-// Naming convention for a newly added object type: <COMPOSANT>_<SUFFIXE>, ex. VE12A_REQ pour une
-// exigence du composant VE12A — reprend le nom (technique, court) du composant/nœud plutôt que son
-// label, cohérent avec la convention d'IDs du projet (cf. CLAUDE.md "Convention des IDs").
+// Naming convention for a newly added object type: <COMPOSANT>_<SUFFIXE>, ex. CONTROLE_MOTEUR_REQ
+// pour une exigence du composant de label « Contrôle moteur » — GH365 : la racine est le label
+// affiché du composant (repli sur son nom technique, cf. typeNamingRoot).
 const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   requirement: 'REQ',
   test: 'TEST',
@@ -422,8 +411,44 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   validation: 'VAL',
 }
 
+/** GH365 — lettres latines que la décomposition Unicode (NFD) laisse intactes. */
+const LIGATURES: Record<string, string> = {
+  'Œ': 'OE', 'œ': 'OE', 'Æ': 'AE', 'æ': 'AE', 'ß': 'SS', 'Ø': 'O', 'ø': 'O', 'Ł': 'L', 'ł': 'L',
+  'Đ': 'D', 'đ': 'D', 'Ð': 'D', 'ð': 'D', 'Þ': 'TH', 'þ': 'TH', 'ı': 'I',
+}
+
+/** Racine de nom/préfixe : accents retirés (GH365), majuscules, tout caractère hors `A-Z0-9` → `_`. */
 function slugifyComponentName(componentName: string): string {
-  return componentName.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  return componentName.trim()
+    .replace(/[ŒœÆæßØøŁłĐđÐðÞþı]/g, c => LIGATURES[c])
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+/** GH365 — racine des types proposés pour un composant : son label affiché, ou son nom quand la
+ *  racine tirée du label ne commence pas par une lettre latine (label vide, non latin, `电机 2`). */
+export function typeNamingRoot(label: string | undefined, name: string): string {
+  return label && /^[A-Z]/.test(slugifyComponentName(label)) ? label : name
+}
+
+/** GH365 — catégories proposées à l'ajout d'un composant, dans l'ordre des cases et des types créés. */
+export const COMPONENT_DEFAULT_CATEGORIES: readonly ObjectCategory[] = ['requirement', 'test', 'campaign', 'issue', 'version', 'validation']
+/** Un seul type de ces catégories par repo, sur `root` (GH201, GH204) : pas sur un composant local. */
+export const REPO_ROOT_ONLY_CATEGORIES: readonly ObjectCategory[] = ['version', 'validation']
+
+/** GH365 — types créés à l'ajout d'un composant, un par catégorie. Chaque nom/préfixe produit est
+ *  ajouté aux noms pris pour la suivante : ni collision entre eux, ni avec `taken` (GH97). */
+export function defaultObjectTypes(
+  categories: readonly ObjectCategory[], root: string, categoryLabel: (category: ObjectCategory) => string,
+  descriptionLabel: string, taken: Iterable<string> = [],
+): EditableObjectType[] {
+  const used = new Set(taken)
+  return categories.map(category => {
+    const type = emptyObjType(category, root, categoryLabel(category), descriptionLabel, used)
+    used.add(type.name)
+    used.add(type.prefix)
+    return type
+  })
 }
 
 /** `categoryLabel`/`descriptionLabel` are pre-resolved by the caller (`t(CATEGORY_LABEL_KEY[category])`

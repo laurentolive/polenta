@@ -3,7 +3,7 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import git from 'isomorphic-git'
-import { REQUIRED_WHEN_STATUS, emptyFieldRenameResult, renameTransitionRefs, rulesCitingStatus, validationTypeError } from '@polenta/types'
+import { DEFAULT_VALIDATION_DECISIONS, DEFAULT_VALIDATION_STATUSES, DEFAULT_VERSION_STATUSES, REQUIRED_WHEN_STATUS, emptyFieldRenameResult, entryFieldsError, renameTransitionRefs, rulesCitingStatus, validationTypeError } from '@polenta/types'
 import type {
   FieldRenameResult,
   LinkTypeDefinition,
@@ -489,11 +489,12 @@ export class SchemaService {
           )
         }
       }
+      const objectType = prepareNewObjectType(dto.objectType)
       const updated: ProjectSchema = {
         ...schema,
         nodes: mapSystemNode(schema.nodes, node.name, (n) => ({
           ...n,
-          objectTypes: [...(n.objectTypes ?? []), dto.objectType],
+          objectTypes: [...(n.objectTypes ?? []), objectType],
         })),
       }
       await this.save(repoPath, updated)
@@ -643,7 +644,9 @@ export class SchemaService {
     if (list.some((f) => f.name === field.name)) {
       throw new SchemaValidationError('FIELD_NAME_TAKEN', `Le champ "${field.name}" existe déjà dans entryFields du type "${type.name}".`)
     }
-    const entryFields = [...list, field]
+    // Ni historique ni colonne pour un champ d'entrée (comme l'éditeur et `add_object_type`, GH377).
+    const { trackHistory: _h, defaultVisible: _v, ...entryField } = field
+    const entryFields = [...list, entryField]
     // Déclaration MCP : une référence ou une valeur inconnue est refusée aussi (comme `fields`, GH195).
     const issue = requiredWhenIssues(
       { ...type, fields: entryFields },
@@ -1166,6 +1169,43 @@ function dropRemovedChangesets(schema: ProjectSchema): ProjectSchema {
   const prefs = schema.preferences as (ProjectSchema['preferences'] & { changeTracking?: unknown }) | undefined
   const { changeTracking: _removed, ...preferences } = prefs ?? {}
   return { ...schema, nodes: dropTypes(schema.nodes), ...(prefs && { preferences }) }
+}
+
+/**
+ * GH377 — type version / validation créé par `addObjectType` (serveur MCP) : défauts de l'éditeur pour
+ * les listes absentes (une liste fournie est prise telle quelle), puis contrôles propres à la déclaration
+ * MCP — préfixe obligatoire, un statut released pour la version, `entryFields` stricts, `decisions` /
+ * `entryFields` réservés au type validation. Les garde-fous communs (un seul type, sur `root`,
+ * `validationTypeError`) restent ceux de `save`.
+ */
+function prepareNewObjectType(input: ObjectTypeDefinition): ObjectTypeDefinition {
+  const { category } = input
+  if (category !== 'validation' && (input.decisions !== undefined || input.entryFields !== undefined)) {
+    throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Les décisions et les champs d'entrée sont réservés au type validation ("${input.name}" est de catégorie ${category}).`)
+  }
+  if (category !== 'version' && category !== 'validation') return input
+  const code = category === 'version' ? 'VERSION_TYPE_INVALID' : 'VALIDATION_TYPE_INVALID'
+  if (!input.prefix?.trim()) throw new SchemaValidationError(code, `Le type ${category} "${input.name}" doit avoir un préfixe (IDs de ses objets).`)
+  const defaults = category === 'version' ? DEFAULT_VERSION_STATUSES : DEFAULT_VALIDATION_STATUSES
+  const statuses = input.statuses ?? defaults.map(s => ({ ...s }))
+  const type: ObjectTypeDefinition = { ...input, statuses }
+  // L'état d'un objet se lit par nom de statut : un nom en double masquerait la marque du second.
+  const duplicate = statuses.find((s, i) => statuses.findIndex(o => o.name === s.name) !== i)
+  if (duplicate) throw new SchemaValidationError('STATUS_NAME_TAKEN', `Le statut "${duplicate.name}" est déclaré deux fois (type "${type.name}").`)
+  if (category === 'version') {
+    const released = statuses.filter(s => s.isApproval).length
+    if (released !== 1) throw new SchemaValidationError(code, `Le type version "${type.name}" doit avoir exactement un statut d'approbation (released) (${released}).`)
+    // Statut de création : une version née released ou abandonnée n'aurait ni tag ni gel.
+    if (statuses[0].isApproval || statuses[0].isTerminal) throw new SchemaValidationError(code, `Le premier statut du type version "${type.name}" doit être un statut en cours.`)
+    return type
+  }
+  type.decisions = input.decisions ?? DEFAULT_VALIDATION_DECISIONS.map(d => ({ ...d }))
+  // Ni historique ni colonne pour un champ d'entrée, liste vide omise (comme l'éditeur, `editableToObjType`).
+  if (input.entryFields?.length) type.entryFields = input.entryFields.map(({ trackHistory: _h, defaultVisible: _v, ...f }) => f)
+  else delete type.entryFields
+  const error = entryFieldsError(type)
+  if (error) throw new SchemaValidationError(error.code, error.message)
+  return type
 }
 
 /**

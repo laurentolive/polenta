@@ -241,14 +241,14 @@ export type RepoSettings =
     host: string
     /** Login du compte connecté (confirmation du retrait de son propre accès). */
     login: string
+    /** GH368 — clé du compte qui donne accès au repo (suggestions de membres). */
+    accountKey: string
     details: ForgeRepoDetails
     collaborators: ForgeCollaborator[]
     teams: ForgeRepoTeam[]
     invitations: ForgeInvitation[]
     /** Équipes de l'organisation (attribution). */
     orgTeams: ForgeTeam[]
-    /** Membres de l'organisation (autocomplétion). */
-    orgMembers: ForgeMember[]
     isOrg: boolean
     /** GitHub : jeton sans `read:org`, les équipes peuvent manquer (reconnexion proposée). */
     scopeMissing: boolean
@@ -315,6 +315,15 @@ export interface ForgeMember {
   login: string
   /** Nom affiché, ou le login. */
   name: string
+}
+
+/** GH368 — personne proposée à l'ajout d'un membre : membre d'une des organisations du compte. */
+export interface ForgeMemberSuggestion {
+  login: string
+  /** Nom affiché (Forgejo), ou le login. */
+  name: string
+  /** Organisations du compte dont la personne est membre, triées. */
+  orgs: string[]
 }
 
 /** Droits du compte sur le repo d'un workspace (diagnostic à l'ouverture). */

@@ -1129,14 +1129,19 @@ export class SyncService {
     return fileDiffContents(repoPath, filepath, parentSha, sha, parentSha === null)
   }
 
-  async listBranches(repoPath: string): Promise<{ name: string; isCurrent: boolean; type: 'int' | 'dev' | 'other' }[]> {
+  /** Local branches, then (GH367) the branches present only on `origin` — a clone only creates the
+   *  forge's default branch locally, so without them another user never sees the other `int-*`. */
+  async listBranches(repoPath: string): Promise<{ name: string; isCurrent: boolean; type: 'int' | 'dev' | 'other'; remoteOnly?: boolean }[]> {
     const branches = await git.listBranches({ fs, dir: repoPath })
+    const remotes = await git.listBranches({ fs, dir: repoPath, remote: 'origin' }).catch(() => [] as string[])
     const current = await git.currentBranch({ fs, dir: repoPath }).catch(() => '')
-    return branches.map(name => ({
-      name,
-      isCurrent: name === current,
-      type: name.startsWith('int-') ? 'int' : name.startsWith('dev-') ? 'dev' : 'other',
-    }))
+    const local = new Set(branches)
+    const typeOf = (name: string) => name.startsWith('int-') ? 'int' as const : name.startsWith('dev-') ? 'dev' as const : 'other' as const
+    return [
+      ...branches.map(name => ({ name, isCurrent: name === current, type: typeOf(name) })),
+      ...remotes.filter(name => name !== 'HEAD' && !local.has(name)).sort()
+        .map(name => ({ name, isCurrent: false, type: typeOf(name), remoteOnly: true })),
+    ]
   }
 
   /**

@@ -112,8 +112,11 @@ afterEach(async () => {
 
 describe('A — add_field entryFields', () => {
   it('A1/A5 — ajoute en fin d\'entryFields, requiredWhen sur une décision connue accepté', async () => {
-    await call('add_field', { nodeName: 'root', typeName: 'validation', list: 'entryFields', field: { name: 'commentaire_qualite', type: 'text', requiredWhen: { decision: ['conforme'] } } })
-    expect((await typeOnDisk('validation')).entryFields!.map(f => f.name)).toEqual(['motif', 'commentaire_qualite'])
+    await call('add_field', { nodeName: 'root', typeName: 'validation', list: 'entryFields', field: { name: 'commentaire_qualite', type: 'text', requiredWhen: { decision: ['conforme'] }, trackHistory: true, defaultVisible: true } })
+    const entryFields = (await typeOnDisk('validation')).entryFields!
+    expect(entryFields.map(f => f.name)).toEqual(['motif', 'commentaire_qualite'])
+    // Ni historique ni colonne pour un champ d'entrée (comme add_object_type, GH377).
+    expect(entryFields[1]).toEqual({ name: 'commentaire_qualite', type: 'text', requiredWhen: { decision: ['conforme'] } })
   })
 
   it('A2 — type requirement : VALIDATION_TYPE_INVALID, schéma inchangé', async () => {

@@ -102,7 +102,7 @@ describe('repoSettingsAvailable', () => {
 })
 
 describe('repoSettings', () => {
-  it('Forgejo, organisation : collaborateurs avec nom et niveau, équipes en lecture, autocomplétion, lien des équipes', async () => {
+  it('Forgejo, organisation : collaborateurs avec nom et niveau, équipes en lecture, clé du compte (GH368), lien des équipes', async () => {
     await setup('forgejo')
     forgejoOrg({ mem: 'write' }, [{ name: 'Owners', permission: 'owner', includes_all_repositories: true }])
     const s = await service.repoSettings(repo)
@@ -110,9 +110,10 @@ describe('repoSettings', () => {
       available: true, fullName: 'acme/proj', login: 'bob', isOrg: true, scopeMissing: false, membersRestricted: false,
       collaborators: [{ login: 'mem', name: 'mem N', level: 'write' }],
       teams: [{ name: 'Owners', level: 'owner', levelEditable: false, removable: false }],
-      orgMembers: [{ login: 'ann', name: 'Ann' }],
+      accountKey: `${new URL(forge.baseUrl).hostname}:bob`,
       invitations: [], teamLevelEditable: false, teamsUrl: `${forge.baseUrl}/org/acme/teams`,
     })
+    expect(s).not.toHaveProperty('orgMembers')
   })
 
   it('repo personnel : pas d\'équipes, pas d\'appel aux équipes', async () => {

@@ -24,6 +24,19 @@ Conforme à `specs/GH371-design.md` §6 et à la spec (D2, D3, Q1 proposition pa
 
 - Aucune sur le fond. Précision : l'invalidation des index (§6.4) est faite par le handler, avant l'entrée dans
   la file de mutation (comme `freshComponentRepoResolver` des outils versions / validations), pas dans la file.
+- Mise à jour avec `main` (GH377) : `validationDecisionSchema` de GH377 réutilisé ; `add_field { list:
+  'entryFields' }` retire `trackHistory` / `defaultVisible` du champ, comme `add_object_type` (GH377) et l'éditeur.
+  Le contrôle reste ciblé sur le champ ajouté (pas `entryFieldsError`, qui porte sur toute la liste : un champ
+  d'entrée déjà invalide sur le disque ne bloque pas l'ajout d'un autre).
+
+## Vérifications (après mise à jour avec `main`)
+
+- `pnpm typecheck` (desktop) : OK.
+- `schema-mutation.gh371.test.ts` : 46/46 ; avec GH377, GH77, GH82, GH362 : 84/84.
+- `pnpm test` : merge-core 83/83, admin-service 124 (+3 ignorés), desktop 1962/1962 (183 fichiers).
+- Avant la mise à jour : un échec de charge (`repo-conformity.gh340.test.ts`, « Hook timed out in 20000ms »),
+  relancé seul : 5/5.
+- Non lancés : e2e (aucun changement du renderer ni du serveur web), lint (pas de configuration ESLint 9).
 
 ## Mises à jour SPEC
 

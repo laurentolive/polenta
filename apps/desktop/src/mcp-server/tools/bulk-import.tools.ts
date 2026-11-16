@@ -293,7 +293,9 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
       description:
         "Crée plusieurs exigences en une fois. dryRun (défaut true) : valide chaque " +
         "entrée (objectTypeRef résolu, champs required, syntaxe EARS si validator: " +
-        "EARS, nœud pas readonly, status parmi les statuts du type) et retourne un aperçu (IDs prévisionnels + erreurs) " +
+        "EARS, nœud pas readonly, status parmi les statuts du type, valeurs des champs : champ déclaré par le type, " +
+        "enum / multi_enum dans la liste, number numérique, boolean true/false, date AAAA-MM-JJ — même contrôle " +
+        "qu'update_requirements) et retourne un aperçu (IDs prévisionnels + erreurs) " +
         "SANS RIEN ÉCRIRE. dryRun: false : écrit réellement, en série, best-effort " +
         "(une entrée en échec n'annule pas les précédentes). Appeler get_schema " +
         "d'abord pour connaître les objectTypeRef valides et leurs champs requis. " +

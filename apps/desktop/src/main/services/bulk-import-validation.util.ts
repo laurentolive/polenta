@@ -2,6 +2,7 @@ import { initialStatus, isUnknownStatus, prepareFieldsWrite } from '@polenta/typ
 import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
 import { findObjectTypeDef, findLocalNodeByRefPrefix, findOwningNode } from './schema-lookup.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
+import { fieldValuesError } from './field-values.util'
 
 /**
  * Couche de validation dry-run des tools `bulk_import_*` (T122 sprint 2 —
@@ -64,6 +65,8 @@ export interface BulkImportEntryDto {
  *    EARS (réutilise `field-checks.util.ts::isEarsCompliant`, même heuristique que le
  *    calcul de maturité affiché dans l'UI — pas une seconde regex divergente).
  * 5. GH149 — un `status` fourni fait partie des statuts déclarés par le type.
+ * 6. GH372 — valeurs de `fields` (`field-values.util.ts::fieldValuesError`) : champ déclaré, enum /
+ *    multi_enum dans la liste, number / boolean / date bien formés.
  *
  * `nextIdPreview` est un callback FOURNI PAR L'APPELANT, appelé une fois par entrée
  * VALIDE (dans l'ordre du batch) pour obtenir son `predictedId` — cette fonction
@@ -149,6 +152,10 @@ function validateEntry(
       field: 'status',
     }
   }
+
+  // GH372 — valeurs des champs : même règle que update_requirements / update_tests.
+  const valueError = fieldValuesError(schema, resolved, dto.objectTypeRef, dto.fields)
+  if (valueError) return valueError
 
   // GH195 — liens (forme texte `libellé | URL` acceptée, URL contrôlées) et `requiredWhen`.
   const prepared = prepareFieldsWrite(resolved, null, { status: dto.status ?? initialStatus(resolved), fields: dto.fields })

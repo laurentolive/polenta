@@ -574,6 +574,9 @@ Les types de liens sont définis dans `schema.yaml > linkTypes`. Exemples couran
 
 Il n'existe pas de lien `PARENT_CHILD` implicite — toute relation entre objets passe par un `ObjectLink` typé.
 
+Types de liens proposés à l'ajout d'un composant (GH373) : un type propre au composant par lien
+coché — vérification, implémentation, implémentation depuis le parent (SPEC-TEMPLATES §3).
+
 `sourceRefs` / `targetRefs` d'un type de lien : une liste **vide** rend le type invalide — il
 n'accepte aucun objet (masqué des éditeurs de liens, refusé par `validateLinkEntries` côté main /
 serveur MCP). C'est l'état d'un type de lien dont le dernier type source ou cible a été supprimé

@@ -20,8 +20,10 @@ Un seul sprint : uniquement de l'exposition MCP de méthodes de service existant
   (`TAG_EXISTS: …`). Le SDK MCP (1.29) attrape toute exception d'un handler et renvoie
   `{ isError: true, content: [message] }` : pas d'enveloppe spécifique, même comportement que les outils
   d'issues.
-- **Fraîcheur** : `VersionsService` et `ValidationsService` relisent le disque à chaque appel (pas d'index) ;
-  rien à invalider.
+- **Fraîcheur** : `VersionsService` et `ValidationsService` relisent leurs fichiers, mais `SchemaService` et les
+  index sont en cache : chaque écriture passe par `freshComponentRepoResolver` (invalidation du repo visé).
+  *Corrigé au sprint 1 (revue).*
+- **Auteur du commit de release** : `McpAuthService` (config git du repo, sinon `--user`). *Ajouté au sprint 1.*
 - **Résultat des écritures** : l'objet écrit (`ProductVersion` / `Validation`) ; pour les décisions, l'entrée
   de l'exigence (comme `propose_validation_decision`) ; `release_version` renvoie la version figée.
 - **`set_version_impact.status`** : `z.enum(IMPACT_ANALYSIS_STATUSES)` — l'agent voit la liste dans le schéma

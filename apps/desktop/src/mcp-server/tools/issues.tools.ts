@@ -1,24 +1,15 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { VersionComponentNode } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
-
-const componentSchema = z.string().optional()
-  .describe('Composant (nom du repo dans le workspace, cf. list_versions) ; absent : le repo ouvert')
+import { componentRepoResolver, componentSchema } from './component-repo'
 
 /**
  * GH244 — issues : lecture, création et modification. Les exigences impactées sont des liens
  * `issue-impact` (`create_links`), limités aux exigences du composant de l'issue.
  */
 export function registerIssueTools(server: McpServer, container: McpContainer): void {
-  const flatten = (nodes: VersionComponentNode[]): VersionComponentNode[] => nodes.flatMap(n => [n, ...flatten(n.children)])
-  const repoOf = async (component?: string): Promise<string> => {
-    if (!component) return container.repoPath
-    const node = flatten(await container.versions.tree(container.repoPath, container.workspaceDir)).find(n => n.name === component)
-    if (!node) throw new Error(`Composant introuvable : ${component}`)
-    return node.repoPath
-  }
+  const repoOf = componentRepoResolver(container)
   /** Processus sans watcher : relit le disque. */
   const fresh = async (component?: string): Promise<string> => {
     const repo = await repoOf(component)

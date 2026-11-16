@@ -17,7 +17,7 @@ import { RepoSettingsButton } from '../repo/RepoSettingsModal'
 import { RemoveDependencyModal } from './RemoveDependencyModal'
 import { RepoBranchSelector } from './RepoBranchSelector'
 import { IntegrationBranchIndicator } from './IntegrationBranchIndicator'
-import { objTypeToEditable, editableToObjType, emptyObjType, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, withRenamedRequiredWhen, typeRename, typeRenameDecision, migrationSteps, CATEGORY_LABEL_KEY, type EditableObjectType } from './objectTypeEditor'
+import { objTypeToEditable, editableToObjType, emptyObjType, defaultObjectTypes, typeNamingRoot, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, withRenamedRequiredWhen, typeRename, typeRenameDecision, migrationSteps, CATEGORY_LABEL_KEY, type EditableObjectType } from './objectTypeEditor'
 import { ValueRenameConfirmModal } from './ValueRenameConfirmModal'
 import { TypeRenameConfirmModal } from './TypeRenameConfirmModal'
 import { SchemaDeleteConfirmModal } from './SchemaDeleteConfirmModal'
@@ -991,20 +991,6 @@ function withLocalComponentsReordered(
   return { ...schema, nodes: reorderSystemNodes(schema.nodes, parentName, draggedName, targetName, position) }
 }
 
-/** Categories checked in AddDependencyModal's "types d'objets créés par défaut" checkboxes
- *  (checked by default) — shared by the local-component path (handleAddLocalComponent) and the
- *  remote-dependency path (handleSubmitDependency), which both seed a freshly added component
- *  with one default object type per checked category. */
-function defaultCategoriesFrom(
-  values: Pick<AddDependencyValues, 'includeRequirements' | 'includeTests' | 'includeCampaigns'>,
-): ObjectCategory[] {
-  return [
-    ...(values.includeRequirements ? (['requirement'] as const) : []),
-    ...(values.includeTests ? (['test'] as const) : []),
-    ...(values.includeCampaigns ? (['campaign'] as const) : []),
-  ]
-}
-
 /** Appends a brand-new object type to one node in a schema; returns the new type's index. */
 function withObjectTypeAppended(
   schema: ProjectSchema, nodeName: string, newType: ObjectTypeDefinition,
@@ -1474,8 +1460,14 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
     const schema = schemasByRepoPath.get(repoPath)
     if (!schema) return
     // `nodeName` is 'root' when added from a RepoRow (cf. AddMenu callers below) — in that case the
-    // component name is the repo's own mount name (`repoLabel`), not the literal string 'root'.
-    const componentName = nodeName === 'root' ? repoLabel : nodeName
+    // fallback name is the repo's own mount name (`repoLabel`), not the literal string 'root'.
+    // GH365 — racine = label affiché du nœud, repli sur ce nom. Pour `root` : label du repo lu par
+    // l'arbre, posé seulement depuis un vrai schema.yaml (le schéma par défaut d'un repo qui n'en a
+    // pas porte « Produit », qui ne doit pas devenir PRODUIT_*).
+    const nodeLabel = nodeName === 'root'
+      ? flatNodes.find(n => n.repoPath === repoPath)?.label
+      : findSystemNode(schema.nodes, nodeName)?.label
+    const componentName = typeNamingRoot(nodeLabel, nodeName === 'root' ? repoLabel : nodeName)
     // GH97 — noms des types du nœud + préfixes de tout le workspace : la proposition les évite.
     const taken = new Set([...(findSystemNode(schema.nodes, nodeName)?.objectTypes ?? []).map(ot => ot.name), ...allPrefixes])
     const newType = editableToObjType(
@@ -1562,9 +1554,11 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
       // Checkboxes in AddDependencyModal (checked by default) — seed the new node with one
       // default object type per checked category, same factory as the "+ élément" button
       // (handleAddElement above) so a freshly added component isn't left with an empty tree.
-      const objectTypes = defaultCategoriesFrom(values).map(category => editableToObjType(
-        emptyObjType(category, name, t(CATEGORY_LABEL_KEY[category]), t('schema.editor.descriptionFieldLabel')),
-      ))
+      // GH365 — racine tirée du label ; préfixes du workspace évités (GH97).
+      const objectTypes = defaultObjectTypes(
+        values.defaultCategories, typeNamingRoot(values.label.trim(), name), c => t(CATEGORY_LABEL_KEY[c]),
+        t('schema.editor.descriptionFieldLabel'), allPrefixes,
+      ).map(editableToObjType)
       const newNode: SystemNode = {
         name, label: values.label.trim() || name, readonly: false, objectTypes,
         description: values.description.trim() || undefined,
@@ -1617,10 +1611,8 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         // unseen) dependency's schema query on its own rather than invalidating every
         // already-loaded repo's schema.
         qc.setQueryData(['workspace-open', workspaceDir], result)
-        // Checkboxes only render for kind === 'component' (cf. AddDependencyModal's canBeLocal) —
-        // for an interface, `values.include*` still carry their unseen default (true) and must be
-        // ignored here, or every "+ Interface" would silently seed object types nobody asked for.
-        const categories = pendingDependency.kind === 'component' ? defaultCategoriesFrom(values) : []
+        // Vide pour une interface : la modale n'offre les cases qu'à l'ajout d'un composant.
+        const categories = values.defaultCategories
         // T177 — label/description saisis à l'ajout, écrits sur le node `root` du schéma propre
         // de la dépendance (comme en édition). Seulement s'ils sont renseignés : un repo existant
         // qui a déjà son propre label ne doit pas le perdre parce que le champ a été laissé vide.
@@ -1640,9 +1632,12 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
             // component's already-configured object types just because it got (re-)linked here,
             // which would clobber a repo that manages its own schema.yaml autonomously.
             if (categories.length > 0 && (findSystemNode(nextSchema.nodes, 'root')?.objectTypes ?? []).length === 0) {
-              const newTypes = categories.map(category => editableToObjType(
-                emptyObjType(category, values.name, t(CATEGORY_LABEL_KEY[category]), t('schema.editor.descriptionFieldLabel')),
-              ))
+              // GH365 — racine = label effectif du composant (saisi, sinon celui du repo, sinon son nom).
+              const ownPrefixes = flattenSystemNodes(nextSchema.nodes).flatMap(({ node }) => (node.objectTypes ?? []).flatMap(ot => ot.prefix ? [ot.prefix] : []))
+              const newTypes = defaultObjectTypes(
+                categories, typeNamingRoot(typedLabel || newTreeNode?.label, values.name), c => t(CATEGORY_LABEL_KEY[c]),
+                t('schema.editor.descriptionFieldLabel'), [...allPrefixes, ...ownPrefixes],
+              ).map(editableToObjType)
               nextSchema = withNodeObjectTypes(nextSchema, 'root', () => newTypes)
             }
             if (label || description) {
@@ -1722,7 +1717,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         label: childRootNode?.label ?? '', description: childRootNode?.description ?? '',
         isLocal: false,
         // Edit mode never seeds default object types (cf. AddDependencyValues) — irrelevant here.
-        includeRequirements: false, includeTests: false, includeCampaigns: false,
+        defaultCategories: [],
       },
     })
   }

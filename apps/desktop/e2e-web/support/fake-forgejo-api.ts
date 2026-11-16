@@ -11,6 +11,7 @@ import * as path from 'path'
  *
  * Organisations : `e2e-org` (création permise, équipe `devs`, membres ann et bob) et `lecture`
  * (création refusée, membre carol).
+ * Logins `inconnu…` : compte inexistant ; `refuse…` : ajout comme collaborateur refusé (403, GH354).
  * Les collaborateurs et équipes ajoutés sont relus par `GET /api/v1/_e2e/members/<owner>/<repo>`.
  */
 export const E2E_ORG = 'e2e-org'
@@ -75,6 +76,10 @@ export async function handleFakeForgejoApi(req: http.IncomingMessage, res: http.
     // Liste paginée : une seule page.
     return send(res, 200, Number(url.searchParams.get('page') ?? 1) > 1 ? [] : [{ username: E2E_ORG, full_name: 'Organisation e2e' }, { username: E2E_READONLY_ORG }]), true
   }
+  if (method === 'GET' && parts[0] === 'users' && parts.length === 2) {
+    // GH354 — vérification des membres avant création : les logins « inconnu… » n'existent pas.
+    return parts[1].startsWith('inconnu') ? (send(res, 404, { message: 'user does not exist' }), true) : (send(res, 200, { login: parts[1] }), true)
+  }
   if (method === 'GET' && parts[0] === 'users' && parts[2] === 'orgs' && parts[4] === 'permissions') {
     const can = parts[3] === E2E_ORG
     return send(res, 200, { is_owner: can, is_admin: can, can_write: can, can_read: true, can_create_repository: can }), true
@@ -125,6 +130,8 @@ export async function handleFakeForgejoApi(req: http.IncomingMessage, res: http.
     if (sub === 'collaborators' && who && !extra && method === 'PUT') {
       const body = await readBody(req)
       if (who.startsWith('inconnu')) return send(res, 422, { message: `user does not exist [uid: 0, name: ${who}]` }), true
+      // GH354 — refus après création (droits) : un 403 qui ne dit rien du jeton.
+      if (who.startsWith('refuse')) return send(res, 403, { message: 'user is not allowed to be a collaborator' }), true
       const existing = list.find(m => m.kind === 'user' && m.name === who)
       if (existing) existing.level = String(body['permission'] ?? '')
       else list.push({ kind: 'user', name: who, level: String(body['permission'] ?? '') })

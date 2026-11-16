@@ -2866,7 +2866,10 @@
       "steps": "Steps",
       "resume": "The steps not done can be resumed later by adding this repository as an existing one.",
       "continue": "Continue",
-      "titleTodo": "Added, with points to handle"
+      "titleTodo": "Added, with points to handle",
+      "titleCreated": "Repository created, with points to handle",
+      "resumeSettings": "These points can be handled later in the repository settings (members, default branch).",
+      "continueComponent": "\"Continue\" registers this repository as a component; \"Close\" leaves it on the server without registering it."
     },
     "existing": {
       "title": "Existing repository",

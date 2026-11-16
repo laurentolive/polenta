@@ -30,7 +30,7 @@ let bare: string
 let seed: string
 let container: string
 let details: ForgeRepoDetails
-let forge: { repoDetails: ReturnType<typeof vi.fn>; updateRepo: ReturnType<typeof vi.fn>; alignDefaultBranch: ReturnType<typeof vi.fn>; grantMember: ReturnType<typeof vi.fn> }
+let forge: { repoDetails: ReturnType<typeof vi.fn>; updateRepo: ReturnType<typeof vi.fn>; alignDefaultBranch: ReturnType<typeof vi.fn>; grantMember: ReturnType<typeof vi.fn>; checkMembers: ReturnType<typeof vi.fn> }
 let service: RepoProvisioningService
 
 const run = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
@@ -95,6 +95,7 @@ beforeEach(async () => {
     updateRepo: vi.fn(async () => {}),
     alignDefaultBranch: vi.fn(async (): Promise<DefaultBranchOutcome> => (details.permissions.admin ? 'set' : 'not-admin')),
     grantMember: vi.fn(async () => 'added'),
+    checkMembers: vi.fn(async () => {}),
   }
   const auth = { getAuthor: async () => AUTHOR, getHttpsCredentials: async () => null } as unknown as AuthService
   const sync = new CliSync(auth)
@@ -177,6 +178,15 @@ describe('adopt', () => {
     expect(forge.grantMember).toHaveBeenCalledTimes(1)
     expect(result.steps.map(s => `${s.id}:${s.status}`)).toEqual(['description:done', 'local:done', 'push:done', 'defaultBranch:done', 'members:done', 'open:done'])
     expect(result.open).toBeDefined()
+  })
+
+  it('GH354 — repo vide, membre refusé à la vérification : rien n\'est écrit', async () => {
+    forge.checkMembers.mockRejectedValueOnce(new Error('Membres à corriger (rien n\'a été créé) :\nzed : Aucun compte « zed » sur le serveur.'))
+    await expect(service.adopt(request({ integrationSuffix: 'x', description: 'Nouvelle', members: [{ kind: 'user', name: 'zed', level: 'read' }] })))
+      .rejects.toThrow(/zed : Aucun compte/)
+    expect(forge.updateRepo).not.toHaveBeenCalled()
+    expect(serverBranches()).toEqual([])
+    expect(fs.existsSync(repoDir())).toBe(false)
   })
 
   it('A-01 — repo vide sans changement de description : pas d\'appel à la forge, pas d\'étape', async () => {

@@ -33,6 +33,8 @@ export interface ForgeProvider {
   /** GH107 — `[]` pour un repo personnel. */
   listRepoTeams?(baseUrl: string, token: string, owner: string, repo: string): Promise<ForgeRepoTeam[]>
   listOrgTeams?(baseUrl: string, token: string, org: string): Promise<ForgeTeam[]>
+  /** GH354 — un compte utilisateur porte ce login (GitHub : pas une organisation) ; `false` sur 404. */
+  userExists?(baseUrl: string, token: string, login: string): Promise<boolean>
   /** GH107 — `level` ignoré sur Forgejo (porté par l'équipe). */
   setRepoTeam?(baseUrl: string, token: string, owner: string, repo: string, team: string, level?: RepoAccessLevel): Promise<void>
   removeRepoTeam?(baseUrl: string, token: string, owner: string, repo: string, team: string): Promise<void>

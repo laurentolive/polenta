@@ -122,6 +122,8 @@ export function buildExportOutline(
   stepsByObjectId: Map<string, ExportStep[]> | undefined,
   filter: string,
   typeDef?: ObjectTypeDefinition,
+  /** GH389 — export depuis la Vue Excel : éléments affichés (objectIds) ; remplace `filter`. */
+  keep?: ReadonlySet<string>,
 ): TemplateOutlineEntry[] {
   const statusLabels = new Map((typeDef?.statuses ?? []).map(st => [st.name, st.label]))
   const exportFields = getExportFields(fields)
@@ -134,7 +136,7 @@ export function buildExportOutline(
       const section = sectionNumbers.get(node.id) ?? ''
       if (node.kind === 'item') {
         const obj = node.objectId ? objectsById.get(node.objectId) : undefined
-        if (!node.objectId || !obj || !matchesFilter(obj, needle)) continue
+        if (!node.objectId || !obj || (keep ? !keep.has(node.objectId) : !matchesFilter(obj, needle))) continue
         out.push({
           kind: 'item',
           level,
@@ -155,6 +157,50 @@ export function buildExportOutline(
   return walk(root, 1)
 }
 
+/** GH389 — ligne affichée par la Vue Excel (filtres de colonne et global appliqués, contenu des
+ *  dossiers repliés exclu), dans l'ordre de l'écran. */
+export interface DisplayedExportRow {
+  kind: 'folder' | 'item'
+  nodeId: string
+  objectId?: string
+  /** Nom du nœud (titre du dossier). */
+  name: string
+}
+
+/**
+ * GH389 (spec §1.10) — export Tableau xlsx de la Vue Excel : **ce qui est affiché**. Lignes = lignes
+ * affichées dans l'ordre, titres de dossier compris (numéro de section dans `section`, titre dans la
+ * première autre colonne) ; colonnes = colonnes visibles dans l'ordre, colonnes de lien et
+ * `Vérification` comprises ; valeurs = `cellText` (texte affiché : libellés, ID des liens). Les
+ * balises de couleur des colonnes richtext sont retirées (GH299), le type de champ est transmis
+ * (liens `link` en hyperliens côté main).
+ */
+export function buildDisplayedExportRows(
+  fields: string[],
+  rows: readonly DisplayedExportRow[],
+  cellText: (row: DisplayedExportRow, col: string) => string,
+  labelOf: (col: string) => string,
+  typeDef: ObjectTypeDefinition | undefined,
+  sectionNumbers: ReadonlyMap<string, string>,
+  extra?: ExtraExportColumns,
+): { columns: ExportColumn[]; rows: Record<string, string>[] } {
+  const columns: ExportColumn[] = fields.map(key => {
+    const type = typeDef?.fields.find(f => f.name === key)?.type ?? extra?.get(key)?.type
+    return { key, label: labelOf(key), ...(type ? { type } : {}) }
+  })
+  const richtextKeys = columns.filter(c => c.type === 'richtext').map(c => c.key)
+  const titleCol = fields.find(f => f !== 'section')
+  const out = rows.map(row => {
+    const values: Record<string, string> = {}
+    for (const key of fields) {
+      if (row.kind === 'folder') values[key] = key === 'section' ? sectionNumbers.get(row.nodeId) ?? '' : key === titleCol ? row.name : ''
+      else values[key] = cellText(row, key)
+    }
+    return row.kind === 'item' ? stripColorTags(values, richtextKeys) : values
+  })
+  return { columns, rows: out }
+}
+
 /** Étape de test telle qu'exportée (GH34 : détail pour les gabarits, nombre pour la colonne `steps`). */
 export interface ExportStep {
   order: number
@@ -163,7 +209,7 @@ export interface ExportStep {
   notes: string
 }
 
-// coverageStatus (T138) est un badge dérivé (via traceability:matrix), pas une valeur stockée sur
+// Exports Document / PDF / Standard hors Vue Excel. coverageStatus (T138) est un badge dérivé (via traceability:matrix), pas une valeur stockée sur
 // l'objet — obj[key] serait toujours vide dans l'export, donc exclu plutôt que d'afficher une
 // colonne "Couverture" vide dans les documents générés.
 function getExportFields(fields: string[]): string[] {

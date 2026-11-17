@@ -16,7 +16,7 @@ export interface HeaderDragHandlers {
  */
 export const GridHeaderCell = memo(function GridHeaderCell({
   col, colIdx, label, adornment, width, frozenLeft, filterable, filtered, reorderable, dragging, dropSide, testId,
-  onFilterClick, onResizeStart, drag, onFreezeMenu,
+  onFilterClick, onResizeStart, drag, onFreezeMenu, clip = true,
 }: {
   col: string
   colIdx: number
@@ -36,6 +36,9 @@ export const GridHeaderCell = memo(function GridHeaderCell({
   onResizeStart(e: MouseEvent, col: string): void
   drag?: HeaderDragHandlers
   onFreezeMenu(colIdx: number, x: number, y: number): void
+  /** Contenu coupé au bord de la colonne (défaut). Vue Excel : non coupé, comme avant GH389 — l'icône
+   *  de filtre d'une colonne étroite reste atteignable. */
+  clip?: boolean
 }) {
   const { t } = useTranslation()
   const frozen = frozenLeft !== undefined
@@ -52,7 +55,7 @@ export const GridHeaderCell = memo(function GridHeaderCell({
   return (
     <th
       style={style}
-      className="border border-edge px-2 py-1.5 text-left font-medium text-ink-2 bg-hover text-xs whitespace-nowrap overflow-hidden"
+      className={`border border-edge px-2 py-1.5 text-left font-medium text-ink-2 bg-hover text-xs whitespace-nowrap${clip ? ' overflow-hidden' : ''}`}
       data-col={col}
       data-testid={testId}
       draggable={canDrag}

@@ -95,13 +95,12 @@ export function TestPickerModal({
   const { t } = useTranslation()
   const { data: schema } = useProjectSchema(repoPath)
   const typeRefs = useMemo(() => getTestTypeRefs(schema), [schema])
-  const { data: identityLogin, isPending: identityPending } = useQuery({
+  const { isPending: identityPending } = useQuery({
     queryKey: ['project-username', repoPath],
     queryFn: () => api.auth.projectUsername(repoPath),
     enabled: !!repoPath,
     retry: false,
   })
-  const username = identityLogin ?? 'local'
 
   const [step, setStep] = useState<1 | 2>(1)
   // GH176 — panneau ⚙️ des colonnes du sélecteur (onglet Tests, étape 1).
@@ -414,7 +413,6 @@ export function TestPickerModal({
                       typeRef={currentType.ref}
                       typeDef={currentType.typeDef}
                       tests={typeCandidates}
-                      username={username}
                       workspaceDir={workspaceDir}
                       filter={filter}
                       filterOptions={filterOptions}

@@ -23,8 +23,9 @@ export function useColumnFilters(visibleKeys: readonly string[], resetKey?: stri
     setPopover(prev => (prev && !visible.includes(prev.column) ? null : prev))
   }, [visibleKey])
 
+  // Pas de nouvel objet si rien n'est filtré : au montage, aucun rendu supplémentaire de la grille.
   useEffect(() => {
-    setFilters({})
+    setFilters(prev => (Object.keys(prev).length === 0 ? prev : {}))
     setPopover(null)
   }, [resetKey])
 

@@ -237,3 +237,43 @@ Décidés en cours d'implémentation (`specs/GH389-sprint1.md`), sans effet sur 
 - **Défilement** : `useGridScrollKey(gridId)` (onglet + page + grille, GH300) pour les grilles de page.
 - **En-tête de la Validation** : bloc d'informations borné (`max-h-[45vh]`, défilement propre) ;
   replié, `validation-state-short` et `validation-remaining-short` dans le sous-titre.
+
+## 13. Écarts constatés au sprint 2 (Vue Excel)
+
+Décidés en cours d'implémentation (`specs/GH389-sprint2.md`), sans effet sur la spec :
+
+- **`useGridPrefs` dans `SystemView`** : seulement pour l'écriture partielle du `.pref` du type (`patch`,
+  mise à jour optimiste puis relecture) et pour les largeurs / colonnes figées de la vue Tableau
+  (`widths`, `freezeCount`). Les colonnes des vues Tableau / Document / Édition / Popup, les titres
+  de dossiers, les dossiers repliés et les vues enregistrées restent dérivés par `SystemView` (GH170 :
+  application pendant le rendu, `keepPreviousData` au changement de type). `useGridPrefs` reçoit
+  `raw` (entrée brute) et `patch` ; ses fonctions sont stables. `TestPickerGrid` : `useGridPrefs`
+  (vue `picker`), qui remplace sa requête et son écriture ; le prop `username` disparaît.
+- **`FieldConfigModal`** : utilise `ColumnCheckItem` (case commune, extraite de `ColumnChecklist`) et
+  non `ColumnChecklist` entière — ses listes imbriquées (colonnes calculées éclatées, étapes, liens)
+  ne sont pas de simples groupes et partagent un seul conteneur défilant.
+- **`GridHeaderCell`** : prop `clip` (défaut vrai) ; la Vue Excel garde des en-têtes non coupés (icône
+  de filtre d'une colonne étroite atteignable, comme avant). En-têtes de la Vue Excel :
+  `data-testid="excel-header-<colonne>"` ajouté.
+- **Cellules de la Vue Excel** : `data-col` et `data-active` sur chaque cellule (cellule active,
+  défilement de `ensureCellVisible`) ; couverture et reflets deviennent sélectionnables (`PlainCell`).
+- **Clavier** : branché par `useGridKeyboard.move` dans le `onKeyDown` existant (raccourcis existants
+  traités d'abord). Entrée = F2 (`requestEdit` ; une cellule de lien ouvre son popover, comme F2) ;
+  dossier sans renommage : Entrée replie / déplie. Mode sélection : flèches et Espace seulement
+  (Tab, Entrée et Échap gardent leur rôle dans la modale). Tab dans un éditeur texte (nom, champ,
+  dossier) : `onTab` de `ExcelTextEditor`.
+- **Sélection** : `useRowSelection` ; une ancre absente de la sélection (sélection posée par l'arbre
+  ou un lien suivi, Ctrl+clic qui l'a retirée) est remplacée, pour Maj, par la dernière ligne
+  sélectionnée — comportement d'avant GH389 conservé, ajouté au hook (aussi pour `DataGrid`).
+- **Texte affiché** : les champs enum à libellés (GH136) sont filtrés et exportés sur leur libellé,
+  comme le statut (spec §1.2 « texte affiché »).
+- **Export Tableau** : `ExcelView` expose `exportRef` (`ExcelExportSource` : colonnes, lignes
+  affichées, texte, libellé) ; `buildDisplayedExportRows` (`lib/exportColumns.ts`) construit le
+  payload `requirements` / `tests` xlsx. Titres de dossier exportés comme lignes (section + titre dans
+  la première autre colonne). Gabarit GH34 : `buildExportOutline(…, keep)` restreint l'arbre aux
+  éléments affichés, colonnes du gabarit inchangées. En vue Document, l'export xlsx garde l'ancien
+  calcul (aucune Vue Excel montée). Import en masse (`bulk-import-validation.util.ts`) : il lit des
+  entrées JSON (outil MCP), pas le classeur — aucun chemin ne réimporte le classeur standard, rien à
+  exclure.
+- **`lib/gridSelection.ts`** supprimé : tout son contenu (cases, `pruneTree`) est dans
+  `components/grid/rowSelection.ts`.

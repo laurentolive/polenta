@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { Issue, ObjectLink, ObjectTypeDefinition, Requirement, TestCase } from '@polenta/types'
-import type { FieldVisibilityPatch, FieldVisibilityPref } from '@polenta/api-client'
+import type { FieldVisibilityPref } from '@polenta/api-client'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { api } from '../../api'
 import { ExcelView, type ExcelSelectionMode } from '../system/ExcelView'
@@ -12,7 +12,8 @@ import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { computeSectionNumbers } from '../../hooks/useTreeState'
 import { normalizeObject } from '../../lib/normalizeObject'
 import { defaultVisibleFields } from '../../lib/exportColumns'
-import { pruneTree } from '../../lib/gridSelection'
+import { pruneTree } from '../grid/rowSelection'
+import { useGridPrefs } from '../grid/useGridPrefs'
 import type { FilterOptions } from '../../lib/textFilter'
 
 /**
@@ -32,7 +33,6 @@ export function TestPickerGrid({
   typeDef,
   tests,
   category = 'test',
-  username,
   workspaceDir,
   filter,
   filterOptions,
@@ -48,7 +48,6 @@ export function TestPickerGrid({
   tests: Array<TestCase | Requirement | Issue>
   /** Catégorie du type (`test` par défaut) : étapes et colonnes calculées. */
   category?: 'test' | 'requirement' | 'issue'
-  username: string
   /** GH70 — projet ouvert (colonnes calculées : requêtes partagées du projet). */
   workspaceDir: string
   filter: string
@@ -67,12 +66,11 @@ export function TestPickerGrid({
     queryFn: () => api.tree.get(repoPath, nodeId!, typeId!),
     enabled: !!repoPath && !!nodeId && !!typeId,
   })
-  const prefsKey = useMemo(() => ['pref-visibility', repoPath, username, typeRef], [repoPath, username, typeRef])
-  const { data: prefs, isPending: prefsPending } = useQuery({
-    queryKey: prefsKey,
-    queryFn: () => api.pref.getFieldVisibility(repoPath, username, typeRef),
-    enabled: !!repoPath && !!username,
-  })
+  // GH389 — préférences du type par la brique commune (`useGridPrefs`) : colonnes `picker`, et clés de
+  // la Vue Excel du type (`excel`, largeurs, gel, dossiers) lues dans l'entrée brute.
+  const gridPrefs = useGridPrefs(useMemo(() => ({ repoPath, prefKey: typeRef, view: 'picker', defaults: [] }), [repoPath, typeRef]))
+  const prefs = gridPrefs.raw as FieldVisibilityPref | null
+  const prefsPending = !gridPrefs.loaded
   const { data: allLinks = [] } = useQuery({
     queryKey: ['links-all', repoPath],
     queryFn: () => api.requirements.linksAll(repoPath),
@@ -88,36 +86,20 @@ export function TestPickerGrid({
   const [colWidths, setColWidths] = useState<Record<string, number>>({})
   const initializedFor = useRef<string | null>(null)
   useEffect(() => {
-    const key = prefsKey.join('|')
+    const key = `${repoPath}|${typeRef}`
     if (prefsPending || initializedFor.current === key) return
     initializedFor.current = key
     setCollapsedFolders(prefs?.collapsedFoldersExcel ?? [])
     setFreezeColCount(prefs?.freezeColCountExcel ?? 0)
     setColWidths(prefs?.colWidthsExcel ?? {})
-  },[prefs, prefsPending, prefsKey])
+  },[prefs, prefsPending, repoPath, typeRef])
 
   // GH176 — écriture partielle (le main fusionne, `null` supprime), appliquée d'abord au cache
-  // partagé avec la Vue Système pour un affichage immédiat, puis relue : après une suppression,
-  // seul le main sait à quoi l'entrée retombe (défaut de l'équipe, ou rien).
-  const qc = useQueryClient()
-  const savePrefs = useCallback((patch: FieldVisibilityPatch) => {
-    // Une relecture en cours ramènerait la valeur d'avant ce changement.
-    void qc.cancelQueries({ queryKey: prefsKey })
-    qc.setQueryData<FieldVisibilityPref | null>(prefsKey, prev => {
-      const next: Record<string, unknown> = { ...prev }
-      for (const [key, value] of Object.entries(patch)) {
-        if (value === null) delete next[key]
-        else if (value !== undefined) next[key] = value
-      }
-      return next as unknown as FieldVisibilityPref
-    })
-    api.pref.setFieldVisibility(repoPath, username, typeRef, patch)
-      .catch(err => console.error('[TestPickerGrid] Enregistrement des colonnes du sélecteur :', err))
-      .finally(() => { void qc.invalidateQueries({ queryKey: prefsKey }) })
-  }, [qc, prefsKey, repoPath, username, typeRef])
-  const onPickerFieldsChange = useCallback((fields: string[]) => savePrefs({ picker: fields }), [savePrefs])
-  const onPickerFoldersChange = useCallback((show: boolean) => savePrefs({ showFoldersPicker: show }), [savePrefs])
-  const onPickerReset = useCallback(() => savePrefs({ picker: null, showFoldersPicker: null }), [savePrefs])
+  // partagé avec la Vue Système pour un affichage immédiat, puis relue (`useGridPrefs.patch`).
+  const { patch: savePrefs } = gridPrefs
+  const onPickerFieldsChange = useCallback((fields: string[]) => { void savePrefs({ picker: fields }) }, [savePrefs])
+  const onPickerFoldersChange = useCallback((show: boolean) => { void savePrefs({ showFoldersPicker: show }) }, [savePrefs])
+  const onPickerReset = useCallback(() => { void savePrefs({ picker: null, showFoldersPicker: null }) }, [savePrefs])
 
   const [rowMaxLines] = useState(readExcelRowMaxLines)
 

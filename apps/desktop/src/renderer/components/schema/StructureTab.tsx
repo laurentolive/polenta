@@ -19,6 +19,7 @@ import { RepoBranchSelector } from './RepoBranchSelector'
 import { IntegrationBranchIndicator } from './IntegrationBranchIndicator'
 import { objTypeToEditable, editableToObjType, emptyObjType, defaultObjectTypes, typeNamingRoot, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, withRenamedRequiredWhen, typeRename, typeRenameDecision, migrationSteps, CATEGORY_LABEL_KEY, type EditableObjectType } from './objectTypeEditor'
 import { ValueRenameConfirmModal } from './ValueRenameConfirmModal'
+import { defaultLinkTypes, requirementRefs, type DefaultLinkKind } from './defaultLinkTypes'
 import { TypeRenameConfirmModal } from './TypeRenameConfirmModal'
 import { SchemaDeleteConfirmModal } from './SchemaDeleteConfirmModal'
 import { emptyFieldRenameResult } from '@polenta/types'
@@ -26,7 +27,7 @@ import type { FieldRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDel
 import { RolesExposedFields, ImplementedInterfacesFields } from './RolesImplementsFields'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type {
-  ProjectSchema, WorkspaceTreeNode, MountOverride, ObjectTypeDefinition, ObjectCategory,
+  ProjectSchema, WorkspaceTreeNode, MountOverride, ObjectTypeDefinition, ObjectCategory, LinkTypeDefinition,
   DiamondConflict, PolentaRepoDependency, ImplementsDeclaration, SystemNode, RoleDefinition,
 } from '@polenta/types'
 import {
@@ -1045,6 +1046,16 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
     return schemasByRepoPath.get(path)?.nodes.find(n => n.name === 'root')?.label || node?.label || node?.name || path
   }
 
+  /** GH373 — libellés des types de liens par défaut, dans la langue de l'interface. */
+  const defaultLinkLabels = (kind: DefaultLinkKind) => kind === 'verification'
+    ? { labelSourceToTarget: t('schema.addDependency.verificationSourceToTarget'), labelTargetToSource: t('schema.addDependency.verificationTargetToSource') }
+    : { labelSourceToTarget: t('schema.addDependency.implementationSourceToTarget'), labelTargetToSource: t('schema.addDependency.implementationTargetToSource') }
+  /** GH373 — noms de types de liens pris dans le workspace (un type par composant, jamais masqué). */
+  const workspaceLinkTypeNames = () => [...schemasByRepoPath.values()].flatMap(s => (s.linkTypes ?? []).map(l => l.name))
+  /** GH373 — refs des types exigence du parent : composant local `parentName`, sinon `root` du repo. */
+  const parentRequirementRefs = (parentRepoPath: string, parentName?: string) =>
+    requirementRefs(findSystemNode(schemasByRepoPath.get(parentRepoPath)?.nodes ?? [], parentName ?? 'root'))
+
   const saveSchema = async (targetRepoPath: string, nextSchema: ProjectSchema) => {
     await api.schema.save(targetRepoPath, nextSchema)
     await qc.invalidateQueries({ queryKey: ['schema', targetRepoPath] })
@@ -1555,10 +1566,16 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
       // default object type per checked category, same factory as the "+ élément" button
       // (handleAddElement above) so a freshly added component isn't left with an empty tree.
       // GH365 — racine tirée du label ; préfixes du workspace évités (GH97).
+      const root = typeNamingRoot(values.label.trim(), name)
       const objectTypes = defaultObjectTypes(
-        values.defaultCategories, typeNamingRoot(values.label.trim(), name), c => t(CATEGORY_LABEL_KEY[c]),
+        values.defaultCategories, root, c => t(CATEGORY_LABEL_KEY[c]),
         t('schema.editor.descriptionFieldLabel'), allPrefixes,
       ).map(editableToObjType)
+      // GH373 — types de liens propres au composant ; local : tous dans le schéma du repo.
+      const links = defaultLinkTypes({
+        kinds: values.defaultLinks, root, node: name, objectTypes,
+        parentRefs: parentRequirementRefs(targetRepoPath, parentName), labels: defaultLinkLabels, taken: workspaceLinkTypeNames(),
+      })
       const newNode: SystemNode = {
         name, label: values.label.trim() || name, readonly: false, objectTypes,
         description: values.description.trim() || undefined,
@@ -1566,7 +1583,8 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
       const nodes = parentName
         ? mapSystemNode(schema.nodes, parentName, p => ({ ...p, children: [...(p.children ?? []), newNode] }))
         : [...schema.nodes, newNode]
-      await saveSchema(targetRepoPath, { ...schema, nodes })
+      const linkTypes = [...(schema.linkTypes ?? []), ...links.own, ...links.parent]
+      await saveSchema(targetRepoPath, { ...schema, nodes, linkTypes })
       setPendingDependency(null)
     } catch (err) {
       setAddDependencyError(err instanceof Error ? err.message : String(err))
@@ -1626,6 +1644,8 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
           // placeholder. Sans ça, le schéma par défaut renvoyé par schema.get (root « Produit »)
           // était enregistré tel quel par l'amorçage des types.
           const label = typedLabel || (newTreeNode?.label ? '' : values.name)
+          // GH373 — lien parent : écrit dans le schéma du repo parent (comme à la main dans l'onglet Liens).
+          let parentLinkTypes: LinkTypeDefinition[] = []
           try {
             let nextSchema = await api.schema.get(newRepoPath)
             // Only seed an empty/fresh component's own schema — never override an existing
@@ -1634,11 +1654,19 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
             if (categories.length > 0 && (findSystemNode(nextSchema.nodes, 'root')?.objectTypes ?? []).length === 0) {
               // GH365 — racine = label effectif du composant (saisi, sinon celui du repo, sinon son nom).
               const ownPrefixes = flattenSystemNodes(nextSchema.nodes).flatMap(({ node }) => (node.objectTypes ?? []).flatMap(ot => ot.prefix ? [ot.prefix] : []))
+              const root = typeNamingRoot(typedLabel || newTreeNode?.label, values.name)
               const newTypes = defaultObjectTypes(
-                categories, typeNamingRoot(typedLabel || newTreeNode?.label, values.name), c => t(CATEGORY_LABEL_KEY[c]),
+                categories, root, c => t(CATEGORY_LABEL_KEY[c]),
                 t('schema.editor.descriptionFieldLabel'), [...allPrefixes, ...ownPrefixes],
               ).map(editableToObjType)
               nextSchema = withNodeObjectTypes(nextSchema, 'root', () => newTypes)
+              const links = defaultLinkTypes({
+                kinds: values.defaultLinks, root, node: 'root', objectTypes: newTypes,
+                parentRefs: parentRequirementRefs(pendingDependency.repoPath, pendingDependency.parentName), labels: defaultLinkLabels,
+                taken: [...workspaceLinkTypeNames(), ...(nextSchema.linkTypes ?? []).map(l => l.name)],
+              })
+              if (links.own.length > 0) nextSchema = { ...nextSchema, linkTypes: [...(nextSchema.linkTypes ?? []), ...links.own] }
+              parentLinkTypes = links.parent
             }
             if (label || description) {
               nextSchema = {
@@ -1651,6 +1679,10 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
               }
             }
             await saveSchema(newRepoPath, nextSchema)
+            if (parentLinkTypes.length > 0) {
+              const parentSchema = await api.schema.get(pendingDependency.repoPath)
+              await saveSchema(pendingDependency.repoPath, { ...parentSchema, linkTypes: [...(parentSchema.linkTypes ?? []), ...parentLinkTypes] })
+            }
             // WorkspaceTreeNode.label est dérivé du node root au (re)build de l'arbre — même
             // raisonnement que handleSubmitEditDependency : refetch APRÈS le setQueryData ci-dessus.
             if (label) await refetchTree()
@@ -1718,6 +1750,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         isLocal: false,
         // Edit mode never seeds default object types (cf. AddDependencyValues) — irrelevant here.
         defaultCategories: [],
+        defaultLinks: [],
       },
     })
   }
@@ -2071,6 +2104,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
           error={addDependencyError}
           onSubmit={handleSubmitDependency}
           onClose={() => { setPendingDependency(null); setAddDependencyError(null) }}
+          parentHasRequirementTypes={parentRequirementRefs(pendingDependency.repoPath, pendingDependency.parentName).length > 0}
         />
       )}
 

@@ -119,6 +119,14 @@ describe('Forgejo', () => {
     expect(await forgejoProvider.listOrgTeams!(forge.baseUrl, 'tok', 'acme')).toEqual([{ name: 'devs', label: 'devs' }])
   })
 
+  it('GH354 — userExists : 200 → oui, 404 → non, autre erreur remonte', async () => {
+    forge.route('GET', `${F}/users/ann`, () => ({ status: 200, json: { login: 'ann' } }))
+    expect(await forgejoProvider.userExists!(forge.baseUrl, 'tok', 'ann')).toBe(true)
+    expect(await forgejoProvider.userExists!(forge.baseUrl, 'tok', 'zed')).toBe(false)
+    forge.route('GET', `${F}/users/err`, () => ({ status: 500, json: { message: 'boom' } }))
+    await expect(forgejoProvider.userExists!(forge.baseUrl, 'tok', 'err')).rejects.toBeInstanceOf(ForgeHttpError)
+  })
+
   it('setRepoTeam : sans corps ; déjà ajoutée (422) = succès ; inconnue (404) remonte', async () => {
     forge.route('PUT', `${F}/repos/acme/proj/teams/devs`, () => ({ status: 422, json: { message: "team 'devs' is already added to repo" } }))
     await forgejoProvider.setRepoTeam!(forge.baseUrl, 'tok', 'acme', 'proj', 'devs', 'admin')
@@ -248,6 +256,14 @@ describe('GitHub', () => {
     } }))
     const err = await githubProvider.setCollaborator!(forge.baseUrl, 'gh', 'acme', 'proj', 'seb', 'admin').catch((e: Error) => e)
     expect((err as ForgeHttpError).forgeMessage).toBe('Validation Failed — raison détaillée ; Repository.permission : invalid')
+  })
+
+  it('GH354 — userExists : compte → oui ; organisation ou inconnu (404) → non', async () => {
+    forge.route('GET', `${G}/users/ann`, () => ({ status: 200, json: { login: 'ann', type: 'User' } }))
+    forge.route('GET', `${G}/users/acme`, () => ({ status: 200, json: { login: 'acme', type: 'Organization' } }))
+    expect(await githubProvider.userExists!(forge.baseUrl, 'tok', 'ann')).toBe(true)
+    expect(await githubProvider.userExists!(forge.baseUrl, 'tok', 'acme')).toBe(false)
+    expect(await githubProvider.userExists!(forge.baseUrl, 'tok', 'zed')).toBe(false)
   })
 
   it('invitations : liste, annulation, 404 à la seconde annulation = succès', async () => {

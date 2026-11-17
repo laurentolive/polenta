@@ -75,6 +75,20 @@ une lettre (label vide, non latin). Un nom ou préfixe déjà pris dans le works
 ligne d'un repo : label de son `root`, repli sur le nom de montage) ; les types existants ne sont
 pas renommés (`objectTypeEditor.tsx` : `typeNamingRoot`, `defaultObjectTypes`).
 
+**Types de liens créés par défaut (GH373)** : sous les types d'objets, une case par type de lien dont
+les deux extrémités sont cochées, cochée par défaut (une case masquée garde son état) : **Vérification**
+(test → exigence du composant, « vérifie » / « est vérifiée par », `defaultVisible`), **Implémentation**
+(exigence → exigence du composant, « est implémentée par » / « implémente »), **Implémentation depuis le
+parent** (exigences du nœud parent → exigence du composant, mêmes libellés ; seulement si le parent a un
+type exigence). `issue-impact` est affiché coché et grisé (ajouté avec le type issue, §12 de SPEC-REQ).
+Un **type propre au composant** par case cochée — nom `<racine>-verification` / `-implementation` /
+`-implementation-parent` (racine des types en minuscules, `_` → `-`, premier suffixe `-2` libre dans
+le workspace), refs `<nœud>::<type>` des types créés (`root::` pour un repo séparé) — pour ne pas être
+masqué par un type du produit de même nom (union par nom, SPEC-REQ §5.2a). Écrit dans le schéma du
+composant (local : celui du repo), le lien parent dans le schéma du **parent**, par `schema:save`
+comme depuis l'onglet Liens (même forme). Rien n'est créé quand le `root` d'un repo séparé n'est pas
+amorcé (`defaultLinkTypes.ts`).
+
 **Paramètres du repo (GH108)** : icône sur la ligne d'un repo dont `origin` est sur une forge d'un
 compte connecté. Détail : SPEC-PROJECT-MANAGEMENT §9.4.
 

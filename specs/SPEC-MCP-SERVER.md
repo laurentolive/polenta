@@ -315,10 +315,38 @@ réponse précédente).
 | Tool | Entrée | Refuse si |
 |---|---|---|
 | `add_component` | `{ name, label, description?, readonly?, parentName? }` | `name` déjà pris par un `SystemNode` existant à n'importe quelle profondeur (y compris `"root"`) — `NODE_NAME_TAKEN` ; `parentName` fourni mais introuvable dans le repo courant — `NODE_NOT_FOUND` |
-| `add_object_type` | `{ nodeName, objectType: ObjectTypeDefinition }` | nœud introuvable (`NODE_NOT_FOUND`) ou `readonly` (`NODE_READONLY`) ; `objectType.name` déjà pris dans ce nœud (`TYPE_NAME_TAKEN`) ; `objectType.prefix` déjà utilisé par un type de **n'importe quel** nœud du projet (`PREFIX_TAKEN`, règle 10 CLAUDE.md) |
-| `add_field` | `{ nodeName, typeName, field: SchemaField }` | nœud/type introuvables, nœud `readonly`, `field.name` déjà présent (`FIELD_NAME_TAKEN`) |
+| `add_object_type` | `{ nodeName, objectType: ObjectTypeDefinition }` | nœud introuvable (`NODE_NOT_FOUND`) ou `readonly` (`NODE_READONLY`) ; `objectType.name` déjà pris dans ce nœud (`TYPE_NAME_TAKEN`) ; `objectType.prefix` déjà utilisé par un type de **n'importe quel** nœud du projet (`PREFIX_TAKEN`, règle 10 CLAUDE.md) ; type version / validation (GH377, ci-dessous) mal formé (`VERSION_TYPE_INVALID` / `VALIDATION_TYPE_INVALID`, `FIELD_NAME_TAKEN`, `REQUIRED_WHEN_INVALID`) |
+| `add_field` | `{ nodeName, typeName, field: SchemaField, list?: 'fields' \| 'runFields' \| 'stepFields' \| 'entryFields' }` | nœud/type introuvables, nœud `readonly`, `field.name` déjà présent (`FIELD_NAME_TAKEN`) ; GH371 — `entryFields` : type non validation (`VALIDATION_TYPE_INVALID`), nom `decision` réservé (`FIELD_NAME_TAKEN`), `requiredWhen` avec clé ou valeur inconnue — clés : autres `entryFields` et pseudo-champ `decision` (valeurs = décisions du type) — (`REQUIRED_WHEN_INVALID`) |
 | `add_status` | `{ nodeName, typeName, status: SchemaStatus }` | nœud/type introuvables, nœud `readonly`, `status.name` déjà présent (`STATUS_NAME_TAKEN`) |
 | `add_link_type` | `{ linkType: LinkTypeDefinition }` | `linkType.name` déjà pris (`LINK_TYPE_NAME_TAKEN`) |
+
+**GH371 — modification d'un type existant.** Méthodes `SchemaService.addDecision`, `updateDecision`,
+`removeDecision`, `reorderStatuses`, `updateObjectType`, `updateStatus`, `removeStatus`, sous la même file
+`withMutationQueue` ; la migration des objets (`FieldRenameService.renameValues`, port `SchemaValueMigrator`
+passé en argument) est faite **dans la même entrée de file**, après l'écriture du schéma. Tout refus est levé
+avant la moindre écriture ; le schéma résultant passe par tous les garde-fous de `save` (`assertSaveable`,
+aussi appelé seul en `dryRun`). Refus communs : `NODE_NOT_FOUND`, `NODE_READONLY`, `TYPE_NOT_FOUND`. Les
+messages citent 5 éléments au plus, puis « … et N autres ». « Au moins une propriété à modifier »
+(`update_decision`, `update_status`, `update_object_type`) : erreur d'entrée (`Input validation error`).
+
+| Tool | Entrée | Effet / refuse si |
+|---|---|---|
+| `add_decision` | `{ nodeName, typeName, decision: { name, label?, color?, isPending?, proposesIssue? } }` | ajout en fin de `decisions` ; type non validation, ou seconde décision en attente (`VALIDATION_TYPE_INVALID`) ; nom pris (`DECISION_NAME_TAKEN`) |
+| `update_decision` | `{ nodeName, typeName, name, to?, label?: string \| null, color?: string \| null, isPending?: true, proposesIssue?: boolean }` | `null` / `false` retirent la clé ; `isPending: true` déplace la marque ; `to` renomme la décision et les `requiredWhen.decision` des `entryFields` (aucun objet réécrit). `DECISION_NOT_FOUND`, `DECISION_NAME_TAKEN` ; renommage ou `isPending` d'une décision portée par une entrée (confirmée ou proposée) d'une validation, signées comprises : `DECISION_IN_USE` (IDs) |
+| `remove_decision` | `{ nodeName, typeName, name }` | `DECISION_NOT_FOUND` ; décision en attente (`VALIDATION_TYPE_INVALID`) ; portée par une entrée (`DECISION_IN_USE`) ; citée par un `requiredWhen` d'`entryFields` (`REQUIRED_WHEN_INVALID`) |
+| `reorder_statuses` | `{ nodeName, typeName, order: string[] }` | permutation exacte, sinon `STATUS_LIST_INVALID` ; premier statut marqué du type validation (`VALIDATION_TYPE_INVALID`) ; aucun objet modifié |
+| `update_status` | `{ nodeName, typeName, name, to?, label?: string \| null, color?: string \| null, isApproval?, isTerminal?, dryRun? }` | `null` / `false` retirent la clé. `to` : transitions, `requiredWhen.status` des `fields` et objets du type migrés (statut courant, `history.status` des exigences, tests, campagnes, issues, validations ; copies `testSnapshot` pour un type de test). `STATUS_NOT_FOUND`, `STATUS_NAME_TAKEN`, `VALIDATION_TYPE_INVALID` / `VERSION_TYPE_INVALID` (marques ; statuts marqués figés tant que des validations / versions existent), `TRANSITION_INVALID` |
+| `remove_status` | `{ nodeName, typeName, name, replaceWith?, dryRun? }` | statut courant d'au moins un objet du type sans `replaceWith` : `STATUS_IN_USE` (nombre, IDs) ; avec `replaceWith` : objets migrés (fusion GH82 D4), transitions et `requiredWhen` réécrits vers `replaceWith` (règle devenue invalide : `TRANSITION_INVALID`) ; sans `replaceWith`, statut cité par une transition (`TRANSITION_INVALID`) ou un `requiredWhen` (`REQUIRED_WHEN_INVALID`). `STATUS_NOT_FOUND` ; dernier statut ou `replaceWith = name` (`STATUS_LIST_INVALID`) ; `VALIDATION_TYPE_INVALID` / `VERSION_TYPE_INVALID` |
+| `update_object_type` | `{ nodeName, typeName, label?, color?, displayIdField?, trackStatusHistory? }` (`null` retire) | `displayIdField` ni `title` ni champ text / number / enum (`DISPLAY_ID_FIELD_INVALID`) ; `trackStatusHistory: false` (seule valeur écrite) sur le type validation (`VALIDATION_TYPE_INVALID`) |
+
+Statuts d'un type `campaign` (fixes) : `STATUS_LIST_INVALID` ; décisions sur un type non validation :
+`VALIDATION_TYPE_INVALID`. Réponse de `update_status` / `remove_status` : `{ schema, migration }`
+(`FieldRenameResult` : `migrated`, `skipped`, `failed`, `snapshots?` ; vide sans migration) ; `dryRun: true` :
+`{ dryRun: true, schema, preview: { withOld, withNew } }`, rien d'écrit. Échec partiel de migration : schéma
+enregistré, objets listés dans `failed` / `skipped`. Ces deux outils invalident d'abord les index exigences /
+tests / issues du repo (objets écrits par l'application depuis le dernier appel). Limite (comme l'éditeur,
+GH82) : les versions (`versions/*.yaml`) ne sont ni comptées par `STATUS_IN_USE` ni migrées. Vues
+enregistrées, requêtes et dashboards citant un statut ou une décision renommés : non modifiés.
 
 `add_component` mappe vers `SchemaService.addNode` (nom de tool aligné sur le
 vocabulaire "composant" du spec/UI, nom de méthode aligné sur `SystemNode`).
@@ -331,7 +359,30 @@ refus : `{ isError: true, content: [{ type: 'text', text: '[<CODE>] <message>' }
 
 `SchemaValidationErrorCode` : `NODE_NAME_TAKEN | NODE_NOT_FOUND | NODE_READONLY |
 TYPE_NAME_TAKEN | TYPE_NOT_FOUND | PREFIX_TAKEN | FIELD_NAME_TAKEN |
-STATUS_NAME_TAKEN | LINK_TYPE_NAME_TAKEN`.
+STATUS_NAME_TAKEN | LINK_TYPE_NAME_TAKEN | REQUIRED_WHEN_INVALID | RUN_FIELD_INVALID |
+VERSION_TYPE_INVALID | VALIDATION_TYPE_INVALID | DECISION_IN_USE | DISPLAY_ID_FIELD_INVALID |
+TRANSITION_INVALID | STATUS_NOT_FOUND | STATUS_IN_USE | STATUS_LIST_INVALID | DECISION_NOT_FOUND |
+DECISION_NAME_TAKEN` (les cinq derniers : GH371).
+
+**GH377 — type version ou validation par `add_object_type`.** Catégories `version` et `validation` admises,
+ainsi que `decisions` (`ValidationDecisionDef[]`) et `entryFields` (`SchemaField[]`) pour le type validation.
+Préparation dans `SchemaService.addObjectType` (`prepareNewObjectType`), avant `save` :
+
+- `statuses` absent → statuts par défaut de l'éditeur ; `decisions` absent (validation) → décisions par défaut.
+  Source unique `packages/types/src/schema-defaults.ts` (`DEFAULT_VERSION_STATUSES`,
+  `DEFAULT_VALIDATION_STATUSES`, `DEFAULT_VALIDATION_DECISIONS`), dont l'éditeur dérive ses constantes. Une
+  liste fournie (même vide) est prise telle quelle, sans fusion.
+- `prefix` obligatoire (`VERSION_TYPE_INVALID` / `VALIDATION_TYPE_INVALID`) ; type version : exactement un
+  statut `isApproval`, premier statut non marqué (`VERSION_TYPE_INVALID`) ; version et validation : noms de
+  statuts uniques (`STATUS_NAME_TAKEN`) — contrôles propres au MCP, l'éditeur n'est pas concerné.
+- `entryFields` : `trackHistory` / `defaultVisible` retirés, liste vide omise (comme l'éditeur) ; `entryFieldsError`
+  (`@polenta/types`) : nom unique et ≠ `decision` (`FIELD_NAME_TAKEN`), `requiredWhen` sans erreur ni
+  référence inconnue — clés : autres champs d'entrée et `decision` (valeurs : noms des décisions)
+  (`REQUIRED_WHEN_INVALID`).
+- `decisions` / `entryFields` sur une autre catégorie → `VALIDATION_TYPE_INVALID`.
+- Garde-fous communs de `save` : un seul type de chaque catégorie, sur `root` ; `validationTypeError`.
+
+Les autres catégories ne reçoivent pas de statuts par défaut (comportement inchangé).
 
 ### 4.4 Liens (`tools/links.tools.ts`, GH16)
 

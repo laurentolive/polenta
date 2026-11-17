@@ -326,7 +326,11 @@ uniquement » (création locale ci-dessus). Le serveur ouvre l'**assistant « Aj
   d'intégration** `int-<x>` pré-remplie avec le nom, membres facultatifs (`RepoMembersEditor` :
   comptes avec complétion du login — §9.5 —, équipes de l'organisation, `forge:org-teams`) ;
 - `forge:create-repo(req)` → `CreateRepoResult` (`RepoProvisioningService.create`), étapes dans
-  cet ordre, **tout étant validé avant la première écriture** :
+  cet ordre, **tout étant validé avant la première écriture**, membres compris (GH354,
+  `ForgeService.checkMembers`) : chaque compte existe sur la forge (`GET /users/{login}` ; GitHub :
+  pas une organisation), chaque équipe dans l'organisation (non vérifiée si la liste est illisible),
+  ni équipe ni propriétaire sur un repo personnel. Un refus nomme tous les membres à corriger dans
+  l'assistant, et rien n'est créé (même vérification avant d'adopter un repo vide) :
   1. `remote` : repo vide créé (`auto_init: false`) ; un échec arrête tout, rien n'est écrit ;
   2. `local` : `initProjectRepo` avec options — **un seul premier commit sur `int-<x>`**, avec
      `README.md` (titre = nom, paragraphe = description) et `config/project.yaml`
@@ -334,10 +338,14 @@ uniquement » (création locale ci-dessus). Le serveur ouvre l'**assistant « Aj
   3. `push` de `int-<x>` ;
   4. `defaultBranch` : branche par défaut de la forge alignée (`alignDefaultBranch`) ;
   5. `members` : un appel par membre, un échec n'arrête pas les suivants ; invitation GitHub signalée ;
+     un refus (403 compris) ne marque pas le compte « accès révoqué » (GH354) ;
   6. `open` : le projet s'ouvre.
 
   Après un échec, les étapes suivantes sont `skipped` et l'assistant affiche la liste des étapes.
-  Polenta ne supprime **jamais** un repo distant.
+  Polenta ne supprime **jamais** un repo distant. Repo publié (`push` fait) et échec après coup
+  (membres, branche par défaut) : l'écran s'intitule « Repo créé, points à traiter », renvoie aux
+  paramètres du repo et garde « Continuer » ; pour un composant, il précise que « Continuer »
+  l'inscrit et que « Fermer » le laisse sur le serveur sans l'inscrire (GH354).
 
 ### 9.2 Composant créé sur le serveur (GH107)
 

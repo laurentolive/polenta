@@ -73,13 +73,7 @@ export class FieldRenameService {
 
   /** GH82 — aperçu sans écriture : objets du type portant l'ancienne / la nouvelle valeur. */
   async previewValueRenames(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<ValueRenamePreview[]> {
-    const objects: HistoryCarrier[] = [
-      ...await this.requirements.findAll(repoPath, { type: objectTypeRef }),
-      ...(await this.tests.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef),
-      ...(await this.campaigns.list(repoPath)).filter(c => c.objectTypeRef === objectTypeRef),
-      ...(await this.issues?.findAll(repoPath) ?? []).filter(i => i.objectTypeRef === objectTypeRef),
-      ...(await this.validations?.list(repoPath) ?? []).filter(v => v.objectTypeRef === objectTypeRef),
-    ]
+    const objects = await this.typeObjects(repoPath, objectTypeRef)
     const valueOf = (o: HistoryCarrier, r: ValueRename) => (r.target.kind === 'status' ? o.status : o.fields?.[r.target.field])
     const multi = (r: ValueRename) => r.target.kind === 'field' && r.target.multi
     const sameTarget = (a: ValueRename, b: ValueRename) =>
@@ -92,5 +86,24 @@ export class FieldRenameService {
         ? 0
         : objects.filter(o => valueHas(valueOf(o, rename), multi(rename), rename.to)).length,
     }))
+  }
+
+  /**
+   * GH371 — IDs des objets du type dont le statut courant est `status` (périmètre de
+   * `previewValueRenames` : l'historique et les copies `testSnapshot` ne comptent pas).
+   */
+  async objectIdsWithStatus(repoPath: string, objectTypeRef: string, status: string): Promise<string[]> {
+    return (await this.typeObjects(repoPath, objectTypeRef)).filter(o => o.status === status).map(o => o.id)
+  }
+
+  /** Exigences, tests, campagnes, issues et validations du type (dans le repo du type). */
+  private async typeObjects(repoPath: string, objectTypeRef: string): Promise<Array<HistoryCarrier & { id: string }>> {
+    return [
+      ...await this.requirements.findAll(repoPath, { type: objectTypeRef }),
+      ...(await this.tests.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef),
+      ...(await this.campaigns.list(repoPath)).filter(c => c.objectTypeRef === objectTypeRef),
+      ...(await this.issues?.findAll(repoPath) ?? []).filter(i => i.objectTypeRef === objectTypeRef),
+      ...(await this.validations?.list(repoPath) ?? []).filter(v => v.objectTypeRef === objectTypeRef),
+    ]
   }
 }

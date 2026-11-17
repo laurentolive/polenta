@@ -22,7 +22,9 @@ import { RepoProvisioningService } from './repo-provisioning.service'
 
 let dir: string
 let calls: string[]
-let forge: { createRemote: ReturnType<typeof vi.fn>; alignDefaultBranch: ReturnType<typeof vi.fn>; grantMember: ReturnType<typeof vi.fn> }
+let forge: {
+  createRemote: ReturnType<typeof vi.fn>; alignDefaultBranch: ReturnType<typeof vi.fn>; grantMember: ReturnType<typeof vi.fn>; checkMembers: ReturnType<typeof vi.fn>
+}
 let pushBranch: ReturnType<typeof vi.fn>
 let workspace: WorkspaceService
 let service: RepoProvisioningService
@@ -45,6 +47,7 @@ beforeEach(async () => {
     createRemote: vi.fn(async () => { calls.push('remote'); return REMOTE }),
     alignDefaultBranch: vi.fn(async () => { calls.push('defaultBranch'); return 'set' }),
     grantMember: vi.fn(async (_k: string, _o: string, _r: string, g: { name: string }) => { calls.push(`member:${g.name}`); return 'added' }),
+    checkMembers: vi.fn(async () => {}),
   }
   pushBranch = vi.fn(async (_d: string, b: string) => { calls.push(`push:${b}`) })
   const ctx = { userDataDir: dir, machineConfig: { hideGithub: false } } as unknown as HostContext
@@ -105,6 +108,16 @@ describe('RepoProvisioningService.create', () => {
     expect(members.detail).toBe('zed : Aucun compte « zed » sur le serveur.\nInvitation à accepter : seb')
     expect(forge.grantMember).toHaveBeenCalledTimes(2)
     expect(result.steps.find(s => s.id === 'open')!.status).toBe('done')
+  })
+
+  it('GH354 — membre refusé à la vérification : aucun repo créé, rien écrit', async () => {
+    forge.checkMembers.mockRejectedValueOnce(new Error('Membres à corriger (rien n\'a été créé) :\nzed : Aucun compte « zed » sur le serveur.'))
+    const members = [{ kind: 'user' as const, name: 'zed', level: 'write' as const }]
+    await expect(service.create(request({ members }))).rejects.toThrow(/zed : Aucun compte/)
+    expect(forge.checkMembers).toHaveBeenCalledWith('forge.test:bob', 'acme', 'org', members)
+    expect(forge.createRemote).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+    expect(fs.readdirSync(dir)).toEqual([])
   })
 
   it('C-06 — nom pris juste avant la création : refus, aucune écriture locale', async () => {

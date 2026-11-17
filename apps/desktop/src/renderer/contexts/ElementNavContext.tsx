@@ -103,18 +103,20 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
     })),
   })
   const campaignsKey = campaignQueries.map(q => q.dataUpdatedAt).join('|')
-  // GH389 — versions et validations : liens vers leur page, popup en-tête seul. Mêmes clés que les
-  // écrans des versions et des validations (invalidées par leurs écritures et `useLiveFileSync`).
+  // GH389 — versions et validations : liens vers leur page, popup en-tête seul. Clés propres à l'index
+  // (`element-nav`), relues par `useLiveFileSync` une fois une rafale de changements passée : actives
+  // sur toutes les pages, les clés des écrans (`versions`, `validations`) seraient relues à chaque
+  // fichier écrit (des centaines de requêtes à l'amorçage de Suivi).
   const versionQueries = useQueries({
     queries: repoPaths.map(repoPath => ({
-      queryKey: ['versions', 'list', repoPath],
+      queryKey: ['element-nav', 'versions', repoPath],
       queryFn: () => api.versions.list(repoPath),
       enabled: !!repoPath,
     })),
   })
   const validationQueries = useQueries({
     queries: repoPaths.map(repoPath => ({
-      queryKey: ['validations', 'versions', repoPath],
+      queryKey: ['element-nav', 'validations', repoPath],
       queryFn: () => api.validations.versions(repoPath),
       enabled: !!repoPath,
     })),

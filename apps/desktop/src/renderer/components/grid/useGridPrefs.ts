@@ -70,7 +70,7 @@ export function useGridPrefs(source: GridPrefsSource): GridPrefs {
   })
   const username = login ?? 'local'
   const queryKey = useMemo(() => ['pref-visibility', repoPath, username, prefKey], [repoPath, username, prefKey])
-  const { data: pref, isSuccess } = useQuery({
+  const { data: pref, isSuccess, isError } = useQuery({
     queryKey,
     queryFn: (): Promise<FieldVisibilityPref | null> => api.pref.getFieldVisibility(repoPath, username, prefKey),
     enabled: !!repoPath && !!prefKey && !loginPending,
@@ -123,7 +123,8 @@ export function useGridPrefs(source: GridPrefsSource): GridPrefs {
   }, [])
 
   return {
-    loaded: local || isSuccess,
+    // Lecture en échec : colonnes par défaut plutôt qu'une grille jamais affichée.
+    loaded: local || isSuccess || isError,
     username,
     columns,
     widths,

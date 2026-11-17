@@ -168,8 +168,10 @@ export function DataGrid<R>(props: DataGridProps<R>) {
   // de la sélection n'atteint jamais une ligne masquée par un filtre. (Mode cases : la sélection
   // survit aux filtres, GH33.)
   useEffect(() => {
-    if (selectionMode !== 'rows' || [...selected].every(id => displayedIds.includes(id))) return
-    onSelectionChange(new Set([...selected].filter(id => displayedIds.includes(id))))
+    if (selectionMode !== 'rows') return
+    const shown = new Set(displayedIds)
+    if ([...selected].every(id => shown.has(id))) return
+    onSelectionChange(new Set([...selected].filter(id => shown.has(id))))
   }, [selectionMode, selected, displayedIds, onSelectionChange])
 
   const [localExpanded, setLocalExpanded] = useState<ReadonlySet<string>>(EMPTY)
@@ -322,7 +324,9 @@ export function DataGrid<R>(props: DataGridProps<R>) {
     ),
   } : undefined
 
-  if (!prefs.loaded) return null
+  // Préférences pas encore lues : le conteneur défilant est rendu quand même (vide) — la mémoire du
+  // défilement (GH300) s'y attache au montage.
+  const loaded = prefs.loaded
   const effectiveMaxLines = rowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : rowMaxLines
   const colCount = leadingKeys.length + shownCols.length
   const checkState = hasCheck ? groupState(displayedIds, selected) : 'none'
@@ -330,7 +334,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
 
   return (
     <div className="flex flex-col gap-2 min-h-0 flex-1" data-testid={`${gridId}-datagrid`}>
-      {!compact && (
+      {loaded && !compact && (
         <GridToolbar
           gridId={gridId}
           start={toolbarStart}
@@ -361,7 +365,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
         <ExcelCellStoreContext.Provider value={cellStore}>
         <GridActionsContext.Provider value={actions}>
         <RowMaxLinesContext.Provider value={effectiveMaxLines}>
-          <table
+          {loaded && <table
             className="text-xs border-separate"
             style={{ width: layout.totalWidth, minWidth: '100%', tableLayout: 'fixed', borderSpacing: 0 }}
             data-testid={`${gridId}-grid`}
@@ -441,7 +445,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
                 )
               })}
             </tbody>
-          </table>
+          </table>}
         </RowMaxLinesContext.Provider>
         </GridActionsContext.Provider>
         </ExcelCellStoreContext.Provider>

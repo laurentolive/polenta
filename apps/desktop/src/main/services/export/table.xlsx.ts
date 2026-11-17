@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs'
-import type { TableExportPayload } from '@polenta/types'
+import { isAcceptedLinkUrl, type TableExportPayload } from '@polenta/types'
 
 /** Largeur Excel (caractères) d'une largeur à l'écran (px). */
 const pxToChars = (px: number) => Math.max(4, Math.round(px / 7))
@@ -30,6 +30,8 @@ export async function buildTableWorkbook(payload: TableExportPayload): Promise<E
     const links = payload.hyperlinks?.[String(i)]
     if (!links) return
     for (const [key, url] of Object.entries(links)) {
+      // Seuls les liens acceptés par un champ `link` (GH195) deviennent cliquables.
+      if (!isAcceptedLinkUrl(url)) continue
       const cell = row.getCell(key)
       cell.value = { text: values[key] || url, hyperlink: url }
       cell.font = { color: { argb: 'FF0563C1' }, underline: true }

@@ -277,3 +277,6 @@ Décidés en cours d'implémentation (`specs/GH389-sprint2.md`), sans effet sur 
   exclure.
 - **`lib/gridSelection.ts`** supprimé : tout son contenu (cases, `pruneTree`) est dans
   `components/grid/rowSelection.ts`.
+- **Index des liens d'élément (§5, sprint 1)** : clés propres `['element-nav', 'versions' | 'validations',
+  repo]` au lieu des clés des écrans ; `useLiveFileSync` les relit une fois, 300 ms après la dernière
+  écriture d'une version / validation (rafale de fichiers : sinon une relecture par fichier et par repo).

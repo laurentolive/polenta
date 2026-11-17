@@ -43,6 +43,16 @@ export function useLiveFileSync(): void {
   workspaceDirRef.current = workspaceDirOf(projectId)
 
   useEffect(() => {
+    // GH389 — index des liens d'élément (versions, validations de tous les repos) : relu une seule fois
+    // après une rafale de changements.
+    let elementNavTimer: ReturnType<typeof setTimeout> | null = null
+    const refreshElementNav = () => {
+      if (elementNavTimer) clearTimeout(elementNavTimer)
+      elementNavTimer = setTimeout(() => {
+        elementNavTimer = null
+        void qc.invalidateQueries({ queryKey: ['element-nav'] })
+      }, 300)
+    }
     const unsubscribe = window.polenta.on('repo:file-changed', (...args: unknown[]) => {
       const [repoPath, relPath] = args as [string, string]
       const workspaceDir = workspaceDirRef.current
@@ -84,6 +94,7 @@ export function useLiveFileSync(): void {
         qc.invalidateQueries({ queryKey: ['versions'] })
         qc.invalidateQueries({ queryKey: ['validations'] })
       }
+      if (relPath === '*' || /^(versions|validations)\//.test(relPath)) refreshElementNav()
       // GH210 — reflets Design et Validation : versions, validations, exigences, schéma.
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
         || /^(requirements|versions|validations)\//.test(relPath)) {
@@ -180,6 +191,7 @@ export function useLiveFileSync(): void {
     // pu être manqués → tout relire (jamais émis sur le desktop).
     const unsubscribeReconnect = window.polenta.on(EVENTS_RECONNECTED, () => { void qc.invalidateQueries() })
     return () => {
+      if (elementNavTimer) clearTimeout(elementNavTimer)
       unsubscribe()
       unsubscribeReconnect()
     }

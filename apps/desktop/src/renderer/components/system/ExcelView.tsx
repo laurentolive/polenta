@@ -116,7 +116,7 @@ interface Props {
   colWidths: Record<string, number>
   onColWidthsChange: (widths: Record<string, number>) => void
   /** GH33 — mode sélection (sélecteur de tests d'une campagne) : lecture seule forcée, colonne
-   *  de cases à cocher, sélection par objectId (cf. `lib/gridSelection.ts`). */
+   *  de cases à cocher, sélection par objectId (cf. `components/grid/rowSelection.ts`). */
   selection?: ExcelSelectionMode
   /** GH70 — colonnes calculées affichables (clé `query::<ID>`) et résultats de leur script ; les
    *  valeurs sont déjà dans `objects`. Colonnes en lecture seule. */

@@ -41,7 +41,8 @@ export function useRowSelection(
     extendTo(target: string) {
       const { mode: m, selected: sel, onChange: change, displayed: shown } = latest.current
       if (m !== 'rows') return
-      if (anchor.current === null) anchor.current = [...sel][0] ?? target
+      // Ancre absente de la sélection : la dernière ligne sélectionnée (comme Maj+clic).
+      if (anchor.current === null || !sel.has(anchor.current)) anchor.current = sel.size > 0 ? [...sel][sel.size - 1] : target
       const r = selectRow({ selected: sel, displayed: shown, anchor: anchor.current, target, shift: true })
       if (r.selected) change(r.selected)
     },

@@ -150,14 +150,22 @@ export function activityBar(page: Page) {
 
 /** Clone `repo` depuis la forge locale dans un dossier neuf de « Mes projets », puis l'ouvre. */
 async function cloneAndOpen(page: Page, repo: string, name: string, t: Timer = timer()): Promise<ProjectInfo> {
+  const dir = await cloneDir(page, repo, name, t)
+  return showDir(page, dir, t)
+}
+
+/** Clone `repo` dans un dossier neuf et ouvre le projet côté serveur (composants clonés, arbre calculé). */
+async function cloneDir(page: Page, repo: string, name: string, t: Timer): Promise<string> {
   const dir = await rpc<string>(page.context(), 'web:new-workspace-dir', name)
   await rpc(page.context(), 'workspace:create-from-clone', dir, `${E2E.gitBaseUrl}/${repo}.git`)
   t.lap('clone')
-  return openDir(page, dir, t)
+  await rpc(page.context(), 'workspace:open-project', dir)
+  t.lap('open')
+  return dir
 }
 
-async function openDir(page: Page, dir: string, t: Timer): Promise<ProjectInfo> {
-  await rpc(page.context(), 'workspace:open-project', dir)
+/** Projet ouvert côté serveur : récent, puis affiché dans la page (dashboard). */
+async function showDir(page: Page, dir: string, t: Timer): Promise<ProjectInfo> {
   await rpc(page.context(), 'workspace:mark-recent', dir)
   const info = await rpc<{ workspaceDir: string; localPath: string; name: string }>(page.context(), 'workspace:resolve', dir)
   t.lap('open')
@@ -173,26 +181,35 @@ async function openDir(page: Page, dir: string, t: Timer): Promise<ProjectInfo> 
  * worker) au lieu d'un clone par HTTP du produit et de ses composants (github.com). Le modèle est
  * refait quand le repo nu a changé (publication d'un fichier précédent : signature = refs du repo
  * nu), pour que chaque fichier voie, comme avec un vrai clone, les publications faites avant lui.
+ * Le modèle est copié avant que l'application ne charge le projet (aucune écriture de la page en
+ * cours), sans les verrous git éventuels.
  */
 async function prepareAndOpen(page: Page, repo: string, name: string, t: Timer): Promise<ProjectInfo> {
   const signature = remoteSignature(repo)
   const template = templates.get(repo)
   if (signature === null || template?.signature !== signature) {
-    const project = await cloneAndOpen(page, repo, name, t)
+    const dir = await cloneDir(page, repo, name, t)
     t.mode = 'clone'
     if (signature !== null) {
-      const dir = path.join(currentStack().root, 'templates', `${repo.replace(/[\\/]/g, '_')}-${templates.size}-${Date.now()}`)
-      fs.cpSync(project.workspaceDir, dir, { recursive: true, preserveTimestamps: true })
-      templates.set(repo, { dir, signature })
+      const copy = path.join(currentStack().root, 'templates', `${repo.replace(/[\\/]/g, '_')}-${Date.now()}`)
+      copyWorkspace(dir, copy)
+      if (template) fs.rmSync(template.dir, { recursive: true, force: true })
+      templates.set(repo, { dir: copy, signature })
       t.lap('template')
     }
-    return project
+    return showDir(page, dir, t)
   }
   const dir = await rpc<string>(page.context(), 'web:new-workspace-dir', name)
-  fs.cpSync(template.dir, dir, { recursive: true, preserveTimestamps: true })
+  copyWorkspace(template.dir, dir)
   t.mode = 'copy'
   t.lap('copy')
-  return openDir(page, dir, t)
+  await rpc(page.context(), 'workspace:open-project', dir)
+  return showDir(page, dir, t)
+}
+
+/** Copie d'un workspace, horodatages conservés, sans fichiers verrou (`*.lock`). */
+function copyWorkspace(from: string, to: string): void {
+  fs.cpSync(from, to, { recursive: true, preserveTimestamps: true, filter: src => !src.endsWith('.lock') })
 }
 
 /** Modèles de projet du worker (un par repo de la forge). */

@@ -13,44 +13,65 @@ import { startGitHttpServer } from './git-http-server'
  * worktrees.
  */
 
-/** Port libre de 127.0.0.1 (choisi par le système). */
-export function freePort(): Promise<number> {
+/** Écoute `port` sur 127.0.0.1 (0 : port choisi par le système) puis le libère ; rejette s'il est pris. */
+function probePort(port: number): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer()
     srv.unref()
     srv.on('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
-      const { port } = srv.address() as net.AddressInfo
-      srv.close(() => resolve(port))
+    srv.listen(port, '127.0.0.1', () => {
+      const { port: bound } = srv.address() as net.AddressInfo
+      srv.close(() => resolve(bound))
     })
   })
 }
 
-/** Port forcé par `POLENTA_E2E_<name>` (base, worker `i` → base + 10·i), sinon port libre. */
-async function stackPort(envName: string, index: number): Promise<number> {
+/**
+ * Ports des piles. Forcé par `POLENTA_E2E_<name>` (base, worker `i` → base + 10·i) : vérifié libre,
+ * sinon la pile répondrait par le serveur d'une autre exécution. Sinon port libre, jamais deux fois
+ * le même dans l'exécution.
+ */
+async function stackPort(envName: string, index: number, taken: Set<number>): Promise<number> {
   const base = process.env[envName]
-  return base ? Number(base) + 10 * index : freePort()
-}
-
-/** Dossiers et ports de la pile `index` (rien n'est démarré). */
-export async function planStack(index: number): Promise<StackInfo> {
-  const root = path.join(E2E.root, `w${index}`)
-  return {
-    index,
-    root,
-    dataDir: path.join(root, 'data'),
-    remotesDir: path.join(root, 'remotes'),
-    downloadsDir: path.join(root, 'downloads'),
-    port: await stackPort('POLENTA_E2E_PORT', index),
-    gitPort: await stackPort('POLENTA_E2E_GIT_PORT', index),
-    adminPort: await stackPort('POLENTA_E2E_ADMIN_PORT', index),
+  if (base) {
+    const port = Number(base) + 10 * index
+    await probePort(port).catch(() => { throw new Error(`e2e : port ${port} (${envName}) déjà utilisé`) })
+    taken.add(port)
+    return port
+  }
+  for (;;) {
+    const port = await probePort(0)
+    if (!taken.has(port)) {
+      taken.add(port)
+      return port
+    }
   }
 }
 
-/** Démarre la pile ; renvoie sa fonction d'arrêt. `seedRemotes` : repos nus copiés dans sa forge. */
-export async function startStack(stack: StackInfo, seedRemotes: string): Promise<() => Promise<void>> {
-  for (const dir of [stack.dataDir, stack.downloadsDir]) fs.mkdirSync(dir, { recursive: true })
-  fs.cpSync(seedRemotes, stack.remotesDir, { recursive: true })
+/** Dossiers et ports des piles `0..count-1` (rien n'est démarré). */
+export async function planStacks(count: number): Promise<StackInfo[]> {
+  const taken = new Set<number>()
+  const stacks: StackInfo[] = []
+  for (let index = 0; index < count; index++) {
+    const root = path.join(E2E.root, `w${index}`)
+    stacks.push({
+      index,
+      root,
+      dataDir: path.join(root, 'data'),
+      remotesDir: path.join(root, 'remotes'),
+      downloadsDir: path.join(root, 'downloads'),
+      port: await stackPort('POLENTA_E2E_PORT', index, taken),
+      gitPort: await stackPort('POLENTA_E2E_GIT_PORT', index, taken),
+      adminPort: await stackPort('POLENTA_E2E_ADMIN_PORT', index, taken),
+    })
+  }
+  return stacks
+}
+
+/** Démarre la pile ; renvoie sa fonction d'arrêt. `remotes` : repos nus copiés dans sa forge (nom → chemin). */
+export async function startStack(stack: StackInfo, remotes: Record<string, string>): Promise<() => Promise<void>> {
+  for (const dir of [stack.dataDir, stack.downloadsDir, stack.remotesDir]) fs.mkdirSync(dir, { recursive: true })
+  for (const [name, from] of Object.entries(remotes)) fs.cpSync(from, path.join(stack.remotesDir, name), { recursive: true })
 
   const git = await startGitHttpServer(stack.remotesDir, stack.gitPort)
   const children: ChildProcess[] = []

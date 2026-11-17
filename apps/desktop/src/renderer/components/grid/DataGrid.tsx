@@ -74,11 +74,17 @@ export interface DataGridProps<R> {
   /** Chevron, ←/→, Entrée : demande de dépli / repli d'une ligne (avec `expanded`). */
   onToggleExpanded?: (rowId: string) => void
   rowClassName?: (row: R) => string | undefined
-  /** Widget : ni barre d'outils, ni filtres, ni largeurs. */
+  /** Lignes de groupe (matrice) : groupe d'une ligne ; une ligne pleine, ni sélectionnable ni active,
+   *  précède la première ligne affichée de chaque groupe. */
+  groupOf?: (row: R) => string
+  renderGroup?: (group: string) => ReactNode
+  /** Widget : ni barre d'outils, ni filtres, ni largeurs, ni gel, ni ordre (liens et clavier seulement). */
   compact?: boolean
   noColumnPicker?: boolean
   noExport?: boolean
   noReorder?: boolean
+  /** Pas de colonnes figées (pas de menu au clic droit d'un en-tête). */
+  noFreeze?: boolean
   /** Repo de l'export (fichier enregistré) ; défaut : repo des préférences. */
   exportRepoPath?: string
   /** GH300 — mémoire du défilement (onglet + page) ; null en transition. */
@@ -99,6 +105,7 @@ const CHECK_COL_WIDTH = 28
 const CELL_SELECTED_CLASS = 'ring-2 ring-inset ring-status-info'
 const CELL_EDITABLE_CLASS = 'hover:ring-1 hover:ring-inset hover:ring-status-info'
 const EMPTY: ReadonlySet<string> = new Set()
+const noFreezeMenu = () => {}
 
 interface GridActions {
   edit(rowId: string, key: string, value: string): void
@@ -121,7 +128,7 @@ const useGridActions = () => useContext(GridActionsContext)!
 export function DataGrid<R>(props: DataGridProps<R>) {
   const {
     gridId, title, rows, getRowId, columns, prefs: prefSource, migrateColumns, savedViews, toolbarStart, rowFilter, selection,
-    onCellEdit, onActivate, renderExpanded, canExpand, expandLabel, expanded: controlledExpanded, onToggleExpanded, rowClassName, compact, noColumnPicker, noExport, noReorder, exportRepoPath, scrollMemoryKey, layer,
+    onCellEdit, onActivate, renderExpanded, canExpand, expandLabel, expanded: controlledExpanded, onToggleExpanded, rowClassName, groupOf, renderGroup, compact, noColumnPicker, noExport, noReorder, noFreeze, exportRepoPath, scrollMemoryKey, layer,
   } = props
   const { t } = useTranslation()
   const nav = useElementNav()
@@ -170,7 +177,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
     autoWidths,
     chosenWidths: prefs.widths,
     onWidthsChange: prefs.setWidths,
-    freezeCount: prefs.freezeCount,
+    freezeCount: compact || noFreeze ? 0 : prefs.freezeCount,
     leadingWidth,
     onReorder: noReorder || compact ? undefined : prefs.setColumns,
   })
@@ -435,13 +442,14 @@ export function DataGrid<R>(props: DataGridProps<R>) {
                     filterable={!compact && c.filterable !== false}
                     filtered={filters.activeKeys.has(c.key)}
                     reorderable={!compact && !noReorder}
+                    resizable={!compact}
                     dragging={layout.draggingCol === c.key}
                     dropSide={layout.dropTarget?.col === c.key ? layout.dropTarget.side : undefined}
                     testId={`${gridId}-header-${c.key}`}
                     onFilterClick={filters.togglePopover}
                     onResizeStart={layout.startResize}
                     drag={layout.headerDrag}
-                    onFreezeMenu={openFreezeMenu}
+                    onFreezeMenu={compact || noFreeze ? noFreezeMenu : openFreezeMenu}
                   />
                 ))}
               </tr>
@@ -452,11 +460,20 @@ export function DataGrid<R>(props: DataGridProps<R>) {
                   <td colSpan={colCount} className="px-3 py-6 text-center text-ink-3 text-xs">{t('common.noElements')}</td>
                 </tr>
               )}
-              {renderedRows.map(row => {
+              {renderedRows.map((row, index) => {
                 const id = getRowId(row)
                 const isOpen = expandedSet.has(id)
+                const group = groupOf?.(row)
+                const groupStart = groupOf && (index === 0 || groupOf(renderedRows[index - 1]) !== group)
                 return (
                   <React.Fragment key={id}>
+                    {groupStart && (
+                      <tr data-group-row={group}>
+                        <td colSpan={colCount} className="border border-edge px-2 py-1 bg-canvas text-xs font-semibold text-ink-2 uppercase tracking-wide">
+                          {renderGroup ? renderGroup(group!) : group}
+                        </td>
+                      </tr>
+                    )}
                     <GridRow
                       gridId={gridId}
                       row={row}

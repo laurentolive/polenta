@@ -1437,6 +1437,7 @@
       "chooseMatrixFields": "Choisissez les lignes, les colonnes et la valeur."
     },
     "resultTable": {
+      "gridTitle": "Résultat",
       "booleanTrue": "oui",
       "booleanFalse": "non",
       "executeQueryHint": "Exécutez une requête pour voir un résultat.",

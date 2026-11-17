@@ -16,7 +16,7 @@ export interface HeaderDragHandlers {
  */
 export const GridHeaderCell = memo(function GridHeaderCell({
   col, colIdx, label, adornment, width, frozenLeft, filterable, filtered, reorderable, dragging, dropSide, testId,
-  onFilterClick, onResizeStart, drag, onFreezeMenu, clip = true,
+  onFilterClick, onResizeStart, drag, onFreezeMenu, clip = true, resizable = true,
 }: {
   col: string
   colIdx: number
@@ -39,6 +39,8 @@ export const GridHeaderCell = memo(function GridHeaderCell({
   /** Contenu coupé au bord de la colonne (défaut). Vue Excel : non coupé, comme avant GH389 — l'icône
    *  de filtre d'une colonne étroite reste atteignable. */
   clip?: boolean
+  /** Poignée de largeur (défaut : vrai). */
+  resizable?: boolean
 }) {
   const { t } = useTranslation()
   const frozen = frozenLeft !== undefined
@@ -88,13 +90,13 @@ export const GridHeaderCell = memo(function GridHeaderCell({
           <FilterIcon size={10} />
         </button>
       )}
-      <div
+      {resizable && <div
         style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 4, cursor: 'col-resize' }}
         className="hover:bg-status-info-solid"
         data-col-resize
         onMouseDown={e => onResizeStart(e, col)}
         onClick={e => e.stopPropagation()}
-      />
+      />}
     </th>
   )
 })

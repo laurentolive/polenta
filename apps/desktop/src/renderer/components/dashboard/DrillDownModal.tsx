@@ -4,6 +4,7 @@
  * avec `polenta.drill` = colonnes de la ligne, et les `_ids` des lignes renvoyées sont retenus. Les
  * objets sont décrits côté main (type, titre, statut) ; clic → ouverture dans un onglet.
  */
+import { useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -15,7 +16,30 @@ import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import { runOptions, scriptErrorText } from '../../hooks/useScriptRun'
 import { toLabel } from './widgets/numeric'
 import { ElementLink } from '../element/ElementLink'
+import { useElementNav } from '../../contexts/ElementNavContext'
+import { DataGrid } from '../grid/DataGrid'
+import type { GridColumn } from '../grid/gridTypes'
 import { backdropDismiss } from '../../lib/backdropDismiss'
+
+const DEFAULTS = ['id', 'type', 'title', 'status']
+const EMPTY_OBJECTS: DescribedObject[] = []
+const objectId = (o: DescribedObject) => o.id
+/** Objet qui s'ouvre dans un onglet (une exécution seule ou un ID inconnu ne s'ouvrent pas). */
+const isOpenable = (o: DescribedObject) => o.kind !== 'unknown' && o.kind !== 'run'
+
+/** ID d'un objet : lien d'élément quand l'index le connaît ; sinon (entrée de campagne…) bouton
+ *  d'ouverture (Entrée sur la cellule le suit) ; texte pour un objet qui ne s'ouvre pas. */
+function ObjectIdCell({ object, onOpen }: { object: DescribedObject; onOpen: (id: string) => void }) {
+  const nav = useElementNav()
+  if (nav?.resolve(object.id)) return <ElementLink id={object.id} className="font-mono text-prim" />
+  if (!isOpenable(object)) return <span className="font-mono text-ink">{object.id}</span>
+  return (
+    <button type="button" data-cell-link data-cell-dblclick-ignore className="font-mono text-prim hover:underline"
+      onClick={e => { e.stopPropagation(); onOpen(object.id) }} onDoubleClick={e => e.stopPropagation()}>
+      {object.id}
+    </button>
+  )
+}
 
 interface Props {
   widgetTitle: string
@@ -64,6 +88,26 @@ export function DrillDownModal({ widgetTitle, row, request, repoPath, workspaceD
     enabled: !!ids && ids.length > 0,
   })
 
+  // GH389 §4 — grille commune : filtre par colonne, largeurs, clavier, liens ; ni 👁, ni export.
+  // Double-clic / Entrée : ouvre l'objet dans un onglet (clic sur l'ID : lien d'élément).
+  const openRef = useRef(open)
+  openRef.current = open
+  const columns = useMemo<GridColumn<DescribedObject>[]>(() => {
+    const kindText = (o: DescribedObject) => (o.kind === 'unknown' ? t('dashboardPage.drillDown.notFound') : (o.typeLabel ?? t(`dashboardPage.drillDown.kinds.${o.kind}`)))
+    return [
+      {
+        key: 'id', label: t('dashboardPage.drillDown.columns.id'), locked: true,
+        getText: o => o.id,
+        render: o => <ObjectIdCell object={o} onOpen={id => void openRef.current(id)} />,
+      },
+      { key: 'type', label: t('dashboardPage.drillDown.columns.type'), getText: kindText },
+      { key: 'title', label: t('dashboardPage.drillDown.columns.title'), getText: o => o.title ?? '—' },
+      { key: 'status', label: t('dashboardPage.drillDown.columns.status'), getText: o => o.status ?? '—' },
+    ]
+  }, [t])
+  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::drilldown', view: 'columns', defaults: DEFAULTS }), [repoPath])
+  const onActivate = useCallback((o: DescribedObject) => { if (isOpenable(o)) void openRef.current(o.id) }, [])
+
   // Libellé de la sélection : les valeurs textuelles de la ligne (catégorie, série, date…).
   const selectionLabel = Object.values(drill).filter((v) => typeof v === 'string').slice(0, 3).map(toLabel).join(' / ')
   const loading = (direct === null && rerun.isLoading) || described.isLoading
@@ -99,30 +143,22 @@ export function DrillDownModal({ widgetTitle, row, request, repoPath, workspaceD
               {t('dashboardPage.drillDown.noIds')}
             </p>
           ) : (
-            <table className="min-w-full text-xs border border-edge rounded-lg" data-testid="drilldown-objects">
-              <thead className="bg-canvas">
-                <tr>
-                  {(['id', 'type', 'title', 'status'] as const).map((c) => (
-                    <th key={c} className="text-left font-medium text-ink-2 px-3 py-2 border-b border-edge">{t(`dashboardPage.drillDown.columns.${c}`)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(described.data ?? []).map((o) => (
-                  <tr
-                    key={o.id}
-                    className={`border-b border-edge-subtle last:border-0 ${o.kind === 'unknown' || o.kind === 'run' ? '' : 'cursor-pointer hover:bg-hover'}`}
-                    onClick={o.kind === 'unknown' || o.kind === 'run' ? undefined : () => void open(o.id)}
-                    data-navigable={o.kind === 'unknown' || o.kind === 'run' ? undefined : 'true'}
-                  >
-                    <td className="px-3 py-1.5 font-mono text-ink whitespace-nowrap"><ElementLink id={o.id} /></td>
-                    <td className="px-3 py-1.5 text-ink-2">{o.kind === 'unknown' ? t('dashboardPage.drillDown.notFound') : (o.typeLabel ?? t(`dashboardPage.drillDown.kinds.${o.kind}`))}</td>
-                    <td className="px-3 py-1.5 text-ink">{o.title ?? '—'}</td>
-                    <td className="px-3 py-1.5 text-ink-2">{o.status ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="flex flex-col max-h-[60vh] min-h-0" data-testid="drilldown-objects">
+              <DataGrid
+                gridId="drilldown"
+                title={widgetTitle}
+                rows={described.data ?? EMPTY_OBJECTS}
+                getRowId={objectId}
+                columns={columns}
+                prefs={prefs}
+                onActivate={onActivate}
+                noColumnPicker
+                noExport
+                noReorder
+                noFreeze
+                layer="modal"
+              />
+            </div>
           )}
           {message && <p className="text-xs text-status-danger">{message}</p>}
         </div>

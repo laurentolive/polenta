@@ -10,11 +10,14 @@ export interface RepoGridPrefs {
   prefKey: string
   view: string
   defaults: string[]
+  /** Colonnes figées tant que l'utilisateur n'a rien choisi (matrice : 1). Défaut : 0. */
+  defaultFreeze?: number
 }
 /** Grille sans préférence enregistrée (état local, oublié au démontage). */
 export interface LocalGridPrefs {
   local: true
   defaults: string[]
+  defaultFreeze?: number
 }
 export type GridPrefsSource = RepoGridPrefs | LocalGridPrefs
 
@@ -101,10 +104,11 @@ export function useGridPrefs(source: GridPrefsSource): GridPrefs {
   const storedFreeze = local ? localState.freeze : entry?.[keys.freeze]
   const columns = useMemo(() => (isStringList(storedColumns) ? storedColumns : source.defaults), [storedColumns, source.defaults])
   const widths = storedWidths && typeof storedWidths === 'object' ? storedWidths as Record<string, number> : EMPTY_WIDTHS
-  const freezeCount = typeof storedFreeze === 'number' ? storedFreeze : 0
+  const defaultFreeze = source.defaultFreeze ?? 0
+  const freezeCount = typeof storedFreeze === 'number' ? storedFreeze : defaultFreeze
 
-  const latest = useRef({ local, save, keys })
-  latest.current = { local, save, keys }
+  const latest = useRef({ local, save, keys, defaultFreeze })
+  latest.current = { local, save, keys, defaultFreeze }
   const actions = useMemo(() => {
     const write = (localPatch: { columns?: string[]; widths?: Record<string, number>; freeze?: number }, patch: (k: typeof keys) => Entry) => {
       const { local: isLocal, save: doSave, keys: k } = latest.current
@@ -114,7 +118,8 @@ export function useGridPrefs(source: GridPrefsSource): GridPrefs {
     return {
       setColumns: (next: string[]) => write({ columns: next }, k => ({ [k.columns]: next })),
       setWidths: (next: Record<string, number>) => write({ widths: next }, k => ({ [k.widths]: next })),
-      setFreezeCount: (next: number) => write({ freeze: next }, k => ({ [k.freeze]: next || null })),
+      // Valeur par défaut : clé retirée du `.pref` (un 0 explicite reste écrit quand le défaut est autre).
+      setFreezeCount: (next: number) => write({ freeze: next }, k => ({ [k.freeze]: next === latest.current.defaultFreeze ? null : next })),
       applyView: (next: string[], ref: SavedViewRef | null) => write({ columns: next }, k => ({ [k.columns]: next, activeView: ref })),
       setActiveView: (ref: SavedViewRef | null) => latest.current.save({ activeView: ref }),
       reset: () => write({ columns: undefined }, k => ({ [k.columns]: null, activeView: null })),

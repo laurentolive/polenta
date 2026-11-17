@@ -38,7 +38,7 @@ function PrintQueryResultPage() {
     <div className="p-10 bg-print-bg text-print-ink text-sm min-h-screen">
       <h1 className="text-xl font-semibold mb-1">{t('printQueryResultPage.title', { queryName })}</h1>
       <p className="text-print-ink-2 mb-8">{t('dashboardPage.resultTable.rowCount', { count: result.rows.length })}</p>
-      <ResultTable result={result} />
+      <ResultTable result={result} print />
     </div>
   )
 }

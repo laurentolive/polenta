@@ -374,3 +374,30 @@ Décidés en cours d'implémentation (`specs/GH389-sprint5.md`), sans effet sur 
   Précédent.
 - **Préférences** : `grid::campaign-entries`, `grid::campaign-carry`, `grid::campaign-list`, vue
   `columns`.
+
+## 17. Écarts constatés au sprint 6 (suivi, paramètres, conformité)
+
+Décidés en cours d'implémentation (`specs/GH389-sprint6.md`), sans effet sur la spec :
+
+- **`DataGrid`** : `groupOf` / `renderGroup` (ligne de groupe pleine avant la première ligne affichée
+  de chaque groupe, ni sélectionnable ni active au clavier, non exportée), `noFreeze` ; `compact` sans
+  poignée de largeur ni menu de gel. `GridHeaderCell` : `resizable`. `useGridPrefs` : `defaultFreeze`
+  (colonnes figées tant que l'utilisateur n'a rien choisi ; « Libérer » écrit 0 quand le défaut est
+  autre). `useGridScrollKey` : pas de clé hors `TabsProvider` (impression).
+- **Simple clic / double-clic** : dans le widget table, le détail d'un widget et Paramètres, le simple
+  clic sur une ligne ouvrait l'objet ; il sélectionne désormais (contrat §1.9) ; l'ouverture passe au
+  double-clic, à Entrée, ou au clic sur l'ID (lien d'élément). e2e `gh65-navigation` 2.6,
+  `gh71-progress` N1, `gh69-matrix` N10 adaptés (double-clic).
+- **Résultat de requête** : `ResultTable` sur `DataGrid`, `gridId` `query-result`, préférences
+  `grid::query-result` (page Requête) — colonnes = celles du script, dans l'ordre enregistré, une
+  colonne nouvelle du script ajoutée à la fin (`migrateColumns`) ; widget : préférences locales,
+  `compact` ; impression (`print`) : tableau statique (une grille n'a pas de sens sur papier).
+- **Détail d'un widget** : `gridId` `drilldown`, préférences `grid::drilldown` (largeurs) ; ni 👁, ni
+  export, ni ordre, ni gel. Entrée de campagne (ID hors index) : bouton d'ouverture `data-cell-link`.
+  Échap : popover, cellule active, sélection, puis la modale.
+- **Paramètres** : une `DataGrid` par repo (`gridId` `parameters-<repo>`, préférence `grid::parameters`
+  du `.pref` de ce repo), bornée à 60 % de la hauteur ; « Nouveau » reste dans l'en-tête de la section.
+- **Matrice de conformité** : `gridId` `compliance`, préférence `grid::compliance` du repo de la page
+  (locale sans `repoPath`), une colonne par composant (`comp::<nom>`, libellé avec ses rôles), toutes
+  affichées dans l'ordre du calcul ; première colonne figée par défaut (`defaultFreeze: 1`) ; exigence
+  = ID en lien d'élément + titre ; grille remontée par interface.

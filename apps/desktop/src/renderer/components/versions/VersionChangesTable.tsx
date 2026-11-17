@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { FileDiff, X } from 'lucide-react'
@@ -10,8 +10,9 @@ import type { GridColumn } from '../grid/gridTypes'
 import { useGridScrollKey } from '../grid/useGridScrollKey'
 
 const DEFAULTS = ['component', 'version', 'type', 'id', 'label', 'diff', 'actions']
-/** Identifiant de ligne : un même élément peut figurer dans la version et dans celle d'un composant. */
-const rowKey = (r: VersionChangeRow) => `${r.versionId}:${r.id}`
+/** Identifiant de ligne : un même élément peut figurer dans la version et dans celle d'un composant, et
+ *  deux repos peuvent avoir une version de même ID (composant = nom de montage, unique). */
+const rowKey = (r: VersionChangeRow) => `${r.component}:${r.versionId}:${r.id}`
 
 /**
  * GH201 §5 — changements d'une version (les siens, puis ceux des versions des composants). GH389 §4 :
@@ -33,7 +34,11 @@ export function VersionChangesTable({ rows, repoPath, projectId, title, onRemove
   const scrollKey = useGridScrollKey('version-changes')
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const byKey = useMemo(() => new Map(rows.map(r => [rowKey(r), r])), [rows])
-  // Lignes disparues (retirées, version relue) : hors de la sélection.
+  // Lignes disparues (retirées, version relue) : hors de la sélection — une ligne rajoutée plus tard
+  // ne revient pas cochée.
+  useEffect(() => {
+    setSelected(prev => ([...prev].every(k => byKey.has(k)) ? prev : new Set([...prev].filter(k => byKey.has(k)))))
+  }, [byKey])
   const selectedIds = [...selected].map(k => byKey.get(k)).filter((r): r is VersionChangeRow => !!r?.own).map(r => r.id)
 
   const openDiff = (r: VersionChangeRow) => {
@@ -90,16 +95,18 @@ export function VersionChangesTable({ rows, repoPath, projectId, title, onRemove
         </button>
       ),
     },
-    ...(removable ? [{
+    // Toujours proposée (vide sur une version figée) : la liste de colonnes enregistrée, commune à
+    // toutes les versions, la garde d'une version à l'autre.
+    {
       key: 'actions', label: t('versions.columns.actions'), filterable: false,
       getText: () => '',
-      render: (r: VersionChangeRow) => r.own && (
+      render: (r: VersionChangeRow) => removable && r.own && (
         <button type="button" data-cell-dblclick-ignore onClick={e => { e.stopPropagation(); gestures.current.onRemove?.([r.id]) }}
           className="btn-icon text-ink-3 hover:text-status-danger" title={t('versions.page.remove')} data-testid={`version-remove-${r.id}`}>
           <X size={12} />
         </button>
       ),
-    }] : []),
+    },
   ], [t, removable])
 
   const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::version-changes', view: 'columns', defaults: DEFAULTS }), [repoPath])

@@ -101,7 +101,7 @@ test('E11 — page d’une version : en-tête repliable, changements, tests à e
   // Changements : contrat de grille, liens d'élément (élément et version), cases et « Retirer ».
   await expectGridContract('version-changes', 'id')
   const changes = p.getByTestId('version-changes')
-  const rowOf = (id: string) => changes.locator(`tr[data-node-id="${versionId}:${id}"]`)
+  const rowOf = (id: string) => changes.locator(`tr[data-node-id$=":${versionId}:${id}"]`)
   await expect(rowOf(backlogIds[0]).locator(`td[data-col="id"] [data-element-link="${backlogIds[0]}"]`)).toBeVisible()
   await expect(rowOf(backlogIds[0]).locator(`td[data-col="version"] [data-element-link="${versionId}"], td[data-col="version"] [data-page-link="${versionId}"]`)).toHaveCount(1)
   await filterColumn('version-changes', 'id', backlogIds[1])

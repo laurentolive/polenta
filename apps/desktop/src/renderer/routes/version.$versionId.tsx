@@ -252,7 +252,7 @@ function VersionPage() {
               analysis={impactQuery.data?.analysis}
               isFetching={impactQuery.isFetching}
               onRefresh={() => void impactQuery.refetch()}
-              onSetImpact={(elementId, status, comment) => void run(() => api.versions.setImpact(repoPath, versionId, elementId, status, comment, workspaceDir || undefined))}
+              onSetImpact={(elementId, status, comment) => run(() => api.versions.setImpact(repoPath, versionId, elementId, status, comment, workspaceDir || undefined))}
               repoPath={repoPath}
               repoOfComponent={repoOfComponent}
               editable={editable}

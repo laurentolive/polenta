@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { backdropDismiss } from '../../lib/backdropDismiss'
@@ -24,6 +24,9 @@ export function ColumnPickerPanel({ groups, shown, locked, onChange, onReset, on
 }) {
   const { t } = useTranslation()
   const canonical = groups.flatMap(g => g.columns.map(c => c.key))
+  // La case suit le clic tout de suite ; la préférence (cache partagé, notifié en différé) la rattrape.
+  const [checked, setChecked] = useState(shown)
+  useEffect(() => setChecked(shown), [shown])
 
   // Échap ferme le panneau sans atteindre la grille ni une modale hôte.
   useEffect(() => {
@@ -50,9 +53,14 @@ export function ColumnPickerPanel({ groups, shown, locked, onChange, onReset, on
         </div>
         <ColumnChecklist
           groups={groups}
-          isChecked={key => shown.includes(key)}
+          isChecked={key => checked.includes(key)}
           locked={locked}
-          onToggle={key => { if (!(key in locked)) onChange(toggleVisibleField(shown, key, canonical)) }}
+          onToggle={key => {
+            if (key in locked) return
+            const next = toggleVisibleField(checked, key, canonical)
+            setChecked(next)
+            onChange(next)
+          }}
           testIdPrefix={testIdPrefix}
         />
         <button type="button" onClick={onReset} data-testid="column-picker-reset" className="mt-3 text-xs text-ink-3 hover:text-ink underline">

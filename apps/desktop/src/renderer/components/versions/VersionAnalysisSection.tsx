@@ -27,7 +27,8 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
   analysis: VersionAnalysis | undefined
   isFetching: boolean
   onRefresh: () => void
-  onSetImpact: (id: string, status: ImpactAnalysisStatus, comment: string | null) => void
+  /** Écriture d'un statut d'impact ; attendue avant la suivante (même fichier de version). */
+  onSetImpact: (id: string, status: ImpactAnalysisStatus, comment: string | null) => Promise<unknown>
   repoPath: string
   /** Repo de chaque composant (nom de montage) : une racine peut appartenir à un composant. */
   repoOfComponent: Map<string, string>
@@ -42,13 +43,14 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
   const rows = analysis?.rows ?? []
   const openCount = rows.filter(r => !CLOSED_STATUSES.has(r.status)).length
   const when = analysis?.computedAt ? new Date(analysis.computedAt).toLocaleString(i18n.language) : ''
-  const titleOf = new Map<string, string>([
+  // Mémoïsés : colonnes et lignes stables pour la grille (cellules mémoïsées).
+  const titleOf = useMemo(() => new Map<string, string>([
     ...(analysis?.roots ?? []).map(r => [r.elementId, r.title] as [string, string]),
-    ...rows.map(r => [r.id, r.title ?? ''] as [string, string]),
-  ])
+    ...(analysis?.rows ?? []).map(r => [r.id, r.title ?? ''] as [string, string]),
+  ]), [analysis])
   const readOnly = !editable || !!analysis?.frozen
   // Statut saisi sur un élément que les arbres n'atteignent plus : seule trace hors arbres.
-  const unreached = rows.filter(r => !r.reached)
+  const unreached = useMemo(() => (analysis?.rows ?? []).filter(r => !r.reached), [analysis])
 
   return (
     <section className="flex flex-col gap-2" data-testid="version-analysis">
@@ -94,7 +96,7 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
                         defaultExpanded={analysis.roots.length <= EXPANDED_ROOTS_MAX}
                         readOnly={readOnly}
                         onOpen={openElement}
-                        onUpdateStatus={(node, status, comment) => onSetImpact(node.elementId, status, comment)}
+                        onUpdateStatus={(node, status, comment) => void onSetImpact(node.elementId, status, comment)}
                       />
                     ))}
                   </div>
@@ -127,7 +129,7 @@ function ImpactRowsGrid({ rows, readOnly, titleOf, repoPath, title, onSetImpact 
   titleOf: Map<string, string>
   repoPath: string
   title: string
-  onSetImpact: (id: string, status: ImpactAnalysisStatus, comment: string | null) => void
+  onSetImpact: (id: string, status: ImpactAnalysisStatus, comment: string | null) => Promise<unknown>
 }) {
   const { t } = useTranslation()
   const scrollKey = useGridScrollKey('version-analysis')
@@ -166,12 +168,14 @@ function ImpactRowsGrid({ rows, readOnly, titleOf, repoPath, title, onSetImpact 
   ], [t, titleOf])
   const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::version-analysis', view: 'columns', defaults: IMPACT_DEFAULTS }), [repoPath])
   const byId = useMemo(() => new Map(rows.map(r => [r.id, r])), [rows])
+  // Une ligne après l'autre : chaque écriture relit et réécrit le même fichier de version. Un échec
+  // est affiché par la page (message d'erreur de la version).
   const onCellEdit = async (ids: string[], key: string, value: string) => {
     for (const id of ids) {
       const row = byId.get(id)
       if (!row) continue
-      if (key === 'status') onSetImpact(id, value as ImpactAnalysisStatus, row.comment?.trim() || null)
-      else onSetImpact(id, row.status, value.trim() || null)
+      if (key === 'status') await onSetImpact(id, value as ImpactAnalysisStatus, row.comment?.trim() || null)
+      else await onSetImpact(id, row.status, value.trim() || null)
     }
     return { failed: [] }
   }

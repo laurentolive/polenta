@@ -305,3 +305,35 @@ Décidés en cours d'implémentation (`specs/GH389-sprint3.md`), sans effet sur 
   `freezeColCountExecutions` et celles des grilles sans type (`columns`, `colWidthsColumns`,
   `freezeColCountColumns`, sprint 4).
 - **Sélection** (revue) : Maj+clic avec une sélection vide ne part plus d'une ancienne ancre.
+
+## 15. Écarts constatés au sprint 4 (versions et backlog)
+
+Décidés en cours d'implémentation (`specs/GH389-sprint4.md`), sans effet sur la spec :
+
+- **Page d'une version** : en-tête repliable (`version-header-toggle`, bloc `version-header` :
+  libellé, statut, base, tag, champs, composants) ; replié, l'état de la version passe dans le
+  sous-titre (`version-state-short`). Contrairement à la Validation, la page garde un corps qui
+  défile : elle empile trois grilles (changements, analyse, tests) ; chacune est bornée à 60 % de la
+  hauteur de la fenêtre et défile seule (mémoire GH300 par grille).
+- **Changements** (`version-changes`) : ligne `<composant>:<version>:<ID>` (un même ID de version
+  peut exister dans deux repos) ; cases seulement sur les lignes propres d'une version modifiable
+  (`selection.isSelectable`) ; colonne Actions (✕ Retirer) toujours proposée, vide sur une version
+  figée — la liste de colonnes est commune à toutes les versions ; sélection élaguée des lignes
+  disparues. `data-testid` : `version-changes-check-<ligne>` remplace `version-select-<ID>`.
+- **Tests à exécuter** (`version-tests`) : les instances (exigences) passent dans leur propre colonne
+  « Exigences » ; « Amené par », « Déjà dans » et les exigences en liens d'élément (`ElementLinks`).
+- **Analyse en tableau** (`version-analysis`) : aussi pour les statuts hors arbres d'une analyse en
+  cours (même tableau, éditable) ; statut (liste) et commentaire édités dans la cellule, en lot sur
+  la sélection, écrits **un par un** (même fichier de version) ; un échec est affiché par la page.
+  ID en lien d'élément (spec §4), au lieu de la modale d'édition rapide — le mode arbre garde la
+  modale.
+- **Backlog** (`backlog`) : grille sur toute la hauteur ; pas de case tant qu'aucune version n'est
+  en cours (`isSelectable`) ; `backlog-check-<ID>` / `backlog-check-all` remplacent
+  `backlog-select-*`. Mode cases : une case cochée reste cochée sous un filtre (GH33) et « Inclure la
+  sélection » l'inclut.
+- **Colonne Diff** (changements, backlog) : bouton « Voir les changements » marqué `data-cell-link`
+  (Entrée l'ouvre) ; non filtrable ; exporté avec son texte affiché.
+- **Préférences** : `grid::version-changes`, `grid::version-tests`, `grid::version-analysis`,
+  `grid::backlog`, vue `columns` (clés `columns`, `colWidthsColumns`, `freezeColCountColumns`).
+- **Panneau 👁** (`ColumnPickerPanel`) : la case suit le clic tout de suite (état local), la
+  préférence la rattrape — sans quoi elle attendait la notification différée du cache.

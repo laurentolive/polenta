@@ -121,9 +121,9 @@ export function setupSession(options: SessionOptions = {}) {
       if (await button.getAttribute('aria-expanded') === 'true') return
       await button.click()
       if (await button.getAttribute('aria-expanded') === 'false') await button.click()
-      // GH387 — vue ouverte et dépliée ; son contenu est attendu par les assertions du test
-      // (`networkidle` coûtait au moins 500 ms par appel).
-      await expect(button).toHaveAttribute('aria-expanded', 'true')
+      // GH387 — `networkidle` gardé : les tests écrivent souvent par IPC juste après ; une vue encore
+      // en chargement lirait l'ancien état (gh361, gh342 sans cette attente).
+      await page.waitForLoadState('networkidle')
     },
     /** Capture dans `e2e-web/.results/<nom>.png`. */
     async shot(name: string, p: Page = page): Promise<void> {
@@ -170,8 +170,9 @@ async function showDir(page: Page, dir: string, t: Timer): Promise<ProjectInfo> 
   const info = await rpc<{ workspaceDir: string; localPath: string; name: string }>(page.context(), 'workspace:resolve', dir)
   t.lap('open')
   await page.goto(`/dashboard?projectId=${projectIdOf(dir)}`)
-  // GH387 — application chargée sur le projet (barre d'activité), sans attendre `networkidle`.
-  await activityBar(page).first().waitFor()
+  // Application chargée et abonnée aux événements avant que le test n'écrive par IPC (GH387 : sans
+  // cette attente, une écriture du `beforeAll` d'une spec pouvait précéder le chargement initial).
+  await page.waitForLoadState('networkidle')
   t.lap('goto')
   return { workspaceDir: info.workspaceDir, localPath: info.localPath, name: info.name }
 }

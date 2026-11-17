@@ -2413,9 +2413,6 @@
   "executionHistory": {
     "title": "Exécutions",
     "empty": "Aucune exécution.",
-    "columns": "Colonnes",
-    "configure": "Choisir les colonnes",
-    "toggleSteps": "Afficher les étapes",
     "removed": "entrée retirée",
     "isolated": "exécution isolée",
     "campaignMissing": "campagne introuvable",
@@ -2568,7 +2565,9 @@
       "type": "Type",
       "id": "ID",
       "label": "Label",
-      "diff": "Diff"
+      "diff": "Diff",
+      "requirements": "Exigences",
+      "actions": "Actions"
     },
     "page": {
       "changes": "Changements",

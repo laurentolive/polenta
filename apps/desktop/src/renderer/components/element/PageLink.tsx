@@ -21,7 +21,8 @@ export function PageLink({ id, repoPath, className, onFallback, children }: {
     return <ElementLink id={id} className={className}>{children}</ElementLink>
   }
   return (
-    <button type="button" className={['hover:underline', className ?? ''].join(' ')} onClick={e => { e.stopPropagation(); onFallback() }}>
+    <button type="button" data-page-link={id} data-cell-dblclick-ignore className={['hover:underline', className ?? ''].join(' ')}
+      onClick={e => { e.stopPropagation(); onFallback() }}>
       {children}
     </button>
   )

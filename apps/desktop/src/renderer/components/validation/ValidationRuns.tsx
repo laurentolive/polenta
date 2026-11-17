@@ -10,6 +10,7 @@ import { VERDICT_CLASS, VERDICT_KEY } from '../executions/ExecutionHistoryGrid'
 import { driftText, testedValueText } from '../executions/TestedConfigView'
 import { runMentions, type RunMention } from './runMentions'
 import { ElementLink } from '../element/ElementLink'
+import { PageLink } from '../element/PageLink'
 
 const MENTION_CLASS: Record<RunMention, string> = {
   other_version: 'bg-status-warning-bg text-status-warning',
@@ -69,6 +70,19 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
     params: { campaignId: row.campaign!.id, testId: row.entry!.entryId },
     search: { repoPath, projectId },
   } as never)
+  // Version testée : lien vers sa page, dans son repo (GH389 §1.8).
+  const testedVersion = (row: ExecutionHistoryRow) => {
+    const config = row.run?.testedConfig
+    if (!config) return '—'
+    if (!config.ref) return testedValueText(config)
+    const versionRepo = row.testedRepoPath ?? repoPath
+    return (
+      <PageLink id={config.ref} repoPath={versionRepo} className="text-prim"
+        onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: config.ref! }, search: { projectId, repoPath: versionRepo } } as never)}>
+        {testedValueText(config)}
+      </PageLink>
+    )
+  }
   const verdict = (row: Pick<ExecutionHistoryRow, 'run'> | { run: { result: ValidationSignedRun['result'] } }) => {
     const v = row.run?.result ?? 'pending'
     return <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${VERDICT_CLASS[v]}`}>{t(VERDICT_KEY[v])}</span>
@@ -125,7 +139,7 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
                       : row.run ? runDate(row.run.executedAt, 16) : ''}
                   </td>
                   <td className="py-1 pr-3">
-                    <div className="text-ink-2">{row.run?.testedConfig ? testedValueText(row.run.testedConfig) : '—'}</div>
+                    <div className="text-ink-2">{testedVersion(row)}</div>
                     {row.run?.notes && <div className="text-ink-3">{stripHtml(row.run.notes)}</div>}
                     <div className="flex flex-wrap gap-1 mt-0.5">
                       {runMentions(row, versionId, signedAt).map(m => (

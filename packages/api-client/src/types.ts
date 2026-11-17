@@ -401,6 +401,13 @@ export interface FieldVisibilityPref {
   picker?: string[]
   /** GH197 — colonnes de la grille d'historique des exécutions. Absent ⇒ défaut (verdict, date…). */
   executions?: string[]
+  /** GH389 — largeurs (px) et colonnes figées de la grille d'historique des exécutions. */
+  colWidthsExecutions?: Record<string, number>
+  freezeColCountExecutions?: number
+  /** GH389 — grille sans type (`prefKey` = `grid::<gridId>`) : colonnes visibles ordonnées, largeurs, gel. */
+  columns?: string[]
+  colWidthsColumns?: Record<string, number>
+  freezeColCountColumns?: number
   /** GH176 — titres de dossiers affichés dans le sélecteur de tests. Absent ⇒ ceux de la vue Tableau. */
   showFoldersPicker?: boolean
   /** GH229 — champs de la popup d'aperçu (survol d'un lien vers un objet du type). Absent ⇒ aucun. */

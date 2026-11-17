@@ -52,13 +52,21 @@ export interface DataGridProps<R> {
   /** Filtre de l'écran, combiné en ET avec les filtres de colonne (mémoïsé par l'appelant). */
   rowFilter?: (row: R) => boolean
   /** Sélection contrôlée ; absente : sélection de lignes locale. */
-  selection?: { mode: RowSelectionMode; selected: ReadonlySet<string>; onChange(next: Set<string>): void }
+  selection?: {
+    mode: RowSelectionMode
+    selected: ReadonlySet<string>
+    onChange(next: Set<string>): void
+    /** Mode cases : ligne qui a une case (défaut : toutes) ; les autres ne se sélectionnent pas. */
+    isSelectable?: (row: R) => boolean
+  }
   /** Édition d'une cellule, propagée à la sélection quand la ligne éditée en fait partie (T149). */
   onCellEdit?: (rowIds: string[], key: string, value: string) => Promise<{ failed: CellEditFailure[] }>
   /** Entrée sur une cellule non éditable, double-clic de ligne. */
   onActivate?: (row: R) => void
   /** Ligne dépliée (chevron en tête) : contenu sous la ligne. */
   renderExpanded?: (row: R) => ReactNode
+  /** Ligne qui a un contenu déplié (chevron affiché) ; défaut : toutes. */
+  canExpand?: (row: R) => boolean
   rowClassName?: (row: R) => string | undefined
   /** Widget : ni barre d'outils, ni filtres, ni largeurs. */
   compact?: boolean
@@ -107,7 +115,7 @@ const useGridActions = () => useContext(GridActionsContext)!
 export function DataGrid<R>(props: DataGridProps<R>) {
   const {
     gridId, title, rows, getRowId, columns, prefs: prefSource, migrateColumns, savedViews, toolbarStart, rowFilter, selection,
-    onCellEdit, onActivate, renderExpanded, rowClassName, compact, noColumnPicker, noExport, noReorder, exportRepoPath, scrollMemoryKey, layer,
+    onCellEdit, onActivate, renderExpanded, canExpand, rowClassName, compact, noColumnPicker, noExport, noReorder, exportRepoPath, scrollMemoryKey, layer,
   } = props
   const { t } = useTranslation()
   const nav = useElementNav()
@@ -134,6 +142,11 @@ export function DataGrid<R>(props: DataGridProps<R>) {
     [rows, rowFilter, filters.active, getText],
   )
   const displayedIds = useMemo(() => filteredRows.map(getRowId), [filteredRows, getRowId])
+  const isSelectable = selection?.isSelectable
+  const selectableIds = useMemo(
+    () => (isSelectable ? filteredRows.filter(isSelectable).map(getRowId) : displayedIds),
+    [isSelectable, filteredRows, getRowId, displayedIds],
+  )
   const rowById = useMemo(() => new Map(rows.map(r => [getRowId(r), r])), [rows, getRowId])
 
   // ── Largeurs, gel, ordre ────────────────────────────────────────────────────
@@ -163,7 +176,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
   const [localSelected, setLocalSelected] = useState<ReadonlySet<string>>(EMPTY)
   const selected = selection?.selected ?? localSelected
   const onSelectionChange = selection?.onChange ?? setLocalSelected
-  const select = useRowSelection(selectionMode, selected, onSelectionChange, displayedIds)
+  const select = useRowSelection(selectionMode, selected, onSelectionChange, selectableIds)
   // Mode lignes : la sélection ne garde que des lignes affichées — une édition en lot ou une action
   // de la sélection n'atteint jamais une ligne masquée par un filtre. (Mode cases : la sélection
   // survit aux filtres, GH33.)
@@ -204,6 +217,8 @@ export function DataGrid<R>(props: DataGridProps<R>) {
   const [failures, setFailures] = useState<CellEditFailure[] | null>(null)
 
   const keyboardCols = useMemo(() => [...leadingKeys, ...visibleKeys], [leadingKeys, visibleKeys])
+  const canSelect = (row: R) => !isSelectable || isSelectable(row)
+  const isExpandable = (row: R) => hasExpand && (canExpand?.(row) ?? true)
   const runAction = (action: GridKeyAction, rowId: string, key: string): boolean => {
     const row = rowById.get(rowId)
     if (!row) return false
@@ -212,19 +227,25 @@ export function DataGrid<R>(props: DataGridProps<R>) {
       case 'edit':
         return cellStore.requestEdit(rowId, key, { kind: 'end' })
       case 'activate': {
+        if (key === CHECK_COL && !canSelect(row)) return false
+        // Lien de la cellule : même geste que son clic (repo de la version, page de repli, ouverture
+        // d'une exécution…), pas une résolution par l'index des ID nus.
+        const link = cellLinkOf(containerRef.current, rowId, key)
+        if (link) { link.click(); return true }
         const target = col?.elementId?.(row)
         if (target && nav) { nav.follow(target); return true }
         if (key === CHECK_COL) { select.checkbox(rowId, false); return true }
         if (onActivate && key !== EXPAND_COL) { onActivate(row); return true }
-        if (hasExpand) { toggleExpanded(rowId); return true }
+        if (isExpandable(row)) { toggleExpanded(rowId); return true }
         return false
       }
       case 'toggle':
-        if (!hasCheck) return false
+        if (!hasCheck || !canSelect(row)) return false
         select.checkbox(rowId, false)
         return true
       case 'expand':
       case 'collapse':
+        if (!isExpandable(row)) return false
         if ((action === 'expand') !== localExpanded.has(rowId)) toggleExpanded(rowId)
         return true
     }
@@ -260,7 +281,11 @@ export function DataGrid<R>(props: DataGridProps<R>) {
       void onCellEdit(ids, key, value).then(r => setFailures(r.failed.length > 0 ? r.failed : null))
     },
     tab: (rowId, key, shift) => { keyboard.move({ rowId, col: key }, { key: 'Tab', shift }) },
-    rowClick: (rowId, e) => select.click(rowId, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }),
+    rowClick: (rowId, e) => {
+      const row = rowById.get(rowId)
+      if (hasCheck && row && !canSelect(row)) return
+      select.click(rowId, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+    },
     rowDoubleClick: rowId => { const row = rowById.get(rowId); if (row && onActivate) onActivate(row) },
     checkbox: (rowId, shift) => select.checkbox(rowId, shift),
     toggleExpanded,
@@ -329,7 +354,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
   const loaded = prefs.loaded
   const effectiveMaxLines = rowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : rowMaxLines
   const colCount = leadingKeys.length + shownCols.length
-  const checkState = hasCheck ? groupState(displayedIds, selected) : 'none'
+  const checkState = hasCheck ? groupState(selectableIds, selected) : 'none'
   const filterPopoverCol = filters.popover?.column
 
   return (
@@ -382,7 +407,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
                       checked={checkState === 'all'}
                       disabled={checkState === 'disabled'}
                       title={t('system.excelView.selectAllVisible')}
-                      onChange={() => onSelectionChange(toggleGroup(displayedIds, selected))}
+                      onChange={() => onSelectionChange(toggleGroup(selectableIds, selected))}
                       onClick={e => e.stopPropagation()}
                       data-testid={`${gridId}-check-all`}
                     />
@@ -427,14 +452,16 @@ export function DataGrid<R>(props: DataGridProps<R>) {
                       rowId={id}
                       cols={shownCols}
                       hasExpand={hasExpand}
+                      expandable={isExpandable(row)}
                       hasCheck={hasCheck}
+                      checkable={hasCheck && canSelect(row)}
                       expanded={isOpen}
                       selected={selected.has(id)}
                       canEdit={canEdit}
                       freezeStyles={layout.freezeStyles}
                       className={rowClassName?.(row)}
                     />
-                    {isOpen && renderExpanded && (
+                    {isOpen && renderExpanded && isExpandable(row) && (
                       <tr data-expanded-of={id}>
                         <td colSpan={colCount} className="border border-edge p-0 bg-surface" onClick={e => e.stopPropagation()}>
                           <div className="px-3 py-2">{renderExpanded(row)}</div>
@@ -489,13 +516,15 @@ export function DataGrid<R>(props: DataGridProps<R>) {
 
 // ── Ligne et cellules (mémoïsées : props primitives ou stables) ─────────────
 
-const GridRowInner = function GridRow<R>({ gridId, row, rowId, cols, hasExpand, hasCheck, expanded, selected, canEdit, freezeStyles, className }: {
+const GridRowInner = function GridRow<R>({ gridId, row, rowId, cols, hasExpand, expandable, hasCheck, checkable, expanded, selected, canEdit, freezeStyles, className }: {
   gridId: string
   row: R
   rowId: string
   cols: readonly GridColumn<R>[]
   hasExpand: boolean
+  expandable: boolean
   hasCheck: boolean
+  checkable: boolean
   expanded: boolean
   selected: boolean
   canEdit: boolean
@@ -513,8 +542,8 @@ const GridRowInner = function GridRow<R>({ gridId, row, rowId, cols, hasExpand, 
       onClick={e => { e.stopPropagation(); actions.rowClick(rowId, e) }}
       onDoubleClick={() => actions.rowDoubleClick(rowId)}
     >
-      {hasExpand && <ExpandCell gridId={gridId} rowId={rowId} expanded={expanded} stickyBg={stickyBg} />}
-      {hasCheck && <CheckCell gridId={gridId} rowId={rowId} checked={selected} stickyBg={stickyBg} left={hasExpand ? EXPAND_COL_WIDTH : 0} />}
+      {hasExpand && <ExpandCell gridId={gridId} rowId={rowId} expandable={expandable} expanded={expanded} stickyBg={stickyBg} />}
+      {hasCheck && <CheckCell gridId={gridId} rowId={rowId} checkable={checkable} checked={selected} stickyBg={stickyBg} left={hasExpand ? EXPAND_COL_WIDTH : 0} />}
       {cols.map((c, i) => (
         <GridCell
           key={c.key}
@@ -532,7 +561,7 @@ const GridRowInner = function GridRow<R>({ gridId, row, rowId, cols, hasExpand, 
 }
 const GridRow = memo(GridRowInner) as typeof GridRowInner
 
-const ExpandCell = memo(function ExpandCell({ gridId, rowId, expanded, stickyBg }: { gridId: string; rowId: string; expanded: boolean; stickyBg: string }) {
+const ExpandCell = memo(function ExpandCell({ gridId, rowId, expandable, expanded, stickyBg }: { gridId: string; rowId: string; expandable: boolean; expanded: boolean; stickyBg: string }) {
   const actions = useGridActions()
   const g = useCellGestures(rowId, EXPAND_COL)
   return (
@@ -543,7 +572,7 @@ const ExpandCell = memo(function ExpandCell({ gridId, rowId, expanded, stickyBg 
       className={['border border-edge px-1 text-center', stickyBg, g.isSelected ? CELL_SELECTED_CLASS : ''].join(' ')}
       onClick={g.onClick}
     >
-      <button
+      {expandable && <button
         type="button"
         className="text-ink-3 hover:text-ink align-middle"
         aria-expanded={expanded}
@@ -556,17 +585,17 @@ const ExpandCell = memo(function ExpandCell({ gridId, rowId, expanded, stickyBg 
         onDoubleClick={e => e.stopPropagation()}
       >
         {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-      </button>
+      </button>}
     </td>
   )
 })
 
-const CheckCell = memo(function CheckCell({ gridId, rowId, checked, stickyBg, left }: { gridId: string; rowId: string; checked: boolean; stickyBg: string; left: number }) {
+const CheckCell = memo(function CheckCell({ gridId, rowId, checkable, checked, stickyBg, left }: { gridId: string; rowId: string; checkable: boolean; checked: boolean; stickyBg: string; left: number }) {
   const actions = useGridActions()
   const g = useCellGestures(rowId, CHECK_COL)
   return (
     <td data-col={CHECK_COL} data-active={g.isSelected || undefined} style={{ position: 'sticky', left, zIndex: 2 }} className={['border border-edge px-1', stickyBg, g.isSelected ? CELL_SELECTED_CLASS : ''].join(' ')}>
-      <input
+      {checkable && <input
         type="checkbox"
         className="rounded align-middle"
         checked={checked}
@@ -574,7 +603,7 @@ const CheckCell = memo(function CheckCell({ gridId, rowId, checked, stickyBg, le
         data-testid={`${gridId}-check-${rowId}`}
         onMouseDown={e => e.preventDefault()}
         onClick={e => { e.stopPropagation(); g.onClick(); actions.checkbox(rowId, e.shiftKey) }}
-      />
+      />}
     </td>
   )
 })
@@ -659,6 +688,12 @@ const GridCellInner = function GridCell<R>({ gridId, row, rowId, col, editable, 
   )
 }
 const GridCell = memo(GridCellInner) as typeof GridCellInner
+
+/** Lien affiché par une cellule (lien d'élément, lien de page, action de cellule `data-cell-link`). */
+function cellLinkOf(container: HTMLElement | null, rowId: string, key: string): HTMLElement | null {
+  const cell = container?.querySelector(`tr[data-node-id="${CSS.escape(rowId)}"] > td[data-col="${CSS.escape(key)}"]`)
+  return cell?.querySelector<HTMLElement>('[data-element-link], [data-page-link], [data-cell-link]') ?? null
+}
 
 /** Liste d'un éditeur enum ouverte une seule fois, au montage (ref stable) ; refusée sans geste de l'utilisateur. */
 function openPicker(el: HTMLSelectElement | null): void {

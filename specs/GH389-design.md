@@ -58,7 +58,7 @@ comportements qui divergeraient de nouveau — c'est le problème du ticket).
 
 ```ts
 interface DataGridProps<R> {
-  gridId: string                         // data-testid `grid-<gridId>`, clés de pref
+  gridId: string                         // préfixe des data-testid : `<gridId>-grid`, `<gridId>-row-<id>`… (§12)
   title: string                          // feuille et fichier d'export
   rows: R[]; getRowId(row: R): string
   columns: GridColumn<R>[]               // toutes les colonnes disponibles
@@ -198,3 +198,42 @@ Chaque sprint laisse l'application cohérente (une grille migrée est entièreme
   modale, `stopImmediatePropagation` conservé.
 - **Conventions DOM** : `data-*` listés au §3, `data-testid` des e2e existants conservés.
 - **Clés de `.pref` partagées** : écriture partielle uniquement ; jamais un objet complet.
+
+## 12. Écarts constatés au sprint 1
+
+Décidés en cours d'implémentation (`specs/GH389-sprint1.md`), sans effet sur la spec :
+
+- **`data-testid`** : préfixe `<gridId>` partout pour garder ceux de la Validation — table
+  `<gridId>-grid`, ligne `<gridId>-row-<id>`, cellule `<gridId>-<colonne>-<id>` (éditeur
+  `…-editor`), en-tête `<gridId>-header-<colonne>`, chevron `<gridId>-toggle-<id>`, case
+  `<gridId>-check-<id>`, 👁 `<gridId>-columns`, cases du panneau `<gridId>-column-<clé>`, compteur
+  `<gridId>-count`, barre `<gridId>-toolbar`. Cellule active : `data-active` (en plus de `data-col`).
+- **`GridColumn`** : `editValue(row)` (valeur éditée : nom d'une décision, texte brut) et
+  `elementId(row)` (Entrée suit le lien) ajoutés ; `defaultVisible` et `minWidth` retirés (défauts =
+  `prefs.defaults`, largeur minimale commune).
+- **`DataGrid`** : `migrateColumns` (liste enregistrée avant la grille commune : la Validation
+  ajoutait ID, titre et mentions hors liste), `exportRepoPath`, `layer` (panneau 👁 au-dessus d'une
+  modale) ajoutés ; `frozenLeading` non implémenté (inutile, §3). Pas de `resetKey` : la page remonte
+  `ValidationGrid` par validation (`key`), ce qui remet filtres, dépli et sélection à zéro.
+- **Sélection (mode lignes)** : réduite aux lignes affichées quand un filtre change — une édition en
+  lot ou Confirmer / Rejeter la sélection n'atteint jamais une ligne masquée. Mode cases inchangé
+  (GH33 : la sélection survit aux filtres).
+- **Clavier** : une frappe venue d'un bouton ou d'un lien qui a le focus (Confirmer d'une ligne, lien
+  d'élément, ligne dépliée) garde son geste ; le chevron et la case ne prennent pas le focus au clic.
+  Éditeur enum : la liste du système est ouverte (`showPicker`, une fois au montage) ; liste ouverte,
+  le premier Échap la referme, le second ferme l'éditeur (comme la Vue Excel).
+- **`ExcelTextEditor`** : prop `onTab` (Tab / Maj+Tab : valide puis cellule suivante).
+- **Préférences** : Réinitialiser (panneau 👁) ne remet que les colonnes (et oublie la vue active),
+  pas les largeurs ni le gel, comme le ⚙️ de la Vue Excel. Une clé inconnue est ignorée à
+  l'affichage ; une liste réécrite après un changement de l'utilisateur ne contient que des clés
+  connues. Clés `columns`, `colWidthsColumns`… de `FieldVisibilityPref` : ajoutées avec la première
+  grille sans type (sprint 4) ; `colWidthsExecutions`… au sprint 3.
+- **Briques reportées au sprint 2** (Vue Excel) : `FieldConfigModal` sur `ColumnChecklist` ;
+  déplacement de `lib/gridSelection.ts` (`rowSelection.ts` réexporte ses fonctions de cases) ;
+  `SystemView` sur `writeExcelRowMaxLines`.
+- **Liens versions / validations** : `PageLink` (`components/element/`) — lien d'élément quand l'index
+  connaît l'ID **dans le repo attendu**, sinon bouton vers la page (composant non indexé, même ID de
+  version dans deux repos : l'index est par ID nu, premier repo gagnant).
+- **Défilement** : `useGridScrollKey(gridId)` (onglet + page + grille, GH300) pour les grilles de page.
+- **En-tête de la Validation** : bloc d'informations borné (`max-h-[45vh]`, défilement propre) ;
+  replié, `validation-state-short` et `validation-remaining-short` dans le sous-titre.

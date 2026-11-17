@@ -19,11 +19,16 @@ export interface GridKeyboardHandlers {
   escape(): boolean
 }
 
-/** Frappe venue d'un champ de saisie ou d'un éditeur ouvert : la grille ne la traite pas. */
+/**
+ * Frappe venue d'un champ de saisie, d'un éditeur ouvert, ou d'un bouton / lien qui a le focus
+ * (Confirmer d'une ligne, lien d'élément, contenu d'une ligne dépliée) : la grille ne la traite pas,
+ * l'élément garde son geste.
+ */
 export function isTypingTarget(el: Element | null, container: Element | null): boolean {
   if (!el || el === container) return false
   const tag = el.tagName
   return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (el as HTMLElement).isContentEditable
+    || el.matches('button, a[href], [role="link"], [tabindex]')
 }
 
 /** Ramène la cellule dans la zone visible, sous l'en-tête collé et à droite des colonnes figées. */

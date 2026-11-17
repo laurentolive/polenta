@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -15,8 +15,7 @@ import { ValidationGrid } from '../components/validation/ValidationGrid'
 import { useInvalidateValidations, useValidationPage, validationErrorText, VALIDATION_STATE_BADGE } from '../components/validation/useValidations'
 import { STATE_BADGE, useInvalidateVersions } from '../components/versions/useVersions'
 import { backdropDismiss } from '../lib/backdropDismiss'
-import { ElementLink } from '../components/element/ElementLink'
-import { useElementNav } from '../contexts/ElementNavContext'
+import { PageLink } from '../components/element/PageLink'
 import { useHeaderCollapsed } from '../components/grid/useHeaderCollapsed'
 
 /** GH204 §7 — page d'une validation. URL : /validation/<ID>?projectId=…&repoPath=… */
@@ -137,7 +136,7 @@ function ValidationView() {
 
           <span className="text-ink-3">{t('validation.version')}</span>
           <span className="flex items-center gap-2">
-            <PageLink id={version.id} className="text-prim" onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: version.id }, search: { projectId, repoPath } })}>
+            <PageLink id={version.id} repoPath={repoPath} className="text-prim" onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: version.id }, search: { projectId, repoPath } })}>
               {version.title} ({version.id})
             </PageLink>
             <span className={`px-1.5 rounded text-[10px] ${STATE_BADGE[version.state]}`} data-testid="validation-version-state">{t(`versions.state.${version.state}`)}</span>
@@ -161,12 +160,12 @@ function ValidationView() {
                     <td className="py-1 pr-4 text-ink-2 w-48">{c.label}</td>
                     <td className="py-1 pr-4 text-ink-2">
                       {c.version
-                        ? <PageLink id={c.version.id} onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: c.version!.id }, search: { projectId, repoPath: c.repoPath } })}>{c.version.title} ({c.version.id})</PageLink>
+                        ? <PageLink id={c.version.id} repoPath={c.repoPath} onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: c.version!.id }, search: { projectId, repoPath: c.repoPath } })}>{c.version.title} ({c.version.id})</PageLink>
                         : '—'}
                     </td>
                     <td className="py-1">
                       {c.validation ? (
-                        <PageLink id={c.validation.id} className={`px-1.5 rounded text-[10px] ${VALIDATION_STATE_BADGE[c.validation.state]}`}
+                        <PageLink id={c.validation.id} repoPath={c.repoPath} className={`px-1.5 rounded text-[10px] ${VALIDATION_STATE_BADGE[c.validation.state]}`}
                           onFallback={() => void navigate({ to: '/validation/$validationId', params: { validationId: c.validation!.id }, search: { projectId, repoPath: c.repoPath } })}>
                           {t(`validation.state.${c.validation.state}`)}
                         </PageLink>
@@ -195,7 +194,7 @@ function ValidationView() {
         )}
         </div>}
 
-        <ValidationGrid page={page} repoPath={repoPath} projectId={projectId} workspaceDir={workspaceDir} />
+        <ValidationGrid key={validation.id} page={page} repoPath={repoPath} projectId={projectId} workspaceDir={workspaceDir} />
       </div>
       {confirming && (
         <ConfirmDialog
@@ -209,16 +208,6 @@ function ValidationView() {
       )}
     </div>
   )
-}
-
-/**
- * GH389 §1.8 — ID d'une version ou d'une validation : lien d'élément (popup d'en-tête, Ctrl+clic) ;
- * hors de l'index (composant non chargé), bouton vers la page comme avant.
- */
-function PageLink({ id, className, onFallback, children }: { id: string; className?: string; onFallback: () => void; children: ReactNode }) {
-  const nav = useElementNav()
-  if (nav?.resolve(id)) return <ElementLink id={id} className={className}>{children}</ElementLink>
-  return <button type="button" className={['hover:underline', className ?? ''].join(' ')} onClick={onFallback}>{children}</button>
 }
 
 function ConfirmDialog({ action, problems, versionTitle, signed, onConfirm, onClose }: {

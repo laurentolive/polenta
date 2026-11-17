@@ -4,7 +4,9 @@ import type { CoverageStatus, MatrixCell, SchemaField, TestCase, ValidationPage,
 import { fieldValueToText, pendingDecision } from '@polenta/types'
 import { api } from '../../api'
 import { DynamicField } from '../DynamicField'
+import { useNavigate } from '@tanstack/react-router'
 import { ElementLink } from '../element/ElementLink'
+import { PageLink } from '../element/PageLink'
 import { CoverageBadge } from '../system/CoverageBadge'
 import { IssueProposalDialog, useHasIssueType, type IssueProposalOrigin } from '../issues/IssueProposalDialog'
 import { DataGrid, type CellEditFailure } from '../grid/DataGrid'
@@ -38,6 +40,7 @@ export function ValidationGrid({ page, repoPath, projectId, workspaceDir }: {
   workspaceDir?: string
 }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const invalidate = useInvalidateValidations()
   const hasIssueType = useHasIssueType(repoPath)
   const scrollKey = useGridScrollKey('validation')
@@ -180,7 +183,12 @@ export function ValidationGrid({ page, repoPath, projectId, workspaceDir }: {
         key: 'design', label: t('validation.column.design'), group: requirementGroup,
         getText: r => r.designVersion?.title ?? '',
         render: r => r.designVersion
-          ? <ElementLink id={r.designVersion.id} className="text-prim">{r.designVersion.title}</ElementLink>
+          ? (
+            <PageLink id={r.designVersion.id} repoPath={repoPath} className="text-prim"
+              onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: r.designVersion!.id }, search: { projectId, repoPath } })}>
+              {r.designVersion.title}
+            </PageLink>
+          )
           : <span className="text-ink-3">—</span>,
         elementId: r => r.designVersion?.id,
       },
@@ -225,7 +233,7 @@ export function ValidationGrid({ page, repoPath, projectId, workspaceDir }: {
         key: `field:${f.name}`, label: f.label || f.name, group: requirementGroup, getText: r => textOf(r.fields[f.name]),
       })),
     ]
-  }, [t, decisions, editable, pending, typeDef.entryFields, page.requirementFields, page.requirementStatusLabels])
+  }, [t, decisions, editable, pending, typeDef.entryFields, page.requirementFields, page.requirementStatusLabels, navigate, repoPath, projectId])
 
   const defaults = useMemo(() => [...BASE_COLUMNS, ...(typeDef.entryFields ?? []).map(f => `entry:${f.name}`), 'mentions'], [typeDef.entryFields])
   const prefs = useMemo(() => ({ repoPath, prefKey: typeKey, view: 'excel', defaults }), [repoPath, typeKey, defaults])

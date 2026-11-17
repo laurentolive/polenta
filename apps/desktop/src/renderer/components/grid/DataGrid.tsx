@@ -73,6 +73,11 @@ export interface DataGridProps<R> {
   layer?: 'page' | 'modal'
 }
 
+/** Cellule éditable : grille éditable, colonne avec éditeur, ligne acceptée par la colonne. */
+function isEditableCell<R>(canEdit: boolean, col: GridColumn<R>, row: R): boolean {
+  return canEdit && !!col.editor && (col.isEditable?.(row) ?? true)
+}
+
 /** Lignes rendues au premier affichage ; les suivantes juste après, en transition (comme la Vue Excel). */
 const INITIAL_RENDERED_ROWS = 50
 const EXPAND_COL_WIDTH = 24
@@ -159,6 +164,13 @@ export function DataGrid<R>(props: DataGridProps<R>) {
   const selected = selection?.selected ?? localSelected
   const onSelectionChange = selection?.onChange ?? setLocalSelected
   const select = useRowSelection(selectionMode, selected, onSelectionChange, displayedIds)
+  // Mode lignes : la sélection ne garde que des lignes affichées — une édition en lot ou une action
+  // de la sélection n'atteint jamais une ligne masquée par un filtre. (Mode cases : la sélection
+  // survit aux filtres, GH33.)
+  useEffect(() => {
+    if (selectionMode !== 'rows' || [...selected].every(id => displayedIds.includes(id))) return
+    onSelectionChange(new Set([...selected].filter(id => displayedIds.includes(id))))
+  }, [selectionMode, selected, displayedIds, onSelectionChange])
 
   const [localExpanded, setLocalExpanded] = useState<ReadonlySet<string>>(EMPTY)
   const toggleExpanded = useCallback((id: string) => setLocalExpanded(prev => {
@@ -187,7 +199,6 @@ export function DataGrid<R>(props: DataGridProps<R>) {
     if (cell && !leadingKeys.includes(cell.col) && !visibleKeys.includes(cell.col)) cellStore.select(null)
   }, [cellStore, visibleKeys, leadingKeys])
   const canEdit = !!onCellEdit
-  const isCellEditable = (row: R, col: GridColumn<R>) => canEdit && !!col.editor && (col.isEditable?.(row) ?? true)
   const [failures, setFailures] = useState<CellEditFailure[] | null>(null)
 
   const keyboardCols = useMemo(() => [...leadingKeys, ...visibleKeys], [leadingKeys, visibleKeys])
@@ -223,7 +234,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
     isEditable: cell => {
       const row = rowById.get(cell.rowId)
       const col = byKey.get(cell.col)
-      return !!row && !!col && isCellEditable(row, col)
+      return !!row && !!col && isEditableCell(canEdit, col, row)
     },
     expandCol: hasExpand ? EXPAND_COL : undefined,
     isExpanded: id => localExpanded.has(id),
@@ -241,7 +252,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
       const col = byKey.get(key)
       const inSelection = selectionMode === 'rows' && selected.size > 1 && selected.has(rowId)
       const ids = inSelection
-        ? rows.filter(r => selected.has(getRowId(r)) && !!col && isCellEditable(r, col)).map(getRowId)
+        ? filteredRows.filter(r => selected.has(getRowId(r)) && !!col && isEditableCell(canEdit, col, r)).map(getRowId)
         : [rowId]
       setFailures(null)
       void onCellEdit(ids, key, value).then(r => setFailures(r.failed.length > 0 ? r.failed : null))
@@ -507,7 +518,7 @@ const GridRowInner = function GridRow<R>({ gridId, row, rowId, cols, hasExpand, 
           row={row}
           rowId={rowId}
           col={c}
-          editable={canEdit && !!c.editor && (c.isEditable?.(row) ?? true)}
+          editable={isEditableCell(canEdit, c, row)}
           freezeStyle={freezeStyles[i]}
           stickyBg={freezeStyles[i] ? stickyBg : undefined}
         />
@@ -535,6 +546,8 @@ const ExpandCell = memo(function ExpandCell({ gridId, rowId, expanded, stickyBg 
         aria-label={rowId}
         data-testid={`${gridId}-toggle-${rowId}`}
         data-cell-dblclick-ignore
+        // Le focus reste sur la grille (clavier) : le chevron ne le prend pas au clic.
+        onMouseDown={e => e.preventDefault()}
         onClick={e => { e.stopPropagation(); g.onClick(); actions.toggleExpanded(rowId) }}
         onDoubleClick={e => e.stopPropagation()}
       >
@@ -555,6 +568,7 @@ const CheckCell = memo(function CheckCell({ gridId, rowId, checked, stickyBg, le
         checked={checked}
         readOnly
         data-testid={`${gridId}-check-${rowId}`}
+        onMouseDown={e => e.preventDefault()}
         onClick={e => { e.stopPropagation(); g.onClick(); actions.checkbox(rowId, e.shiftKey) }}
       />
     </td>
@@ -583,7 +597,7 @@ const GridCellInner = function GridCell<R>({ gridId, row, rowId, col, editable, 
       <td data-col={col.key} data-testid={testId} style={freezeStyle} className={['border border-edge p-0', stickyBg ?? ''].join(' ')}>
         <select
           autoFocus
-          ref={el => { if (el) el.showPicker?.() }}
+          ref={openPicker}
           value={value}
           onChange={e => {
             if (e.target.value !== value) actions.edit(rowId, col.key, e.target.value)
@@ -641,3 +655,11 @@ const GridCellInner = function GridCell<R>({ gridId, row, rowId, col, editable, 
   )
 }
 const GridCell = memo(GridCellInner) as typeof GridCellInner
+
+/** Liste d'un éditeur enum ouverte une seule fois, au montage (ref stable) ; refusée sans geste de l'utilisateur. */
+function openPicker(el: HTMLSelectElement | null): void {
+  if (!el) return
+  try {
+    el.showPicker?.()
+  } catch { /* pas d'activation utilisateur : la liste reste fermée, le clavier la parcourt */ }
+}

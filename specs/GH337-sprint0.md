@@ -94,6 +94,37 @@ vite, et ce sont les écritures faites par `git.exe` hors de `Program Files` qui
 vraisemblablement à cause de l'analyse de Windows Defender. Le statut du petit dépôt (225 ms contre
 46 ms au passage précédent) varie d'un passage à l'autre.
 
+### Emplacement de git.exe et Windows Defender (2026-11-17)
+
+Mesure en console administrateur, ms **par checkout** (médiane, min–max), 5 allers-retours, quatre
+binaires alternés, sur des copies du `.git` : handstickProduct (HEAD ↔ premier commit, 504 fichiers)
+et PH4, un dépôt C plus gros du poste (TV-2143 ↔ PH_Integration, 1 032 fichiers). Config identique
+à celle de Polenta pour tous les binaires (`GIT_CONFIG_NOSYSTEM`, `fscache`, `preloadIndex`).
+
+| Binaire | handstick, Defender normal | handstick, exclusion du processus | PH4, Defender normal | PH4, exclusion du processus |
+|---|---|---|---|---|
+| git du PC, `Program Files\Git` (2.51) | 266 (189–276) | 257 (212–403) | 1 366 (1 219–1 891) | 1 303 (1 232–1 644) |
+| git embarqué copié dans `Program Files\PolentaGitTest` | 674 (298–4 925) | 1 007 (317–1 423) | 4 223 (2 770–11 701) | 7 075 (1 739–10 192) |
+| git embarqué dans `%LOCALAPPDATA%\Programs` (cas client) | 402 (214–1 697) | **271 (166–392)** | 2 960 (1 130–6 521) | **1 460 (1 246–2 022)** |
+| git embarqué dans `vendor\git` | 1 036 (326–1 365) | 697 (307–1 135) | 4 007 (1 096–9 022) | 3 334 (1 624–3 822) |
+
+La colonne « exclusion » exclut de Defender **le seul** git.exe de `%LOCALAPPDATA%`, de façon
+temporaire.
+
+- **Defender est confirmé** : exclu, le git.exe de `%LOCALAPPDATA%` rejoint le git du PC, à quelques
+  % près. Les autres binaires, non exclus, restent lents.
+- **Ce n'est ni l'emplacement `Program Files`, ni la signature** : le binaire embarqué placé dans
+  `Program Files` reste lent, et les deux git.exe ont une signature Authenticode valide.
+  `Program Files\Git` ne figure dans aucune exclusion de Defender (exclusions lues : Android Studio
+  et IDE embarqués seulement). Pourquoi le git installé du PC est épargné reste inexpliqué
+  (réputation propre à ce fichier, vraisemblablement).
+- **Grande dispersion** pour les binaires analysés (rapport max/min jusqu'à 16) : un changement de
+  branche peut prendre de 0,3 s à 5 s sur 500 fichiers, et de 1 s à 12 s sur 1 000 fichiers.
+- Ordre de grandeur pour le client : 1,5× à 2× le git du PC en médiane. Isomorphic-git dans
+  Polenta.exe : ≈ 840 ms par checkout sur handstickProduct (451 fichiers).
+- Écarté : demander aux clients ou à l'installeur une exclusion Defender (droits administrateur,
+  politique de sécurité des clients, Polenta s'installe par utilisateur).
+
 ## Écarts par rapport au design
 
 - **Statut** : un fichier dont la taille sur disque diffère de celle de l'index (CRLF sur disque, LF

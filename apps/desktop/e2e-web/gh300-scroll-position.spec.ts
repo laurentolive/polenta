@@ -16,7 +16,8 @@ const scroller = () => s.page.locator('[data-view-scroll]')
 const param = (name: string) => new URL(s.page.url()).searchParams.get(name)
 const tableView = () => s.page.getByTitle('Vue tableau')
 const documentView = () => s.page.getByTitle('Vue document')
-const tabs = () => s.page.locator('div.overflow-x-auto > button:not([title^="Nouvel onglet"])')
+// GH343 : chaque onglet est enveloppé (indicateur de dépôt) — cibler le testid, pas la structure.
+const tabs = () => s.page.getByTestId('tab')
 
 /** Position visible : premier nœud qui coupe le haut de la zone, son décalage, défilement
  *  horizontal — ce que voit l'utilisateur (le navigateur peut corriger `scrollTop` quand des lignes

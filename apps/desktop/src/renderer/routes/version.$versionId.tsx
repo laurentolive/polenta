@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Lock, Plus, Tag } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Lock, Plus, Tag } from 'lucide-react'
 import type { UpdateVersionDto } from '@polenta/types'
 import { fieldValueToText } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { DynamicField } from '../components/DynamicField'
+import { PageLink } from '../components/element/PageLink'
+import { useHeaderCollapsed } from '../components/grid/useHeaderCollapsed'
 import { useSetTabTitle } from '../contexts/TabsContext'
 import { VersionChangesTable } from '../components/versions/VersionChangesTable'
 import { VersionElementPicker } from '../components/versions/VersionElementPicker'
@@ -38,6 +40,8 @@ function VersionPage() {
   // Sections repliables, état mémorisé par poste (comme l'analyse et les tests).
   const [componentsOpen, setComponentsOpen] = useSectionOpen('components')
   const [changesOpen, setChangesOpen] = useSectionOpen('changes')
+  // GH389 §2.1 — bloc d'informations repliable, mémorisé par poste pour toutes les versions.
+  const [headerCollapsed, toggleHeader] = useHeaderCollapsed('version')
   // Repo de chaque composant (racines de l'analyse portées par un composant).
   const { data: tree } = useVersionTree(projectId)
   const repoOfComponent = useMemo(() => {
@@ -86,9 +90,19 @@ function VersionPage() {
       <ViewHeader
         currentProjectId={projectId}
         title={`${version.title} — ${page.component.label}`}
-        subtitle={version.id}
+        subtitle={headerCollapsed ? (
+          <span className="flex items-center gap-2">
+            {version.id}
+            <span className={`px-1.5 rounded text-[10px] ${STATE_BADGE[state]}`} data-testid="version-state-short">{t(`versions.state.${state}`)}</span>
+          </span>
+        ) : version.id}
         actions={
           <>
+            <button type="button" className="btn-icon" onClick={toggleHeader} aria-expanded={!headerCollapsed}
+              title={t(headerCollapsed ? 'grid.expandHeader' : 'grid.collapseHeader')} aria-label={t(headerCollapsed ? 'grid.expandHeader' : 'grid.collapseHeader')}
+              data-testid="version-header-toggle">
+              {headerCollapsed ? <ChevronsDown size={14} /> : <ChevronsUp size={14} />}
+            </button>
             {page.component.readonly && <span title={t('versions.readonly')}><Lock size={13} className="text-status-warning" /></span>}
             {page.tagPending && <span className="text-xs text-status-warning" title={t('versions.tagPendingHelp')} data-testid="version-tag-pending">{t('versions.tagPending', { tag: version.freeze?.tag })}</span>}
             {editable && (
@@ -102,6 +116,7 @@ function VersionPage() {
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
         {error && <p className="text-xs text-status-danger" role="alert">{error}</p>}
 
+        {!headerCollapsed && <div className="flex flex-col gap-5" data-testid="version-header">
         <section className="grid grid-cols-[10rem_1fr] gap-x-4 gap-y-2 text-xs items-center max-w-3xl">
           <span className="text-ink-3">{t('versions.label')}</span>
           {editable ? (
@@ -131,9 +146,12 @@ function VersionPage() {
               {page.basedOnOptions.map(v => <option key={v.id} value={v.id}>{v.title} ({v.id})</option>)}
             </select>
           ) : page.basedOn ? (
-            <button type="button" className="text-prim hover:underline text-left" onClick={() => void navigate({ to: '/version/$versionId', params: { versionId: page.basedOn!.id }, search: { projectId, repoPath } })}>
-              {page.basedOn.title} ({page.basedOn.id})
-            </button>
+            <span>
+              <PageLink id={page.basedOn.id} repoPath={repoPath} className="text-prim text-left"
+                onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: page.basedOn!.id }, search: { projectId, repoPath } })}>
+                {page.basedOn.title} ({page.basedOn.id})
+              </PageLink>
+            </span>
           ) : <span className="text-ink-3">{t('versions.none')}</span>}
 
           {version.freeze && (
@@ -187,9 +205,10 @@ function VersionPage() {
                           {c.options.map(o => <option key={o.id} value={o.id}>{o.title} ({o.id}) — {t(`versions.state.${o.state}`)}</option>)}
                         </select>
                       ) : c.selected ? (
-                        <button type="button" className="text-prim hover:underline" onClick={() => void navigate({ to: '/version/$versionId', params: { versionId: c.selected!.id }, search: { projectId, repoPath: c.repoPath } })}>
+                        <PageLink id={c.selected.id} repoPath={c.repoPath} className="text-prim"
+                          onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: c.selected!.id }, search: { projectId, repoPath: c.repoPath } })}>
                           {c.selected.title} ({c.selected.id}){c.selected.state === 'abandoned' && ` — ${t('versions.state.abandoned')}`}
-                        </button>
+                        </PageLink>
                       ) : <span className="text-ink-3">{t('versions.none')}</span>}
                       {c.selected && <span className={`ml-2 px-1.5 rounded text-[10px] ${STATE_BADGE[c.selected.state]}`}>{t(`versions.state.${c.selected.state}`)}</span>}
                     </td>
@@ -205,6 +224,7 @@ function VersionPage() {
           editable={editable}
           onRemove={name => void update({ components: Object.fromEntries(Object.entries(version.components ?? {}).filter(([n]) => n !== name)) })}
         />
+        </div>}
 
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
@@ -218,7 +238,9 @@ function VersionPage() {
           {changesOpen && (
             <VersionChangesTable
               rows={page.rows}
+              repoPath={repoPath}
               projectId={projectId}
+              title={`${t('versions.page.changes')} ${version.title}`}
               onRemove={editable ? ids => void run(() => api.versions.removeChanges(repoPath, versionId, ids, workspaceDir || undefined)) : undefined}
             />
           )}

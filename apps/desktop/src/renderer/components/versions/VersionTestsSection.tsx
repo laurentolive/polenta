@@ -1,11 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { VersionTestToRun, VersionTestsToRun } from '@polenta/types'
 import { api } from '../../api'
+import { ElementLink } from '../element/ElementLink'
+import { ElementLinks } from '../element/ElementLinks'
+import { DataGrid } from '../grid/DataGrid'
+import type { GridColumn } from '../grid/gridTypes'
+import { useGridScrollKey } from '../grid/useGridScrollKey'
 import { useSectionOpen } from './useVersions'
+
+const DEFAULTS = ['id', 'label', 'requirements', 'via', 'alreadyIn']
+const testIdOf = (x: VersionTestToRun) => x.testId
+const viaOf = (x: VersionTestToRun) => x.sources.filter(id => id !== x.testId)
 
 /** Instances retenues par test, pour le paramètre `instances` (`TEST-1:SW-1|SW-2,TEST-2:SW-3`, GH207). */
 export function encodeInstances(tests: VersionTestToRun[]): string | undefined {
@@ -14,7 +23,7 @@ export function encodeInstances(tests: VersionTestToRun[]): string | undefined {
 }
 
 /**
- * GH245 §2 — tests à exécuter d'une version : liste cochable, élément(s) qui amènent chaque test,
+ * GH245 §2 — tests à exécuter d'une version : grille à cases (GH389 §4, `DataGrid`), élément(s) qui amènent chaque test,
  * campagnes ouvertes qui le contiennent déjà (information) ; « Créer une campagne » et « Ajouter à … »
  * sont des raccourcis : aucun lien n'est écrit entre la version et la campagne.
  */
@@ -36,9 +45,29 @@ export function VersionTestsSection({ data, repoPath, projectId, versionLabel }:
     // eslint-disable-next-line react-hooks/exhaustive-deps -- recalcul sur le contenu, pas sur l'objet
   }, [signature])
 
-  const tests = data?.tests ?? []
+  const tests = useMemo(() => data?.tests ?? [], [data])
   const chosen = tests.filter(x => selected.has(x.testId))
-  const allChosen = tests.length > 0 && chosen.length === tests.length
+  const scrollKey = useGridScrollKey('version-tests')
+  const columns = useMemo<GridColumn<VersionTestToRun>[]>(() => [
+    {
+      key: 'id', label: t('versions.columns.id'), locked: true, getText: x => x.testId,
+      render: x => <ElementLink id={x.testId} className="font-mono text-prim" />, elementId: x => x.testId,
+    },
+    { key: 'label', label: t('versions.columns.label'), getText: x => x.title },
+    {
+      key: 'requirements', label: t('versions.columns.requirements'), getText: x => x.requirementIds.join(', '),
+      render: x => <ElementLinks ids={x.requirementIds} />, elementId: x => x.requirementIds[0],
+    },
+    {
+      key: 'via', label: t('versions.tests.via'), getText: x => viaOf(x).join(', '),
+      render: x => <ElementLinks ids={viaOf(x)} />, elementId: x => viaOf(x)[0],
+    },
+    {
+      key: 'alreadyIn', label: t('versions.tests.alreadyIn'), getText: x => x.alreadyIn.map(c => c.id).join(', '),
+      render: x => <ElementLinks ids={x.alreadyIn.map(c => c.id)} />, elementId: x => x.alreadyIn[0]?.id,
+    },
+  ], [t])
+  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::version-tests', view: 'columns', defaults: DEFAULTS }), [repoPath])
   // Campagnes ouvertes du repo : cibles de « Ajouter à … » (raccourci, aucun lien écrit).
   const { data: campaigns = [] } = useQuery({
     queryKey: ['campaigns', repoPath],
@@ -46,12 +75,6 @@ export function VersionTestsSection({ data, repoPath, projectId, versionLabel }:
     enabled: !!repoPath && open,
   })
   const openCampaigns = campaigns.filter(c => c.status === 'planned' || c.status === 'in_progress')
-  const toggle = (id: string) => setSelected(prev => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    return next
-  })
 
   const create = () => navigate({
     to: '/campaign/new',
@@ -105,38 +128,18 @@ export function VersionTestsSection({ data, repoPath, projectId, versionLabel }:
             <p className="text-xs text-status-warning" data-testid="version-tests-uncovered">{t('versions.tests.uncovered', { ids: data.uncovered.join(', ') })}</p>
           )}
           {tests.length === 0 ? <p className="text-xs text-ink-3 italic">{t('versions.tests.none')}</p> : (
-            <table className="w-full text-xs border-collapse" data-testid="version-tests-list">
-              <thead>
-                <tr className="text-left text-ink-3 border-b border-edge">
-                  <th className="w-6 py-1">
-                    <input type="checkbox" checked={allChosen} aria-label={t('versions.tests.selectAll')}
-                      onChange={() => setSelected(allChosen ? new Set() : new Set(tests.map(x => x.testId)))} />
-                  </th>
-                  <th className="py-1 pr-3 font-medium">{t('versions.columns.id')}</th>
-                  <th className="py-1 pr-3 font-medium">{t('versions.columns.label')}</th>
-                  <th className="py-1 pr-3 font-medium">{t('versions.tests.via')}</th>
-                  <th className="py-1 font-medium">{t('versions.tests.alreadyIn')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tests.map(x => (
-                  <tr key={x.testId} className="border-b border-edge-subtle" data-testid={`version-test-${x.testId}`}>
-                    <td className="py-1">
-                      <input type="checkbox" checked={selected.has(x.testId)} onChange={() => toggle(x.testId)} aria-label={t('versions.tests.select', { id: x.testId })} />
-                    </td>
-                    <td className="py-1 pr-3 whitespace-nowrap">
-                      <Link to="/test/$testId" params={{ testId: x.testId }} search={{ repoPath, projectId, component: undefined, level: undefined }} className="font-mono text-prim hover:underline">{x.testId}</Link>
-                    </td>
-                    <td className="py-1 pr-3 text-ink">
-                      {x.title}
-                      {x.requirementIds.length > 0 && <span className="ml-2 text-[10px] text-ink-3 font-mono">[{x.requirementIds.join(', ')}]</span>}
-                    </td>
-                    <td className="py-1 pr-3 text-ink-3 font-mono">{x.sources.filter(id => id !== x.testId).join(', ')}</td>
-                    <td className="py-1 text-ink-3 font-mono">{x.alreadyIn.map(c => c.id).join(', ')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="flex flex-col max-h-[60vh] min-h-0" data-testid="version-tests-list">
+              <DataGrid
+                gridId="version-tests"
+                title={`${t('versions.tests.title')} ${versionLabel}`}
+                rows={tests}
+                getRowId={testIdOf}
+                columns={columns}
+                prefs={prefs}
+                selection={{ mode: 'checkbox', selected, onChange: setSelected }}
+                scrollMemoryKey={scrollKey}
+              />
+            </div>
           )}
         </>
       ))}

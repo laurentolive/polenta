@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -7,13 +7,20 @@ import type { VersionBacklogItem } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { ViewHeader } from '../components/layout/ViewHeader'
+import { ElementLink } from '../components/element/ElementLink'
+import { DataGrid } from '../components/grid/DataGrid'
+import type { GridColumn } from '../components/grid/gridTypes'
+import { useGridScrollKey } from '../components/grid/useGridScrollKey'
 import { useSetTabTitle } from '../contexts/TabsContext'
-import { useSystemView } from '../contexts/SystemViewContext'
-import { useInvalidateVersions, useRangeSelection, useVersionBacklog, versionErrorText } from '../components/versions/useVersions'
+import { useInvalidateVersions, useVersionBacklog, versionErrorText } from '../components/versions/useVersions'
+
+const DEFAULTS = ['id', 'label', 'type', 'status', 'nature', 'diff']
+const itemId = (i: VersionBacklogItem) => i.id
 
 /**
  * GH201 §4 — backlog d'un composant : changements jamais inclus dans une version (jamais livrés,
  * ou modifiés depuis la dernière version released qui les incluait). URL : /versions/backlog?repoPath=…
+ * GH389 §4 : grille commune (`DataGrid`) à cases, types mélangés, ID en liens d'élément.
  */
 export const Route = createFileRoute('/versions_/backlog')({
   component: BacklogPage,
@@ -26,7 +33,6 @@ export const Route = createFileRoute('/versions_/backlog')({
 function BacklogPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { objectPage } = useSystemView()
   const { projectId, repoPath } = Route.useSearch()
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
   useSetTabTitle(t('versions.backlog.title'))
@@ -41,10 +47,15 @@ function BacklogPage() {
   const inProgress = useMemo(() => versions.filter(v => v.state === 'in_progress').reverse(), [versions])
   const [chosenTarget, setChosenTarget] = useState<string | null>(null)
   const target = inProgress.find(v => v.id === chosenTarget) ?? inProgress[0]
-  const itemIds = useMemo(() => items.map(i => i.id), [items])
-  const { selected, setSelected, toggle, allSelected, toggleAll } = useRangeSelection(itemIds)
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  // Éléments sortis du backlog (inclus ailleurs, relus) : hors de la sélection.
+  useEffect(() => {
+    const ids = new Set(items.map(i => i.id))
+    setSelected(prev => ([...prev].every(id => ids.has(id)) ? prev : new Set([...prev].filter(id => ids.has(id)))))
+  }, [items])
   const [error, setError] = useState<string | null>(null)
-  const visibleSelected = useMemo(() => itemIds.filter(id => selected.has(id)), [itemIds, selected])
+  const visibleSelected = useMemo(() => items.map(i => i.id).filter(id => selected.has(id)), [items, selected])
+  const scrollKey = useGridScrollKey('backlog')
 
   const include = async (ids: string[]) => {
     if (!target || ids.length === 0) return
@@ -61,17 +72,43 @@ function BacklogPage() {
     to: '/diff',
     search: { projectId, repoPath, filepath: i.filePath, commitSha: undefined, element: '1', ...(i.base && { baseSha: i.base.sha }) },
   })
-  const openElement = (i: VersionBacklogItem) => {
-    if (i.category === 'issue') {
-      const [nodeId, typeId] = i.objectTypeRef.split('::')
-      const page = objectPage(repoPath, nodeId, typeId, 'edit', i.id, 'issue')
-      void navigate({ to: page.pathname as never, search: page.search as never })
-    } else if (i.category === 'requirement') {
-      void navigate({ to: '/req/$reqId', params: { reqId: i.id }, search: { repoPath, projectId, component: undefined, level: undefined } })
-    } else {
-      void navigate({ to: '/test/$testId', params: { testId: i.id }, search: { repoPath, projectId, component: undefined, level: undefined } })
-    }
-  }
+  // Gestes des cellules lus par une ref : colonnes stables (cellules mémoïsées).
+  const gestures = useRef({ openDiff })
+  gestures.current = { openDiff }
+  const columns = useMemo<GridColumn<VersionBacklogItem>[]>(() => [
+    {
+      key: 'id', label: t('versions.columns.id'), locked: true, getText: i => i.id,
+      render: i => <ElementLink id={i.id} className="font-mono text-prim" />, elementId: i => i.id,
+    },
+    { key: 'label', label: t('versions.columns.label'), getText: i => i.title },
+    { key: 'type', label: t('versions.columns.type'), getText: i => t(`versions.category.${i.category}`) },
+    { key: 'status', label: t('versions.status'), getText: i => i.status },
+    {
+      key: 'nature', label: t('versions.backlog.nature'),
+      getText: i => [t(`versions.backlog.kind.${i.kind}`), i.outside ? t('versions.backlog.outside') : ''].filter(Boolean).join(' '),
+      render: i => (
+        <>
+          <span className={i.kind === 'new' ? 'text-status-info' : 'text-status-warning'}>{t(`versions.backlog.kind.${i.kind}`)}</span>
+          {i.outside && (
+            <span className="ml-2 inline-flex items-center gap-1 text-status-danger" title={t('versions.backlog.outsideHint')}>
+              <AlertTriangle size={11} />{t('versions.backlog.outside')}
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'diff', label: t('versions.columns.diff'), filterable: false, getText: () => t('versions.seeChanges'),
+      render: i => (
+        <button type="button" data-cell-link data-cell-dblclick-ignore onClick={e => { e.stopPropagation(); gestures.current.openDiff(i) }}
+          className="inline-flex items-center gap-1 text-prim hover:underline">
+          <FileDiff size={12} />{t('versions.seeChanges')}
+        </button>
+      ),
+    },
+  ], [t])
+  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::backlog', view: 'columns', defaults: DEFAULTS }), [repoPath])
+  const canSelect = useMemo(() => (target ? undefined : () => false), [target])
 
   return (
     <div className="flex flex-col h-full overflow-hidden" data-testid="version-backlog-page">
@@ -96,56 +133,23 @@ function BacklogPage() {
           </>
         ) : <span className="text-xs text-ink-3">{t('versions.backlog.noInProgress')}</span>}
       />
-      <div className="flex-1 overflow-y-auto p-4">
-        {error && <p className="text-xs text-status-danger mb-2" role="alert">{error}</p>}
+      <div className="flex-1 min-h-0 p-4 flex flex-col gap-2">
+        {error && <p className="text-xs text-status-danger" role="alert">{error}</p>}
         {isLoading ? <p className="text-xs text-ink-3 italic">{t('common.loading')}</p> : items.length === 0 ? (
           <p className="text-xs text-ink-3 italic">{t('versions.backlog.empty')}</p>
         ) : (
-          <table className="w-full text-xs border-collapse" data-testid="backlog-table">
-            <thead>
-              <tr className="text-left text-ink-3 border-b border-edge">
-                <th className="py-1 pr-2 w-6">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    disabled={!target}
-                    data-testid="backlog-select-all"
-                  />
-                </th>
-                <th className="py-1 pr-3 font-medium">{t('versions.columns.id')}</th>
-                <th className="py-1 pr-3 font-medium">{t('versions.columns.label')}</th>
-                <th className="py-1 pr-3 font-medium">{t('versions.columns.type')}</th>
-                <th className="py-1 pr-3 font-medium">{t('versions.status')}</th>
-                <th className="py-1 pr-3 font-medium">{t('versions.backlog.nature')}</th>
-                <th className="py-1 font-medium">{t('versions.columns.diff')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(i => (
-                <tr key={i.id} className="border-b border-edge-subtle" data-testid={`backlog-row-${i.id}`}>
-                  <td className="py-1 pr-2"><input type="checkbox" checked={selected.has(i.id)} onChange={() => undefined} onClick={e => toggle(i.id, e.shiftKey)} disabled={!target} data-testid={`backlog-select-${i.id}`} /></td>
-                  <td className="py-1 pr-3"><button type="button" onClick={() => openElement(i)} className="text-prim hover:underline font-mono">{i.id}</button></td>
-                  <td className="py-1 pr-3 text-ink">{i.title}</td>
-                  <td className="py-1 pr-3 text-ink-2">{t(`versions.category.${i.category}`)}</td>
-                  <td className="py-1 pr-3 text-ink-2">{i.status}</td>
-                  <td className="py-1 pr-3">
-                    <span className={i.kind === 'new' ? 'text-status-info' : 'text-status-warning'}>{t(`versions.backlog.kind.${i.kind}`)}</span>
-                    {i.outside && (
-                      <span className="ml-2 inline-flex items-center gap-1 text-status-danger" title={t('versions.backlog.outsideHint')}>
-                        <AlertTriangle size={11} />{t('versions.backlog.outside')}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-1">
-                    <button type="button" onClick={() => openDiff(i)} className="inline-flex items-center gap-1 text-prim hover:underline">
-                      <FileDiff size={12} />{t('versions.seeChanges')}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="flex flex-col flex-1 min-h-0" data-testid="backlog-table">
+            <DataGrid
+              gridId="backlog"
+              title={t('versions.backlog.title')}
+              rows={items}
+              getRowId={itemId}
+              columns={columns}
+              prefs={prefs}
+              selection={{ mode: 'checkbox', selected, onChange: setSelected, isSelectable: canSelect }}
+              scrollMemoryKey={scrollKey}
+            />
+          </div>
         )}
       </div>
     </div>

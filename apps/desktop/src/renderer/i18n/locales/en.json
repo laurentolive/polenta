@@ -947,7 +947,15 @@
       }
     },
     "campaignListView": {
-      "noTest": "No test"
+      "noTest": "No test",
+      "title": "Campaigns",
+      "newCampaign": "New campaign",
+      "createFirst": "Create the first campaign",
+      "colId": "ID",
+      "colStatus": "Status",
+      "colTitle": "Title",
+      "colTests": "Tests",
+      "colRuns": "Entries"
     },
     "richTextToolbar": {
       "rawMarkdownMode": "Raw markdown mode"
@@ -1059,6 +1067,16 @@
     "editParamValues": "Edit parameter values",
     "viewResult": "View result",
     "view": "View",
+    "entriesTitle": "Entries {{id}}",
+    "columns": {
+      "test": "Test",
+      "title": "Title",
+      "requirement": "Requirement",
+      "carried": "Carried over from",
+      "params": "Parameters",
+      "status": "Status",
+      "actions": "Actions"
+    },
     "executeThisTest": "Execute this test",
     "execute": "Execute",
     "newInstanceOf": "New instance of {{tcId}} — parameter values:",
@@ -1168,6 +1186,7 @@
       "tabCampaign": "From a campaign"
     },
     "carry": {
+      "gridTitle": "Carry over from a campaign",
       "sources": "Source campaigns",
       "noCampaign": "No other campaign",
       "statusFilter": "Entry status:",

@@ -337,3 +337,40 @@ Décidés en cours d'implémentation (`specs/GH389-sprint4.md`), sans effet sur 
   `grid::backlog`, vue `columns` (clés `columns`, `colWidthsColumns`, `freezeColCountColumns`).
 - **Panneau 👁** (`ColumnPickerPanel`) : la case suit le clic tout de suite (état local), la
   préférence la rattrape — sans quoi elle attendait la notification différée du cache.
+
+## 16. Écarts constatés au sprint 5 (campagnes)
+
+Décidés en cours d'implémentation (`specs/GH389-sprint5.md`), sans effet sur la spec :
+
+- **Entrées d'une campagne** : composant `CampaignEntriesGrid` (`components/campaign/`), `gridId`
+  `campaign-entries`, ligne = `entryId`. Colonnes : Test (verrouillée), Titre (pastilles « non
+  approuvé » et paramètres non résolus), Exigence, **Reportée depuis** (campagne d'origine d'un
+  report GH64, en lien d'élément — colonne propre plutôt qu'une mention dans le titre, pour le
+  filtre et l'export), Paramètres, Statut, Actions (dupliquer, paramètres, voir, exécuter, retirer).
+  Pastilles de statut dans la barre d'outils (filtre de l'écran, `rowFilter`). Saisie des paramètres
+  et duplicata dans la ligne dépliée : `DataGrid` reçoit `expanded` / `onToggleExpanded` (dépli
+  contrôlé par l'écran, ouvert par les boutons ✎ / ⧉ ; chevron, ←/→ : paramètres s'il y en a, sinon
+  duplicata). La grille est remontée par campagne (`key`) : Précédent d'une campagne à l'autre
+  (même route) reprend la position de chacune. Bornée à 70 % de la hauteur de la fenêtre, pleine
+  largeur (le bloc des champs garde sa largeur).
+- **Ouverture d'une entrée** : clic sur une ligne = sélection (contrat §1.9) ; ouverture par
+  double-clic, Entrée ou le bouton **Voir**, désormais proposé sur toutes les lignes d'une campagne
+  clôturée (avant : clic sur la ligne).
+- **Report depuis une campagne** : `gridId` `campaign-carry`, ligne `<campagne>/<entrée>` (la
+  sélection de la grille est traduite vers les clés de doublon du sélecteur ; une clé cochée hors des
+  lignes reste cochée). Statuts et filtre texte de l'écran dans la barre d'outils. Une entrée
+  indisponible n'a pas de case (ligne estompée, motif en Remarque) — `gh64-carry-over` adapté
+  (`data-node-id`, case absente). « Aussi dans » : campagnes en liens d'élément. Panneau 👁 en
+  couche modale. Colonne Titre ajoutée (le titre était accolé à l'ID du test).
+- **Liste des campagnes** : `gridId` `campaign-list` (`/product?category=campaign`), « + Nouvelle
+  campagne » en tête de barre d'outils, filtre global de la vue système combiné en ET. ID en lien
+  d'élément (clic : la campagne) ; tests en liens, chacun une fois (instances regroupées) ; colonne
+  Entrées = nombre d'entrées par statut (pastilles déjà affichées, libellées). Statut traduit
+  (`campaignPage.carry.campaignStatus`).
+- **Couleurs** : `RUN_CLASS` / `STATUS_CLASS` de `CampaignListView` supprimés ; `RUN_STATUS_CLASS`
+  (existant) et `CAMPAIGN_STATUS_CLASS` (`lib/runStatus.ts`) partagés.
+- **Mémoire du défilement** : la barre d'activité « Campagnes » ouvre la liste, jamais la page d'une
+  campagne — E12 couvre les entrées par l'onglet et Précédent, la liste par la barre d'activité et
+  Précédent.
+- **Préférences** : `grid::campaign-entries`, `grid::campaign-carry`, `grid::campaign-list`, vue
+  `columns`.

@@ -69,6 +69,10 @@ export interface DataGridProps<R> {
   canExpand?: (row: R) => boolean
   /** Libellé accessible du chevron de dépli ; défaut : `grid.toggleRow`. */
   expandLabel?: string
+  /** Lignes dépliées, contrôlées par l'écran (ex. formulaire ouvert par un bouton de la ligne) ; défaut : état local. */
+  expanded?: ReadonlySet<string>
+  /** Chevron, ←/→, Entrée : demande de dépli / repli d'une ligne (avec `expanded`). */
+  onToggleExpanded?: (rowId: string) => void
   rowClassName?: (row: R) => string | undefined
   /** Widget : ni barre d'outils, ni filtres, ni largeurs. */
   compact?: boolean
@@ -117,7 +121,7 @@ const useGridActions = () => useContext(GridActionsContext)!
 export function DataGrid<R>(props: DataGridProps<R>) {
   const {
     gridId, title, rows, getRowId, columns, prefs: prefSource, migrateColumns, savedViews, toolbarStart, rowFilter, selection,
-    onCellEdit, onActivate, renderExpanded, canExpand, expandLabel, rowClassName, compact, noColumnPicker, noExport, noReorder, exportRepoPath, scrollMemoryKey, layer,
+    onCellEdit, onActivate, renderExpanded, canExpand, expandLabel, expanded: controlledExpanded, onToggleExpanded, rowClassName, compact, noColumnPicker, noExport, noReorder, exportRepoPath, scrollMemoryKey, layer,
   } = props
   const { t } = useTranslation()
   const nav = useElementNav()
@@ -190,11 +194,13 @@ export function DataGrid<R>(props: DataGridProps<R>) {
   }, [selectionMode, selected, displayedIds, onSelectionChange])
 
   const [localExpanded, setLocalExpanded] = useState<ReadonlySet<string>>(EMPTY)
-  const toggleExpanded = useCallback((id: string) => setLocalExpanded(prev => {
+  const toggleLocalExpanded = useCallback((id: string) => setLocalExpanded(prev => {
     const next = new Set(prev)
     if (!next.delete(id)) next.add(id)
     return next
   }), [])
+  const expandedSet = controlledExpanded ?? localExpanded
+  const toggleExpanded = onToggleExpanded ?? toggleLocalExpanded
 
   // ── Rendu progressif, défilement ────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null)
@@ -248,7 +254,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
       case 'expand':
       case 'collapse':
         if (!isExpandable(row)) return false
-        if ((action === 'expand') !== localExpanded.has(rowId)) toggleExpanded(rowId)
+        if ((action === 'expand') !== expandedSet.has(rowId)) toggleExpanded(rowId)
         return true
     }
   }
@@ -262,7 +268,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
       return !!row && !!col && isEditableCell(canEdit, col, row)
     },
     expandCol: hasExpand ? EXPAND_COL : undefined,
-    isExpanded: id => localExpanded.has(id),
+    isExpanded: id => expandedSet.has(id),
   }), {
     selectRow: id => select.only(id),
     extendSelection: id => select.extendTo(id),
@@ -448,7 +454,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
               )}
               {renderedRows.map(row => {
                 const id = getRowId(row)
-                const isOpen = localExpanded.has(id)
+                const isOpen = expandedSet.has(id)
                 return (
                   <React.Fragment key={id}>
                     <GridRow

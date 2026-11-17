@@ -351,6 +351,7 @@ export function TestPickerModal({
 
         {step === 1 && tab === 'campaign' && (
           <CampaignCarryPanel
+            repoPath={repoPath}
             campaigns={carryCampaigns}
             isLoading={campaignsLoading}
             sources={carrySources}

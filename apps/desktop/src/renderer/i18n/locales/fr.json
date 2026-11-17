@@ -947,7 +947,15 @@
       }
     },
     "campaignListView": {
-      "noTest": "Aucun test"
+      "noTest": "Aucun test",
+      "title": "Campagnes",
+      "newCampaign": "Nouvelle campagne",
+      "createFirst": "Créer la première campagne",
+      "colId": "ID",
+      "colStatus": "Statut",
+      "colTitle": "Titre",
+      "colTests": "Tests",
+      "colRuns": "Entrées"
     },
     "richTextToolbar": {
       "rawMarkdownMode": "Mode markdown brut"
@@ -1059,6 +1067,16 @@
     "editParamValues": "Modifier les valeurs des paramètres",
     "viewResult": "Consulter le résultat",
     "view": "Voir",
+    "entriesTitle": "Entrées {{id}}",
+    "columns": {
+      "test": "Test",
+      "title": "Titre",
+      "requirement": "Exigence",
+      "carried": "Reportée depuis",
+      "params": "Paramètres",
+      "status": "Statut",
+      "actions": "Actions"
+    },
     "executeThisTest": "Exécuter ce test",
     "execute": "Exécuter",
     "newInstanceOf": "Nouvelle instance de {{tcId}} — valeurs des paramètres :",
@@ -1168,6 +1186,7 @@
       "tabCampaign": "Depuis une campagne"
     },
     "carry": {
+      "gridTitle": "Report depuis une campagne",
       "sources": "Campagnes source",
       "noCampaign": "Aucune autre campagne",
       "statusFilter": "Statut des entrées :",

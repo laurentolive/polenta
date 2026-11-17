@@ -103,6 +103,23 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
     })),
   })
   const campaignsKey = campaignQueries.map(q => q.dataUpdatedAt).join('|')
+  // GH389 — versions et validations : liens vers leur page, popup en-tête seul. Mêmes clés que les
+  // écrans des versions et des validations (invalidées par leurs écritures et `useLiveFileSync`).
+  const versionQueries = useQueries({
+    queries: repoPaths.map(repoPath => ({
+      queryKey: ['versions', 'list', repoPath],
+      queryFn: () => api.versions.list(repoPath),
+      enabled: !!repoPath,
+    })),
+  })
+  const validationQueries = useQueries({
+    queries: repoPaths.map(repoPath => ({
+      queryKey: ['validations', 'versions', repoPath],
+      queryFn: () => api.validations.versions(repoPath),
+      enabled: !!repoPath,
+    })),
+  })
+  const versionsKey = [...versionQueries, ...validationQueries].map(q => q.dataUpdatedAt).join('|')
 
   const index = useMemo(() => {
     const map = new Map<string, ElementRef>()
@@ -121,9 +138,20 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
         })
       }
     })
+    const add = (ref: ElementRef) => { if (!map.has(ref.id)) map.set(ref.id, ref) }
+    versionQueries.forEach((q, i) => {
+      for (const v of q.data ?? []) {
+        add({ id: v.id, displayId: v.id, title: v.title, status: v.state, category: 'version', objectTypeRef: '', repoPath: repoPaths[i], repoLabel: ws.repoLabelOf(repoPaths[i]) })
+      }
+    })
+    validationQueries.forEach((q, i) => {
+      for (const { validation: val } of q.data ?? []) {
+        if (val) add({ id: val.id, displayId: val.id, title: val.title, status: val.state, category: 'validation', objectTypeRef: '', repoPath: repoPaths[i], repoLabel: ws.repoLabelOf(repoPaths[i]) })
+      }
+    })
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ws.objects, campaignsKey, repoPaths, ws.repoLabelOf])
+  }, [ws.objects, campaignsKey, versionsKey, repoPaths, ws.repoLabelOf])
 
   const versionRef = useRef(0)
   const version = useMemo(() => ++versionRef.current, [index]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -176,6 +204,8 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
     let page: { pathname: string; search: Record<string, string> }
     if (target.category === 'campaign') {
       page = { pathname: `/campaign/${id}`, search: { repoPath: target.repoPath, projectId: currentProjectId } }
+    } else if (target.category === 'version' || target.category === 'validation') {
+      page = { pathname: `/${target.category}/${id}`, search: { projectId: currentProjectId, repoPath: target.repoPath } }
     } else {
       const [nodeId, typeId] = target.objectTypeRef.split('::')
       if (!nodeId || !typeId) return
@@ -191,6 +221,7 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
     const same = window.location.pathname.endsWith(page.pathname)
       && Object.entries(page.search).every(([k, v]) => (current.get(k) ?? '') === v)
     if (same) {
+      if (target.category === 'version' || target.category === 'validation') return
       const s = svRef.current
       const node = treeFindByObjectId(s.root, id)
       if (node && s.viewMode !== 'edit') s.requestGoto(node.id)

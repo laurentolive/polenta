@@ -9,6 +9,7 @@ import { api } from '../../api'
 import { VERDICT_CLASS, VERDICT_KEY } from '../executions/ExecutionHistoryGrid'
 import { driftText, testedValueText } from '../executions/TestedConfigView'
 import { runMentions, type RunMention } from './runMentions'
+import { ElementLink } from '../element/ElementLink'
 
 const MENTION_CLASS: Record<RunMention, string> = {
   other_version: 'bg-status-warning-bg text-status-warning',
@@ -91,7 +92,7 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
                   )}
                 </td>
                 <td className="py-1 pr-3 whitespace-nowrap">
-                  <button type="button" className="font-mono text-prim hover:underline" onClick={() => void navigate({ to: '/test/$testId', params: { testId }, search: { projectId, repoPath } as never })}>{testId}</button>
+                  <ElementLink id={testId} className="font-mono text-prim" />
                 </td>
                 <td className="py-1 pr-3 text-ink-2 w-full">
                   {title}

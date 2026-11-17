@@ -25,6 +25,17 @@ let testId: string
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
   page.evaluate(([c, a]) => (window as unknown as { polenta: { invoke: (c: string, ...a: unknown[]) => Promise<unknown> } }).polenta.invoke(c as string, ...(a as unknown[])), [channel, args] as const) as Promise<T>
 const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' })
+// GH389 — décision et commentaire s'éditent dans la cellule (double-clic), comme la Vue Excel.
+const decide = async (req: string, decision: string) => {
+  await page.getByTestId(`validation-decision-${req}`).dblclick()
+  await page.getByTestId(`validation-decision-${req}-editor`).selectOption(decision)
+}
+const comment = async (req: string, text: string) => {
+  await page.getByTestId(`validation-comment-${req}`).dblclick()
+  const editor = page.getByTestId(`validation-comment-${req}`).locator('textarea')
+  await editor.fill(text)
+  await editor.press('Enter')
+}
 
 const writeRun = (id: string, executedAt: string, ref: string) => {
   const dir = path.join(repo, 'test-runs', testId)
@@ -127,10 +138,9 @@ test('GH204 — type, création, décisions, issue, vues, signature', async () =
   await page.getByTestId('validation-dialog-close').click()
 
   // E2 — décision, commentaire, tests et exécutions, mentions.
-  await page.getByTestId(`validation-decision-${reqA}`).selectOption('conforme')
+  await decide(reqA, 'conforme')
   await expect(page.getByTestId('validation-remaining')).toHaveText('1')
-  await page.getByTestId(`validation-comment-${reqA}`).fill('Vu au banc')
-  await page.getByTestId(`validation-comment-${reqA}`).blur()
+  await comment(reqA, 'Vu au banc')
   await expect.poll(() => fs.readdirSync(path.join(repo, 'validations')).map(f => fs.readFileSync(path.join(repo, 'validations', f), 'utf8')).join()).toContain('Vu au banc')
   await page.getByTestId(`validation-toggle-${reqA}`).click()
   await page.getByTestId(`validation-test-toggle-${testId}`).click()
@@ -141,7 +151,7 @@ test('GH204 — type, création, décisions, issue, vues, signature', async () =
   await page.getByTestId(`validation-toggle-${reqB}`).click()
 
   // E3 — non conforme : proposition d'issue, origine et lien d'impact.
-  await page.getByTestId(`validation-decision-${reqB}`).selectOption('non_conforme')
+  await decide(reqB, 'non_conforme')
   await expect(page.getByTestId('issue-proposal')).toBeVisible()
   await page.getByTestId('issue-proposal-submit').click()
   await expect(page.getByTestId('issue-proposal')).toHaveCount(0)
@@ -159,7 +169,7 @@ test('GH204 — type, création, décisions, issue, vues, signature', async () =
   await expect(page.getByTestId('saved-view-dialog')).toHaveCount(0)
   await page.getByTestId('validation-columns').click()
   await page.getByTestId('validation-column-status').uncheck()
-  await page.getByTestId('validation-columns').click()
+  await page.getByTestId('column-picker-close').click()
   const grid = page.getByTestId('validation-grid')
   await expect(grid.locator('th').filter({ hasText: 'Rédaction' })).toHaveCount(0)
   await expect(page.getByTestId('saved-views-modified')).toBeVisible()
@@ -178,7 +188,7 @@ test('GH204 — type, création, décisions, issue, vues, signature', async () =
   const current = await invoke<{ validation: { entries: Array<{ requirementId: string; decision: string }> } }>('validations:page', repo, validationId, repo)
   const entryA = current.validation.entries.find(e => e.requirementId === reqA)!
   await invoke('validations:decide', repo, validationId, { requirementId: reqA, decision: entryA.decision, comment: 'Écrit ailleurs' }, repo)
-  await expect(page.getByTestId(`validation-comment-${reqA}`)).toHaveValue('Écrit ailleurs')
+  await expect(page.getByTestId(`validation-comment-${reqA}`)).toHaveText('Écrit ailleurs')
   await page.waitForTimeout(500) // l'effet de relecture passe après le rendu du commentaire
   await expect(titleInput).toHaveValue('Titre en cours de saisie')
   await titleInput.fill(savedTitle)

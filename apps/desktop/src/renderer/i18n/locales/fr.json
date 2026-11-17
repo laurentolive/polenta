@@ -2506,7 +2506,9 @@
       "importTitle_other": "{{count}} exécutions en échec :",
       "decisionTitle": "Décision à tracer",
       "decisionHint": "{{id}} : « {{decision}} ». Voulez-vous tracer ce constat dans une issue ?",
-      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}"
+      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}",
+      "decisionHintMany": "{{count}} exigences : « {{decision}} ». Voulez-vous tracer ce constat dans une issue ?",
+      "decisionDefaultTitleMany": "{{decision}} — {{count}} exigences"
     }
   },
   "versions": {
@@ -2706,7 +2708,8 @@
       "status": "Rédaction",
       "design": "Design",
       "coverage": "Vérification",
-      "impact": "Impact"
+      "impact": "Impact",
+      "mentions": "Mentions"
     },
     "impact": {
       "changed": "changée",
@@ -2780,7 +2783,12 @@
       "TITLE_EMPTY": "Le titre est obligatoire."
     },
     "noTest": "Aucun test lié à cette exigence.",
-    "otherComponent": "Exécutions dans un autre composant"
+    "otherComponent": "Exécutions dans un autre composant",
+    "group": {
+      "decision": "Décision",
+      "requirement": "Exigence"
+    },
+    "remainingShort": "reste à décider : {{count}}"
   },
   "transitions": {
     "notice": {
@@ -2946,5 +2954,16 @@
     "reload": "Recharger",
     "keep": "Garder ma saisie",
     "status": "Statut"
+  },
+  "grid": {
+    "columns": "Colonnes",
+    "count": "{{shown}} / {{total}}",
+    "lockedColumn": "Colonne toujours affichée",
+    "bulkFailed_one": "{{count}} ligne non écrite :",
+    "bulkFailed_other": "{{count}} lignes non écrites :",
+    "confirmSelection": "Confirmer la sélection",
+    "rejectSelection": "Rejeter la sélection",
+    "collapseHeader": "Replier l'en-tête",
+    "expandHeader": "Déplier l'en-tête"
   }
 }

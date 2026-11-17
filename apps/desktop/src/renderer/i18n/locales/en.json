@@ -2506,7 +2506,9 @@
       "importTitle_other": "{{count}} failed executions:",
       "decisionTitle": "Decision to track",
       "decisionHint": "{{id}}: \"{{decision}}\". Do you want to track this finding in an issue?",
-      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}"
+      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}",
+      "decisionHintMany": "{{count}} requirements: \"{{decision}}\". Do you want to track this finding in an issue?",
+      "decisionDefaultTitleMany": "{{decision}} — {{count}} requirements"
     }
   },
   "versions": {
@@ -2706,7 +2708,8 @@
       "status": "Authoring",
       "design": "Design",
       "coverage": "Verification",
-      "impact": "Impact"
+      "impact": "Impact",
+      "mentions": "Mentions"
     },
     "impact": {
       "changed": "changed",
@@ -2780,7 +2783,12 @@
       "TITLE_EMPTY": "The title is required."
     },
     "noTest": "No test linked to this requirement.",
-    "otherComponent": "Executions in another component"
+    "otherComponent": "Executions in another component",
+    "group": {
+      "decision": "Decision",
+      "requirement": "Requirement"
+    },
+    "remainingShort": "left to decide: {{count}}"
   },
   "transitions": {
     "notice": {
@@ -2946,5 +2954,16 @@
     "reload": "Reload",
     "keep": "Keep my changes",
     "status": "Status"
+  },
+  "grid": {
+    "columns": "Columns",
+    "count": "{{shown}} / {{total}}",
+    "lockedColumn": "Always displayed",
+    "bulkFailed_one": "{{count}} row not written:",
+    "bulkFailed_other": "{{count}} rows not written:",
+    "confirmSelection": "Confirm selection",
+    "rejectSelection": "Reject selection",
+    "collapseHeader": "Collapse header",
+    "expandHeader": "Expand header"
   }
 }

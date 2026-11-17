@@ -1,31 +1,36 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Eye } from 'lucide-react'
-import type { SavedView, SavedViewRef, SchemaField, ValidationPage, ValidationRow } from '@polenta/types'
+import type { CoverageStatus, MatrixCell, SchemaField, TestCase, ValidationPage, ValidationRow } from '@polenta/types'
 import { fieldValueToText, pendingDecision } from '@polenta/types'
 import { api } from '../../api'
 import { DynamicField } from '../DynamicField'
-import { SavedViewsMenu } from '../system/SavedViewsMenu'
-import { IssueProposalDialog, useHasIssueType } from '../issues/IssueProposalDialog'
+import { ElementLink } from '../element/ElementLink'
+import { CoverageBadge } from '../system/CoverageBadge'
+import { IssueProposalDialog, useHasIssueType, type IssueProposalOrigin } from '../issues/IssueProposalDialog'
+import { DataGrid, type CellEditFailure } from '../grid/DataGrid'
+import type { GridColumn } from '../grid/gridTypes'
+import { useGridScrollKey } from '../grid/useGridScrollKey'
 import { ValidationRuns } from './ValidationRuns'
 import { useInvalidateValidations, validationErrorText } from './useValidations'
 
-const DEFAULT_COLUMNS = ['decision', 'comment', 'status', 'design', 'coverage', 'impact']
-const COVERAGE_CLASS: Record<ValidationRow['coverageStatus'], string> = {
-  not_covered: 'bg-status-neutral-bg text-status-neutral',
-  covered: 'bg-status-info-bg text-status-info',
-  validated: 'bg-status-success-bg text-status-success',
-  failing: 'bg-status-danger-bg text-status-danger',
-  needs_revalidation: 'bg-status-warning-bg text-status-warning',
-}
 type Filter = 'all' | 'pending' | 'proposed' | 'review' | 'impacted' | `decision:${string}`
+type DecisionOrigin = Extract<IssueProposalOrigin, { kind: 'decision' }>
 
+const BASE_COLUMNS = ['id', 'title', 'decision', 'comment', 'status', 'design', 'coverage', 'impact']
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 const textOf = (v: unknown) => stripHtml(fieldValueToText(v))
+const CELL_STATUS: Record<string, MatrixCell['status']> = { PASS: 'pass', FAIL: 'fail', BLOCKED: 'blocked' }
+const NO_TESTS = new Map<string, TestCase>()
 
-/** GH204 §7 — grille des décisions : une ligne par exigence, dépliée sur ses champs, tests et exécutions. */
+/** GH204 §7 (préférences d'avant GH389) : ID, titre et mentions étaient affichés hors de la liste. */
+const migrateColumns = (stored: string[]) => (stored.includes('id') ? stored : ['id', 'title', ...stored, 'mentions'])
+
+/**
+ * GH204 §7, GH389 §2.2 — grille des décisions sur la grille commune (`DataGrid`) : une ligne par
+ * exigence, dépliée sur ses champs d'entrée, ses tests et leurs exécutions. Décision et commentaire
+ * s'éditent dans la cellule (et en lot sur la sélection) ; Confirmer / Rejeter agissent sur la ligne
+ * ou sur la sélection.
+ */
 export function ValidationGrid({ page, repoPath, projectId, workspaceDir }: {
   page: ValidationPage
   repoPath: string
@@ -33,254 +38,284 @@ export function ValidationGrid({ page, repoPath, projectId, workspaceDir }: {
   workspaceDir?: string
 }) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
-  const qc = useQueryClient()
   const invalidate = useInvalidateValidations()
   const hasIssueType = useHasIssueType(repoPath)
+  const scrollKey = useGridScrollKey('validation')
   const { validation, typeDef } = page
   const editable = page.state === 'open' && !page.readonly && page.version.state !== 'abandoned'
-  const decisions = typeDef.decisions ?? []
+  const decisions = useMemo(() => typeDef.decisions ?? [], [typeDef.decisions])
   const pending = pendingDecision(typeDef)?.name
   const typeKey = validation.objectTypeRef
-
-  const { data: username } = useQuery({
-    queryKey: ['project-username', repoPath],
-    queryFn: () => api.auth.projectUsername(repoPath),
-    enabled: !!repoPath,
-    retry: false,
-  })
-  const user = username ?? 'local'
-  const prefKey = ['pref-visibility', repoPath, user, typeKey]
-  const { data: prefs, isSuccess: prefsLoaded } = useQuery({
-    queryKey: prefKey,
-    queryFn: () => api.pref.getFieldVisibility(repoPath, user, typeKey),
-  })
-
-  const available = useMemo(() => [
-    ...DEFAULT_COLUMNS.map(key => ({ key, label: t(`validation.column.${key}`) })),
-    ...(typeDef.entryFields ?? []).map(f => ({ key: `entry:${f.name}`, label: f.label || f.name })),
-    ...page.requirementFields.map(f => ({ key: `field:${f.name}`, label: f.label || f.name })),
-  ], [typeDef.entryFields, page.requirementFields, t])
-  const defaults = useMemo(() => [...DEFAULT_COLUMNS, ...(typeDef.entryFields ?? []).map(f => `entry:${f.name}`)], [typeDef.entryFields])
-  const [columns, setColumns] = useState<string[] | null>(null)
-  useEffect(() => { if (prefsLoaded) setColumns(prefs?.excel ?? defaults) }, [prefsLoaded, prefs?.excel, defaults])
-  const shown = columns ?? defaults
-  const visible = available.filter(c => shown.includes(c.key))
-
-  const savePrefs = async (patch: { excel?: string[] | null; activeView?: SavedViewRef | null }) => {
-    await api.pref.setFieldVisibility(repoPath, user, typeKey, patch)
-    await qc.invalidateQueries({ queryKey: prefKey })
-  }
-  const setShown = (next: string[]) => {
-    setColumns(next)
-    void savePrefs({ excel: next })
-  }
-  const columnsOf = (settings: Record<string, unknown>): string[] => {
-    const list = settings.excel
-    return Array.isArray(list) && list.every(s => typeof s === 'string') ? list as string[] : defaults
-  }
-  const applyView = (view: SavedView & { ref: SavedViewRef }) => {
-    const next = columnsOf(view.settings)
-    setColumns(next)
-    void savePrefs({ excel: next, activeView: view.ref })
-  }
+  const signedAt = page.signed?.at ?? null
 
   const [filter, setFilter] = useState<Filter>('all')
-  const rows = page.rows.filter(r => {
+  const rowFilter = useCallback((r: ValidationRow) => {
     if (filter === 'all') return true
     if (filter === 'pending') return r.decision === pending
     if (filter === 'proposed') return !!r.entry?.proposed
     if (filter === 'review') return !!r.review
     if (filter === 'impacted') return !!r.impact
     return r.decision === filter.slice('decision:'.length)
-  })
+  }, [filter, pending])
 
-  const [open, setOpen] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  // Lignes disparues (exigence retirée du périmètre) : hors de la sélection.
+  useEffect(() => {
+    const ids = new Set(page.rows.map(r => r.requirementId))
+    setSelected(prev => ([...prev].every(id => ids.has(id)) ? prev : new Set([...prev].filter(id => ids.has(id)))))
+  }, [page.rows])
   const [error, setError] = useState<string | null>(null)
-  const [proposing, setProposing] = useState<{ requirementId: string; decisionLabel: string } | null>(null)
-  const signedAt = page.signed?.at ?? null
+  const [proposing, setProposing] = useState<DecisionOrigin | null>(null)
 
-  const run = async (op: () => Promise<unknown>): Promise<boolean> => {
-    setError(null)
-    try {
-      await op()
-      await invalidate()
-      return true
-    } catch (err) {
-      setError(validationErrorText(t, err))
-      return false
-    }
-  }
-  const proposeIssue = (requirementId: string, decision: string) => {
-    const def = decisions.find(d => d.name === decision)
-    if (def?.proposesIssue && hasIssueType) setProposing({ requirementId, decisionLabel: def.label || def.name })
-  }
-  const decide = async (row: ValidationRow, decision: string, patch: { comment?: string; fields?: Record<string, unknown> } = {}) => {
-    const done = await run(() => api.validations.decide(repoPath, validation.id, {
+  const decide = (row: ValidationRow, decision: string, patch: { comment?: string; fields?: Record<string, unknown> } = {}) =>
+    api.validations.decide(repoPath, validation.id, {
       requirementId: row.requirementId, decision,
       comment: patch.comment ?? row.entry?.comment,
       fields: patch.fields ?? row.entry?.fields,
-    }, workspaceDir))
-    if (done && decision !== row.decision) proposeIssue(row.requirementId, decision)
-  }
-  const confirm = async (row: ValidationRow) => {
-    const done = await run(() => api.validations.confirm(repoPath, validation.id, row.requirementId, workspaceDir))
-    if (done && row.entry?.proposed) proposeIssue(row.requirementId, row.decision)
+    }, workspaceDir)
+
+  /** GH244 — une seule proposition d'issue pour toutes les lignes dont la décision la propose. */
+  const proposeIssue = (rows: ValidationRow[], decisionOf: (row: ValidationRow) => string) => {
+    if (!hasIssueType) return
+    const defOf = (r: ValidationRow) => decisions.find(d => d.name === decisionOf(r))
+    const concerned = rows.filter(r => defOf(r)?.proposesIssue)
+    if (concerned.length === 0) return
+    const labels = [...new Set(concerned.map(r => defOf(r)!).map(d => d.label || d.name))]
+    setProposing({
+      kind: 'decision',
+      refs: concerned.map(r => ({ ref: `${validation.id}/${r.requirementId}`, requirementId: r.requirementId })),
+      decisionLabel: labels.join(' / '),
+    })
   }
 
-  const cell = (row: ValidationRow, key: string) => {
-    switch (key) {
-      case 'decision':
-        return editable ? (
-          <select value={row.decision} onChange={e => void decide(row, e.target.value)} className="input-field text-xs py-0.5" data-testid={`validation-decision-${row.requirementId}`}>
-            {decisions.map(d => <option key={d.name} value={d.name}>{d.label || d.name}</option>)}
-          </select>
-        ) : <span data-testid={`validation-decision-${row.requirementId}`}>{decisions.find(d => d.name === row.decision)?.label || row.decision}</span>
-      case 'comment':
-        return editable && row.decision !== pending
-          ? <CommentInput key={row.entry?.comment ?? ''} value={row.entry?.comment ?? ''} testId={`validation-comment-${row.requirementId}`}
-              onCommit={comment => void decide(row, row.decision, { comment })} />
-          : <span className="text-ink-2">{row.entry?.comment}</span>
-      case 'status':
-        return <span className="text-ink-2">{page.requirementStatusLabels[row.status] ?? row.status}</span>
-      case 'design':
-        return row.designVersion
-          ? <button type="button" className="text-prim hover:underline" onClick={() => void navigate({ to: '/version/$versionId', params: { versionId: row.designVersion!.id }, search: { projectId, repoPath } })}>{row.designVersion.title}</button>
-          : <span className="text-ink-3">—</span>
-      case 'coverage':
-        return <span className={`text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap ${COVERAGE_CLASS[row.coverageStatus]}`}>{t(`system.coverage.status.${row.coverageStatus}`)}</span>
-      case 'impact':
-        if (!row.impact) return null
-        return (
-          <span className="flex flex-col" data-testid={`validation-impact-${row.requirementId}`}>
-            <span className="text-[10px] px-1.5 rounded bg-status-warning-bg text-status-warning self-start">{t(`validation.impact.${row.impact.kind}`)}</span>
-            {row.impact.sources.length > 0 && <span className="text-[10px] text-ink-3">{row.impact.sources.map(s => [s.rootId, ...s.path.map(p => p.id)].join(' → ')).join(' ; ')}</span>}
-          </span>
-        )
-      default:
-        if (key.startsWith('entry:')) return <span className="text-ink-2">{textOf(row.entry?.fields?.[key.slice(6)])}</span>
-        if (key.startsWith('field:')) return <span className="text-ink-2">{textOf(row.fields[key.slice(6)])}</span>
-        return null
+  /** Écrit ligne par ligne : un échec n'empêche pas les autres ; rend les lignes écrites et les échecs. */
+  const writeAll = async (rows: ValidationRow[], op: (row: ValidationRow) => Promise<unknown>) => {
+    const done: ValidationRow[] = []
+    const failed: CellEditFailure[] = []
+    for (const row of rows) {
+      try {
+        await op(row)
+        done.push(row)
+      } catch (err) {
+        failed.push({ id: row.requirementId, message: validationErrorText(t, err) })
+      }
     }
+    await invalidate()
+    return { done, failed }
   }
+  const showFailures = (failed: CellEditFailure[]) => {
+    if (failed.length > 0) setError([t('grid.bulkFailed', { count: failed.length }), ...failed.map(f => `${f.id} : ${f.message}`)].join('\n'))
+  }
+
+  const byId = useMemo(() => new Map(page.rows.map(r => [r.requirementId, r])), [page.rows])
+  const onCellEdit = async (ids: string[], key: string, value: string) => {
+    setError(null)
+    const rows = ids.map(id => byId.get(id)).filter((r): r is ValidationRow => !!r)
+    if (key === 'decision') {
+      const { done, failed } = await writeAll(rows, row => decide(row, value))
+      proposeIssue(done.filter(r => r.decision !== value), () => value)
+      return { failed }
+    }
+    const { failed } = await writeAll(rows, row => decide(row, row.decision, { comment: value }))
+    return { failed }
+  }
+
+  /** Confirmer / Rejeter : n'agissent que sur les lignes concernées. */
+  const confirmRows = async (rows: ValidationRow[]) => {
+    setError(null)
+    const { done, failed } = await writeAll(rows.filter(r => r.review || r.entry?.proposed),
+      row => api.validations.confirm(repoPath, validation.id, row.requirementId, workspaceDir))
+    showFailures(failed)
+    proposeIssue(done.filter(r => r.entry?.proposed), r => r.decision)
+  }
+  const rejectRows = async (rows: ValidationRow[]) => {
+    setError(null)
+    const { failed } = await writeAll(rows.filter(r => r.entry?.proposed),
+      row => api.validations.reject(repoPath, validation.id, row.requirementId, workspaceDir))
+    showFailures(failed)
+  }
+  const saveEntryFields = async (row: ValidationRow, fields: Record<string, unknown>) => {
+    setError(null)
+    const { failed } = await writeAll([row], r => decide(r, r.decision, { fields }))
+    if (failed.length > 0) setError(failed[0].message)
+  }
+
+  // Actions des cellules (mentions, dépli) lues par une ref : colonnes et dépli stables.
+  const rowActions = useRef({ confirmRows, rejectRows, saveEntryFields })
+  rowActions.current = { confirmRows, rejectRows, saveEntryFields }
+
+  const columns = useMemo<GridColumn<ValidationRow>[]>(() => {
+    const decisionGroup = t('validation.group.decision')
+    const requirementGroup = t('validation.group.requirement')
+    const decisionLabel = (name: string) => decisions.find(d => d.name === name)?.label || name
+    const sourcesText = (r: ValidationRow) => r.impact?.sources.map(s => [s.rootId, ...s.path.map(p => p.id)].join(' → ')).join(' ; ') ?? ''
+    const mentions = (r: ValidationRow) => [
+      r.outsideSignature ? t('validation.frozen.outside') : '',
+      r.entry?.proposed ? t('validation.proposed', { by: r.entry.proposedBy }) : '',
+      !r.entry?.proposed && r.review ? t(`validation.review.${r.review}`) : '',
+    ].filter(Boolean)
+    return [
+      {
+        key: 'id', label: t('validation.column.id'), group: requirementGroup, locked: true,
+        getText: r => r.requirementId,
+        render: r => <ElementLink id={r.requirementId} className="font-mono text-prim" />,
+        elementId: r => r.requirementId,
+      },
+      { key: 'title', label: t('validation.column.title'), group: requirementGroup, locked: true, getText: r => r.title },
+      {
+        key: 'decision', label: t('validation.column.decision'), group: decisionGroup,
+        getText: r => decisionLabel(r.decision),
+        editValue: r => r.decision,
+        editor: { kind: 'enum', options: decisions.map(d => ({ value: d.name, label: d.label || d.name })) },
+        isEditable: () => editable,
+      },
+      {
+        key: 'comment', label: t('validation.column.comment'), group: decisionGroup,
+        getText: r => r.entry?.comment ?? '',
+        editor: { kind: 'text' },
+        isEditable: r => editable && r.decision !== pending,
+      },
+      { key: 'status', label: t('validation.column.status'), group: requirementGroup, getText: r => page.requirementStatusLabels[r.status] ?? r.status },
+      {
+        key: 'design', label: t('validation.column.design'), group: requirementGroup,
+        getText: r => r.designVersion?.title ?? '',
+        render: r => r.designVersion
+          ? <ElementLink id={r.designVersion.id} className="text-prim">{r.designVersion.title}</ElementLink>
+          : <span className="text-ink-3">—</span>,
+        elementId: r => r.designVersion?.id,
+      },
+      {
+        key: 'coverage', label: t('validation.column.coverage'), group: requirementGroup,
+        getText: r => t(`system.coverage.status.${r.coverageStatus}`),
+        render: r => <CoverageBadge coverage={coverageOf(r.coverageStatus, r.tests)} testsById={testsOf(r.tests)} />,
+      },
+      {
+        key: 'impact', label: t('validation.column.impact'), group: decisionGroup,
+        getText: r => (r.impact ? [t(`validation.impact.${r.impact.kind}`), sourcesText(r)].filter(Boolean).join(' ') : ''),
+        render: r => r.impact && (
+          <span className="flex flex-col">
+            <span className="text-[10px] px-1.5 rounded bg-status-warning-bg text-status-warning self-start">{t(`validation.impact.${r.impact.kind}`)}</span>
+            {r.impact.sources.length > 0 && <span className="text-[10px] text-ink-3">{sourcesText(r)}</span>}
+          </span>
+        ),
+      },
+      ...(typeDef.entryFields ?? []).map((f): GridColumn<ValidationRow> => ({
+        key: `entry:${f.name}`, label: f.label || f.name, group: decisionGroup, getText: r => textOf(r.entry?.fields?.[f.name]),
+      })),
+      {
+        key: 'mentions', label: t('validation.column.mentions'), group: decisionGroup, filterable: false,
+        getText: r => mentions(r).join(', '),
+        render: r => (
+          <span className="whitespace-nowrap">
+            {r.outsideSignature && <span className="text-[10px] px-1.5 rounded bg-status-warning-bg text-status-warning mr-1" data-testid={`validation-outside-${r.requirementId}`}>{t('validation.frozen.outside')}</span>}
+            {r.entry?.proposed && <span className="text-[10px] px-1.5 rounded bg-status-info-bg text-status-info mr-1" data-testid={`validation-proposed-${r.requirementId}`}>{t('validation.proposed', { by: r.entry.proposedBy })}</span>}
+            {!r.entry?.proposed && r.review && <span className="text-[10px] px-1.5 rounded bg-status-warning-bg text-status-warning mr-1" data-testid={`validation-review-${r.requirementId}`}>{t(`validation.review.${r.review}`)}</span>}
+            {editable && (r.review || r.entry?.proposed) && (
+              <button type="button" className="btn-secondary-sm" data-testid={`validation-confirm-${r.requirementId}`}
+                onClick={e => { e.stopPropagation(); void rowActions.current.confirmRows([r]) }}>{t('validation.confirm')}</button>
+            )}
+            {editable && r.entry?.proposed && (
+              <button type="button" className="btn-secondary-sm ml-1" data-testid={`validation-reject-${r.requirementId}`}
+                onClick={e => { e.stopPropagation(); void rowActions.current.rejectRows([r]) }}>{t('validation.reject')}</button>
+            )}
+          </span>
+        ),
+      },
+      ...page.requirementFields.map((f): GridColumn<ValidationRow> => ({
+        key: `field:${f.name}`, label: f.label || f.name, group: requirementGroup, getText: r => textOf(r.fields[f.name]),
+      })),
+    ]
+  }, [t, decisions, editable, pending, typeDef.entryFields, page.requirementFields, page.requirementStatusLabels])
+
+  const defaults = useMemo(() => [...BASE_COLUMNS, ...(typeDef.entryFields ?? []).map(f => `entry:${f.name}`), 'mentions'], [typeDef.entryFields])
+  const prefs = useMemo(() => ({ repoPath, prefKey: typeKey, view: 'excel', defaults }), [repoPath, typeKey, defaults])
+  const savedViews = useMemo(() => ({ typeKey, workspaceDir }), [typeKey, workspaceDir])
+  const getRowId = useCallback((r: ValidationRow) => r.requirementId, [])
+  const renderExpanded = useCallback((row: ValidationRow) => (
+    <div className="flex flex-col gap-3">
+      {(typeDef.entryFields ?? []).length > 0 && (
+        <EntryFieldsForm
+          fields={typeDef.entryFields!}
+          values={row.entry?.fields ?? {}}
+          disabled={!editable || row.decision === pending}
+          repoPath={repoPath}
+          testId={`validation-entry-${row.requirementId}`}
+          onSave={fields => void rowActions.current.saveEntryFields(row, fields)}
+        />
+      )}
+      <ValidationRuns repoPath={repoPath} projectId={projectId} workspaceDir={workspaceDir} requirementId={row.requirementId} tests={row.tests}
+        versionId={validation.versionId} signedAt={signedAt} frozen={page.frozen === 'copy' && !row.outsideSignature} />
+    </div>
+  ), [typeDef.entryFields, editable, pending, repoPath, projectId, workspaceDir, validation.versionId, signedAt, page.frozen])
+
+  const selectedRows = page.rows.filter(r => selected.has(r.requirementId))
+  const canConfirm = selectedRows.some(r => r.review || r.entry?.proposed)
+  const canReject = selectedRows.some(r => r.entry?.proposed)
 
   return (
-    <div className="flex flex-col gap-2 min-h-0">
-      <div className="flex items-center gap-2 flex-wrap">
-        <select value={filter} onChange={e => setFilter(e.target.value as Filter)} className="input-field text-xs py-0.5" aria-label={t('validation.filter.label')} data-testid="validation-filter">
-          <option value="all">{t('validation.filter.all')}</option>
-          <option value="pending">{t('validation.filter.pending')}</option>
-          <option value="proposed">{t('validation.filter.proposed')}</option>
-          <option value="review">{t('validation.filter.review')}</option>
-          <option value="impacted">{t('validation.filter.impacted')}</option>
-          {decisions.filter(d => !d.isPending).map(d => <option key={d.name} value={`decision:${d.name}`}>{d.label || d.name}</option>)}
-        </select>
-        <ColumnsMenu available={available} shown={shown} onChange={setShown} />
-        <SavedViewsMenu
-          repoPath={repoPath}
-          username={user}
-          typeKey={typeKey}
-          workspaceDir={workspaceDir}
-          settings={{ excel: shown }}
-          active={prefs?.activeView ?? null}
-          isModified={settings => JSON.stringify(columnsOf(settings)) !== JSON.stringify(shown)}
-          onApply={applyView}
-          onActiveChange={async activeView => { await savePrefs({ activeView }) }}
-          onDefaults={() => { setColumns(defaults); void savePrefs({ excel: null, activeView: null }) }}
-        />
-        <span className="text-xs text-ink-3 ml-auto" data-testid="validation-count">{rows.length} / {page.rows.length}</span>
-      </div>
-      {error && <p className="text-xs text-status-danger" role="alert">{error}</p>}
+    <div className="flex flex-col gap-2 min-h-0 flex-1">
+      {error && <p className="text-xs text-status-danger whitespace-pre-wrap" role="alert" data-testid="validation-grid-error">{error}</p>}
       {page.frozen === 'copy' && <p className="text-xs text-status-info" data-testid="validation-frozen">{t('validation.frozen.copy')}</p>}
       {page.frozen === 'legacy' && <p className="text-xs text-ink-3" data-testid="validation-frozen-legacy">{t('validation.frozen.legacy')}</p>}
       {page.rows.some(r => r.outsideSignature) && <p className="text-xs text-status-warning" role="alert" data-testid="validation-outside-banner">{t('validation.frozen.outsideBanner')}</p>}
       {page.rows.length === 0 && <p className="text-xs text-ink-3 italic">{t('validation.noRequirement')}</p>}
-      <div className="overflow-auto min-h-0">
-        <table className="w-full text-xs border-collapse" data-testid="validation-grid">
-          <thead className="sticky top-0 bg-surface z-10">
-            <tr className="text-left text-ink-3 border-b border-edge">
-              <th className="w-6" />
-              <th className="font-normal py-1 pr-3">{t('validation.column.id')}</th>
-              <th className="font-normal py-1 pr-3">{t('validation.column.title')}</th>
-              {visible.map(c => <th key={c.key} className="font-normal py-1 pr-3">{c.label}</th>)}
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(row => {
-              const isOpen = open.has(row.requirementId)
-              return (
-                <Fragment key={row.requirementId}>
-                  <tr className="border-b border-edge-subtle align-top" data-testid={`validation-row-${row.requirementId}`}>
-                    <td className="py-1">
-                      <button type="button" className="text-ink-3 hover:text-ink" aria-expanded={isOpen} aria-label={row.requirementId} data-testid={`validation-toggle-${row.requirementId}`}
-                        onClick={() => setOpen(s => { const n = new Set(s); if (!n.delete(row.requirementId)) n.add(row.requirementId); return n })}>
-                        {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                      </button>
-                    </td>
-                    <td className="py-1 pr-3 whitespace-nowrap">
-                      <button type="button" className="font-mono text-prim hover:underline" onClick={() => void navigate({ to: '/req/$reqId', params: { reqId: row.requirementId }, search: { projectId, repoPath } as never })}>{row.requirementId}</button>
-                    </td>
-                    <td className="py-1 pr-3 text-ink">{row.title}</td>
-                    {visible.map(c => <td key={c.key} className="py-1 pr-3">{cell(row, c.key)}</td>)}
-                    <td className="py-1 whitespace-nowrap text-right">
-                      {row.outsideSignature && <span className="text-[10px] px-1.5 rounded bg-status-warning-bg text-status-warning mr-1" data-testid={`validation-outside-${row.requirementId}`}>{t('validation.frozen.outside')}</span>}
-                      {row.entry?.proposed && <span className="text-[10px] px-1.5 rounded bg-status-info-bg text-status-info mr-1" data-testid={`validation-proposed-${row.requirementId}`}>{t('validation.proposed', { by: row.entry.proposedBy })}</span>}
-                      {!row.entry?.proposed && row.review && <span className="text-[10px] px-1.5 rounded bg-status-warning-bg text-status-warning mr-1" data-testid={`validation-review-${row.requirementId}`}>{t(`validation.review.${row.review}`)}</span>}
-                      {editable && (row.review || row.entry?.proposed) && <button type="button" className="btn-secondary-sm" data-testid={`validation-confirm-${row.requirementId}`} onClick={() => void confirm(row)}>{t('validation.confirm')}</button>}
-                      {editable && row.entry?.proposed && <button type="button" className="btn-secondary-sm ml-1" data-testid={`validation-reject-${row.requirementId}`} onClick={() => void run(() => api.validations.reject(repoPath, validation.id, row.requirementId, workspaceDir))}>{t('validation.reject')}</button>}
-                    </td>
-                  </tr>
-                  {isOpen && (
-                    <tr className="border-b border-edge">
-                      <td />
-                      <td colSpan={visible.length + 3} className="py-2 pr-3">
-                        <div className="flex flex-col gap-3">
-                          {(typeDef.entryFields ?? []).length > 0 && (
-                            <EntryFieldsForm
-                              fields={typeDef.entryFields!}
-                              values={row.entry?.fields ?? {}}
-                              disabled={!editable || row.decision === pending}
-                              repoPath={repoPath}
-                              testId={`validation-entry-${row.requirementId}`}
-                              onSave={fields => void decide(row, row.decision, { fields })}
-                            />
-                          )}
-                          <ValidationRuns repoPath={repoPath} projectId={projectId} workspaceDir={workspaceDir} requirementId={row.requirementId} tests={row.tests} versionId={validation.versionId} signedAt={signedAt} frozen={page.frozen === 'copy' && !row.outsideSignature} />
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataGrid
+        gridId="validation"
+        title={validation.title}
+        rows={page.rows}
+        getRowId={getRowId}
+        columns={columns}
+        prefs={prefs}
+        migrateColumns={migrateColumns}
+        savedViews={savedViews}
+        rowFilter={rowFilter}
+        selection={{ mode: 'rows', selected, onChange: setSelected }}
+        onCellEdit={editable ? onCellEdit : undefined}
+        renderExpanded={renderExpanded}
+        scrollMemoryKey={scrollKey}
+        toolbarStart={
+          <>
+            <select value={filter} onChange={e => setFilter(e.target.value as Filter)} className="input-field text-xs py-0.5" aria-label={t('validation.filter.label')} data-testid="validation-filter">
+              <option value="all">{t('validation.filter.all')}</option>
+              <option value="pending">{t('validation.filter.pending')}</option>
+              <option value="proposed">{t('validation.filter.proposed')}</option>
+              <option value="review">{t('validation.filter.review')}</option>
+              <option value="impacted">{t('validation.filter.impacted')}</option>
+              {decisions.filter(d => !d.isPending).map(d => <option key={d.name} value={`decision:${d.name}`}>{d.label || d.name}</option>)}
+            </select>
+            {editable && (
+              <>
+                <button type="button" className="btn-secondary-sm" disabled={!canConfirm} onClick={() => void confirmRows(selectedRows)} data-testid="validation-confirm-selection">
+                  {t('grid.confirmSelection')}
+                </button>
+                <button type="button" className="btn-secondary-sm" disabled={!canReject} onClick={() => void rejectRows(selectedRows)} data-testid="validation-reject-selection">
+                  {t('grid.rejectSelection')}
+                </button>
+              </>
+            )}
+          </>
+        }
+      />
       {proposing && (
-        <IssueProposalDialog
-          repoPath={repoPath}
-          workspaceDir={workspaceDir}
-          origin={{ kind: 'decision', ref: `${validation.id}/${proposing.requirementId}`, requirementId: proposing.requirementId, decisionLabel: proposing.decisionLabel }}
-          onClose={() => setProposing(null)}
-        />
+        <IssueProposalDialog repoPath={repoPath} workspaceDir={workspaceDir} origin={proposing} onClose={() => setProposing(null)} />
       )}
     </div>
   )
 }
 
-function CommentInput({ value, testId, onCommit }: { value: string; testId: string; onCommit: (comment: string) => void }) {
-  const [text, setText] = useState(value)
-  return (
-    <input
-      value={text}
-      onChange={e => setText(e.target.value)}
-      onBlur={() => { if (text !== value) onCommit(text) }}
-      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-      className="input-field text-xs py-0.5 w-full min-w-40"
-      data-testid={testId}
-    />
-  )
+/** Couverture du badge commun ; ses tests et leur dernière exécution sont lus dans la ligne. */
+function coverageOf(coverageStatus: CoverageStatus, tests: ValidationRow['tests']) {
+  return {
+    coverageStatus,
+    cells: tests.map((test): MatrixCell => ({
+      testCaseId: test.id, coverageType: 'full', status: CELL_STATUS[test.lastRun?.result ?? ''] ?? 'not_run',
+      lastRunId: test.lastRun?.id ?? null, lastRunDate: test.lastRun?.executedAt ?? null,
+    })),
+  }
+}
+
+function testsOf(tests: ValidationRow['tests']): Map<string, TestCase> {
+  return tests.length === 0 ? NO_TESTS : new Map(tests.map(test => [test.id, { id: test.id, title: test.title } as TestCase]))
 }
 
 function EntryFieldsForm({ fields, values, disabled, repoPath, testId, onSave }: {
@@ -307,36 +342,6 @@ function EntryFieldsForm({ fields, values, disabled, repoPath, testId, onSave }:
         <div className="flex gap-2">
           <button type="button" className="btn-primary-sm" onClick={() => onSave(draft)} data-testid={`${testId}-save`}>{t('common.save')}</button>
           <button type="button" className="btn-secondary-sm" onClick={() => setDraft(values)}>{t('common.cancel')}</button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ColumnsMenu({ available, shown, onChange }: { available: { key: string; label: string }[]; shown: string[]; onChange: (next: string[]) => void }) {
-  const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
-  return (
-    <div className="relative" ref={ref}>
-      <button type="button" className="btn-icon" title={t('validation.columns')} aria-label={t('validation.columns')} aria-expanded={open} onClick={() => setOpen(v => !v)} data-testid="validation-columns">
-        <Eye size={14} />
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 bg-surface border border-edge rounded shadow-lg z-20 py-1 w-56 max-h-80 overflow-y-auto">
-          {available.map(c => (
-            <label key={c.key} className="flex items-center gap-2 px-3 py-1 text-xs text-ink-2 hover:bg-hover">
-              <input type="checkbox" checked={shown.includes(c.key)} data-testid={`validation-column-${c.key}`}
-                onChange={e => onChange(e.target.checked ? [...shown, c.key] : shown.filter(k => k !== c.key))} />
-              {c.label}
-            </label>
-          ))}
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, startTransition, memo, createContext, useContext, type MouseEvent as ReactMouseEvent } from 'react'
+import React, { useState, useCallback, useRef, useEffect, useMemo, startTransition, memo, createContext, useContext, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ElementLink } from '../element/ElementLink'
 import { ElementRefText } from '../element/elementRefDelegation'
@@ -17,6 +17,7 @@ import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
 import { RenderGateProvider, useRenderWhenVisibleAtRest } from './useRenderWhenVisibleAtRest'
 import { MultiEnumPopover } from './MultiEnumPopover'
+import { RowMaxLinesContext, useCellClamp, ClampedContent, RichtextClamp } from '../grid/RowClamp'
 import { LinkFieldPopover } from '../links/LinkFieldPopover'
 import { LinkList } from '../links/LinkList'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
@@ -153,36 +154,6 @@ function TriStateCheckbox({ state, onToggle, title }: {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Hauteur max des lignes (en lignes de texte) — fournie par `ExcelView`, lue par les cellules
- *  via `useCellClamp` plutôt que propagée en prop à chaque composant de cellule. */
-const RowMaxLinesContext = createContext(1)
-
-/** Classe du `<td>` et enveloppe du contenu selon la hauteur max des lignes : à 1, la cellule
- *  reste mono-ligne tronquée (`truncate`) ; au-delà, le texte passe à la ligne et est coupé
- *  (ellipse) après `maxLines` lignes ; à `Infinity`, il n'est pas coupé. */
-function useCellClamp() {
-  const maxLines = useContext(RowMaxLinesContext)
-  if (maxLines <= 1) {
-    return { maxLines, tdClass: 'truncate', wrap: (content: React.ReactNode) => content }
-  }
-  const style: React.CSSProperties = Number.isFinite(maxLines)
-    ? {
-        display: '-webkit-box',
-        WebkitBoxOrient: 'vertical',
-        WebkitLineClamp: maxLines,
-        overflow: 'hidden',
-        whiteSpace: 'pre-wrap',
-        overflowWrap: 'anywhere',
-      }
-    : { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
-  return { maxLines, tdClass: '', wrap: (content: React.ReactNode) => <div style={style}>{content}</div> }
-}
-
-function ClampedContent({ children }: { children: React.ReactNode }) {
-  const clamp = useCellClamp()
-  return <>{clamp.wrap(children)}</>
-}
 
 /** T164 — contour persistant de la ligne / ligne de groupe ciblée par un "goto" depuis
  *  l'arbre. Trait bleu plein en retrait, distinct de la surbrillance de sélection (fond pâle)
@@ -692,35 +663,6 @@ interface RichtextCellProps {
   /** Signale à ExcelView un mousedown « dans l'éditeur » — y compris dans ses menus rendus
    *  par portail (tableau, page draw.io), dont les évènements React remontent jusqu'ici. */
   onEditorMouseDown: () => void
-}
-
-/** Hauteur max « N lignes » d'un rendu richtext mis en forme : `-webkit-line-clamp` est
- *  inopérant sur du HTML en blocs, d'où `max-height` + estompage du bas (masque, indépendant
- *  de la couleur de fond : sélection, survol, colonne figée, thème) seulement si ça déborde.
- *  À `Infinity` (toutes les lignes), aucune borne : le rendu est affiché en entier. */
-function RichtextClamp({ maxLines, children }: { maxLines: number; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [overflowing, setOverflowing] = useState(false)
-  // Effet de layout : l'estompage du bas est posé dès la première peinture, pas une frame après.
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 1)
-    check()
-    // Contenu observé (et pas seulement la boîte bornée) : images et diagrammes draw.io se
-    // chargent en asynchrone et font grandir le contenu sans changer la boîte.
-    const ro = new ResizeObserver(check)
-    ro.observe(el)
-    if (el.firstElementChild) ro.observe(el.firstElementChild)
-    return () => ro.disconnect()
-  }, [maxLines])
-  if (!Number.isFinite(maxLines)) return <div>{children}</div>
-  const mask = overflowing ? 'linear-gradient(to bottom, #000 calc(100% - 1rem), transparent)' : undefined
-  return (
-    <div ref={ref} style={{ maxHeight: `${maxLines}rem`, overflow: 'hidden', maskImage: mask, WebkitMaskImage: mask }}>
-      {children}
-    </div>
-  )
 }
 
 function RichtextCell({

@@ -14,13 +14,13 @@ import type { GridColumn } from '../grid/gridTypes'
 import { useGridScrollKey } from '../grid/useGridScrollKey'
 import { ValidationRuns } from './ValidationRuns'
 import { useInvalidateValidations, validationErrorText } from './useValidations'
+import { htmlToCellText } from '../grid/cellText'
 
 type Filter = 'all' | 'pending' | 'proposed' | 'review' | 'impacted' | `decision:${string}`
 type DecisionOrigin = Extract<IssueProposalOrigin, { kind: 'decision' }>
 
 const BASE_COLUMNS = ['id', 'title', 'decision', 'comment', 'status', 'design', 'coverage', 'impact']
-const stripHtml = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-const textOf = (v: unknown) => stripHtml(fieldValueToText(v))
+const textOf = (v: unknown) => htmlToCellText(fieldValueToText(v))
 const CELL_STATUS: Record<string, MatrixCell['status']> = { PASS: 'pass', FAIL: 'fail', BLOCKED: 'blocked' }
 const NO_TESTS = new Map<string, TestCase>()
 

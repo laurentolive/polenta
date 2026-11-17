@@ -26,7 +26,8 @@ export function useRowSelection(
       }
       // Ancre hors de la sélection (sélection posée ailleurs : arbre, lien suivi, Ctrl+clic qui l'a
       // retirée) : Maj part de la dernière ligne sélectionnée, comme la Vue Excel avant GH389.
-      if (mods.shift && sel.size > 0 && (anchor.current === null || !sel.has(anchor.current))) anchor.current = [...sel][sel.size - 1]
+      // Sélection vide (vidée hors de la grille) : pas de plage depuis une ancienne ancre.
+      if (mods.shift && (anchor.current === null || !sel.has(anchor.current))) anchor.current = sel.size > 0 ? [...sel][sel.size - 1] : null
       const r = selectRow({ selected: sel, displayed: shown, anchor: anchor.current, target, shift: mods.shift, ctrl: mods.ctrl })
       anchor.current = r.anchor
       if (r.selected) change(r.selected)

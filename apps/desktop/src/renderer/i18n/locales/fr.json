@@ -2413,6 +2413,7 @@
   "executionHistory": {
     "title": "Exécutions",
     "empty": "Aucune exécution.",
+    "toggleSteps": "Afficher les étapes",
     "removed": "entrée retirée",
     "isolated": "exécution isolée",
     "campaignMissing": "campagne introuvable",
@@ -2956,6 +2957,7 @@
   },
   "grid": {
     "columns": "Colonnes",
+    "toggleRow": "Déplier / replier la ligne",
     "count": "{{shown}} / {{total}}",
     "lockedColumn": "Colonne toujours affichée",
     "bulkFailed_one": "{{count}} ligne non écrite :",

@@ -11,6 +11,7 @@ import { driftText, testedValueText } from '../executions/TestedConfigView'
 import { runMentions, type RunMention } from './runMentions'
 import { ElementLink } from '../element/ElementLink'
 import { PageLink } from '../element/PageLink'
+import { htmlToCellText } from '../grid/cellText'
 
 const MENTION_CLASS: Record<RunMention, string> = {
   other_version: 'bg-status-warning-bg text-status-warning',
@@ -19,7 +20,6 @@ const MENTION_CLASS: Record<RunMention, string> = {
   after_signature: 'bg-status-info-bg text-status-info',
 }
 
-const stripHtml = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 /** Date d'un run : un fichier édité à la main peut donner une `Date` YAML plutôt qu'une chaîne. */
 const runDate = (v: unknown, length: number): string => {
   const d = new Date(v as string)
@@ -140,7 +140,7 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
                   </td>
                   <td className="py-1 pr-3">
                     <div className="text-ink-2">{testedVersion(row)}</div>
-                    {row.run?.notes && <div className="text-ink-3">{stripHtml(row.run.notes)}</div>}
+                    {row.run?.notes && <div className="text-ink-3">{htmlToCellText(row.run.notes)}</div>}
                     <div className="flex flex-wrap gap-1 mt-0.5">
                       {runMentions(row, versionId, signedAt).map(m => (
                         <span key={m} data-testid={`validation-mention-${m}`} className={`text-[10px] px-1.5 rounded ${MENTION_CLASS[m]}`}

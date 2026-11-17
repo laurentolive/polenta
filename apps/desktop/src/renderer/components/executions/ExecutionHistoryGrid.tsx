@@ -11,6 +11,7 @@ import type { GridColumn } from '../grid/gridTypes'
 import { useGridScrollKey } from '../grid/useGridScrollKey'
 import { driftText, testedValueText } from './TestedConfigView'
 import { availableColumns, defaultExecutionColumns, unionRunFields, type ExecutionColumn } from './executionColumns'
+import { htmlToCellText } from '../grid/cellText'
 
 /** Libellé de l'origine d'un run (GH36 classeur, GH129 JUnit) ; absente : saisie dans l'outil. */
 const ORIGIN_LABEL_KEY: Record<string, string> = {
@@ -37,7 +38,6 @@ export const VERDICT_CLASS: Record<string, string> = {
   NOT_EXECUTED: 'bg-status-neutral-bg text-status-neutral',
 }
 
-const stripHtml = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 const getRowKey = (row: ExecutionHistoryRow) => row.key
 const hasSteps = (row: ExecutionHistoryRow) => (row.run?.stepResults ?? []).length > 0
 const rowClass = (row: ExecutionHistoryRow) => (row.removed ? 'opacity-70' : undefined)
@@ -118,7 +118,7 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
         case 'origin': return { getText: row => (row.run ? t(ORIGIN_LABEL_KEY[row.run.origin ?? ''] ?? 'executionHistory.originApp') : '') }
         case 'notes':
           return {
-            getText: row => (row.run?.notes ? stripHtml(row.run.notes) : ''),
+            getText: row => (row.run?.notes ? htmlToCellText(row.run.notes) : ''),
             render: row => (row.run?.notes ? <RichTextViewer value={row.run.notes} repoPath={repoPath} /> : ''),
           }
         case 'equipment':
@@ -223,7 +223,7 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
           if (c.key.startsWith('run:')) {
             const name = c.key.slice(4)
             return {
-              getText: row => (row.run?.fields?.[name] === undefined ? '' : stripHtml(fieldValueToText(row.run.fields[name]))),
+              getText: row => (row.run?.fields?.[name] === undefined ? '' : htmlToCellText(fieldValueToText(row.run.fields[name]))),
               render: row => {
                 const value = row.run?.fields?.[name]
                 if (value === undefined) return ''
@@ -276,6 +276,7 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
         prefs={prefs}
         renderExpanded={renderSteps}
         canExpand={hasSteps}
+        expandLabel={t('executionHistory.toggleSteps')}
         rowClassName={rowClass}
         scrollMemoryKey={scrollKey}
       />

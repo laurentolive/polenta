@@ -67,6 +67,8 @@ export interface DataGridProps<R> {
   renderExpanded?: (row: R) => ReactNode
   /** Ligne qui a un contenu déplié (chevron affiché) ; défaut : toutes. */
   canExpand?: (row: R) => boolean
+  /** Libellé accessible du chevron de dépli ; défaut : `grid.toggleRow`. */
+  expandLabel?: string
   rowClassName?: (row: R) => string | undefined
   /** Widget : ni barre d'outils, ni filtres, ni largeurs. */
   compact?: boolean
@@ -115,7 +117,7 @@ const useGridActions = () => useContext(GridActionsContext)!
 export function DataGrid<R>(props: DataGridProps<R>) {
   const {
     gridId, title, rows, getRowId, columns, prefs: prefSource, migrateColumns, savedViews, toolbarStart, rowFilter, selection,
-    onCellEdit, onActivate, renderExpanded, canExpand, rowClassName, compact, noColumnPicker, noExport, noReorder, exportRepoPath, scrollMemoryKey, layer,
+    onCellEdit, onActivate, renderExpanded, canExpand, expandLabel, rowClassName, compact, noColumnPicker, noExport, noReorder, exportRepoPath, scrollMemoryKey, layer,
   } = props
   const { t } = useTranslation()
   const nav = useElementNav()
@@ -278,7 +280,10 @@ export function DataGrid<R>(props: DataGridProps<R>) {
         ? filteredRows.filter(r => selected.has(getRowId(r)) && !!col && isEditableCell(canEdit, col, r)).map(getRowId)
         : [rowId]
       setFailures(null)
-      void onCellEdit(ids, key, value).then(r => setFailures(r.failed.length > 0 ? r.failed : null))
+      void onCellEdit(ids, key, value).then(
+        r => setFailures(r.failed.length > 0 ? r.failed : null),
+        (err: unknown) => setFailures(ids.map(id => ({ id, message: err instanceof Error ? err.message : String(err) }))),
+      )
     },
     tab: (rowId, key, shift) => { keyboard.move({ rowId, col: key }, { key: 'Tab', shift }) },
     rowClick: (rowId, e) => {
@@ -453,6 +458,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
                       cols={shownCols}
                       hasExpand={hasExpand}
                       expandable={isExpandable(row)}
+                      expandLabel={expandLabel ?? t('grid.toggleRow')}
                       hasCheck={hasCheck}
                       checkable={hasCheck && canSelect(row)}
                       expanded={isOpen}
@@ -516,13 +522,14 @@ export function DataGrid<R>(props: DataGridProps<R>) {
 
 // ── Ligne et cellules (mémoïsées : props primitives ou stables) ─────────────
 
-const GridRowInner = function GridRow<R>({ gridId, row, rowId, cols, hasExpand, expandable, hasCheck, checkable, expanded, selected, canEdit, freezeStyles, className }: {
+const GridRowInner = function GridRow<R>({ gridId, row, rowId, cols, hasExpand, expandable, expandLabel, hasCheck, checkable, expanded, selected, canEdit, freezeStyles, className }: {
   gridId: string
   row: R
   rowId: string
   cols: readonly GridColumn<R>[]
   hasExpand: boolean
   expandable: boolean
+  expandLabel: string
   hasCheck: boolean
   checkable: boolean
   expanded: boolean
@@ -542,7 +549,7 @@ const GridRowInner = function GridRow<R>({ gridId, row, rowId, cols, hasExpand, 
       onClick={e => { e.stopPropagation(); actions.rowClick(rowId, e) }}
       onDoubleClick={() => actions.rowDoubleClick(rowId)}
     >
-      {hasExpand && <ExpandCell gridId={gridId} rowId={rowId} expandable={expandable} expanded={expanded} stickyBg={stickyBg} />}
+      {hasExpand && <ExpandCell gridId={gridId} rowId={rowId} label={expandLabel} expandable={expandable} expanded={expanded} stickyBg={stickyBg} />}
       {hasCheck && <CheckCell gridId={gridId} rowId={rowId} checkable={checkable} checked={selected} stickyBg={stickyBg} left={hasExpand ? EXPAND_COL_WIDTH : 0} />}
       {cols.map((c, i) => (
         <GridCell
@@ -561,7 +568,7 @@ const GridRowInner = function GridRow<R>({ gridId, row, rowId, cols, hasExpand, 
 }
 const GridRow = memo(GridRowInner) as typeof GridRowInner
 
-const ExpandCell = memo(function ExpandCell({ gridId, rowId, expandable, expanded, stickyBg }: { gridId: string; rowId: string; expandable: boolean; expanded: boolean; stickyBg: string }) {
+const ExpandCell = memo(function ExpandCell({ gridId, rowId, label, expandable, expanded, stickyBg }: { gridId: string; rowId: string; label: string; expandable: boolean; expanded: boolean; stickyBg: string }) {
   const actions = useGridActions()
   const g = useCellGestures(rowId, EXPAND_COL)
   return (
@@ -576,7 +583,7 @@ const ExpandCell = memo(function ExpandCell({ gridId, rowId, expandable, expande
         type="button"
         className="text-ink-3 hover:text-ink align-middle"
         aria-expanded={expanded}
-        aria-label={rowId}
+        aria-label={label}
         data-testid={`${gridId}-toggle-${rowId}`}
         data-cell-dblclick-ignore
         // Le focus reste sur la grille (clavier) : le chevron ne le prend pas au clic.

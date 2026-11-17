@@ -280,3 +280,28 @@ Décidés en cours d'implémentation (`specs/GH389-sprint2.md`), sans effet sur 
 - **Index des liens d'élément (§5, sprint 1)** : clés propres `['element-nav', 'versions' | 'validations',
   repo]` au lieu des clés des écrans ; `useLiveFileSync` les relit une fois, 300 ms après la dernière
   écriture d'une version / validation (rafale de fichiers : sinon une relecture par fichier et par repo).
+
+## 14. Écarts constatés au sprint 3 (exécutions)
+
+Décidés en cours d'implémentation (`specs/GH389-sprint3.md`), sans effet sur la spec :
+
+- **Entrée sur une cellule de lien** (limite des sprints 1–2) : `DataGrid` clique le lien rendu dans
+  la cellule active (`[data-element-link]`, `[data-page-link]` du bouton de repli de `PageLink`,
+  `[data-cell-link]` d'une action de cellule) — même geste que le clic, donc même repo ; `elementId`
+  ne sert plus que de repli (cellule sans lien rendu).
+- **`DataGrid`** : `canExpand(row)` (chevron seulement sur les lignes qui ont un contenu déplié),
+  `expandLabel` (libellé accessible du chevron, défaut `grid.toggleRow`), `selection.isSelectable`
+  (mode cases : lignes sans case, préparé pour les changements d'une version). Une écriture
+  (`onCellEdit`) rejetée est affichée comme échec de toutes les lignes visées.
+- **Historique des exécutions** : `gridId` `execution` (`execution-row-<clé>`, `execution-toggle-<clé>`,
+  `execution-columns`, cases du panneau `execution-column-<clé>` dans le panneau commun, hors de la
+  section) ; grille bornée à 70 % de la hauteur de la fenêtre, défilement propre (mémoire GH300) ;
+  prop `title` (export « Exécutions <ID> »). L'entrée (ID d'entrée de campagne, pas un élément) garde
+  son bouton d'ouverture du run, marqué `data-cell-link` (Entrée l'ouvre).
+- **`ValidationRuns`** : version testée d'un run en `PageLink` (repo du run).
+- **Texte d'un richtext dans une cellule** : `grid/cellText.ts` (`htmlToCellText`), partagé par la
+  Validation, ses exécutions et l'historique.
+- **Préférences** : `FieldVisibilityPref` reçoit dès ce sprint les clés `colWidthsExecutions`,
+  `freezeColCountExecutions` et celles des grilles sans type (`columns`, `colWidthsColumns`,
+  `freezeColCountColumns`, sprint 4).
+- **Sélection** (revue) : Maj+clic avec une sélection vide ne part plus d'une ancienne ancre.

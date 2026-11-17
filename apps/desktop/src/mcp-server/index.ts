@@ -41,6 +41,7 @@ import { registerDashboardTools } from './tools/dashboards.tools'
 import { registerSuiviScriptTools } from './tools/suivi-script.tools'
 import { registerResultsImportTools } from './tools/results-import.tools'
 import { registerTreeTools } from './tools/tree.tools'
+import { registerDeleteObjectTools } from './tools/delete-objects.tools'
 
 interface ParsedArgs {
   repo?: string
@@ -123,6 +124,7 @@ async function main(): Promise<void> {
   registerSuiviScriptTools(server, container)
   registerResultsImportTools(server, container)
   registerTreeTools(server, container)
+  registerDeleteObjectTools(server, container)
 
   const transport = new StdioServerTransport()
   await server.connect(transport)

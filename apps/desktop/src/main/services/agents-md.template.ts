@@ -224,6 +224,10 @@ Tools disponibles :
 - \`list_parameters\` / \`set_parameters\` / \`delete_parameter\` — base de paramètres
   (\`parameters/parameters.yaml\`, références \`{nom}\`). \`set_parameters\` crée ou modifie, avec
   \`dryRun\` par défaut ; \`delete_parameter\` est refusé tant qu'un élément non terminal l'utilise.
+- \`delete_requirements\` / \`delete_tests\` — suppression définitive par ID, pour corriger un
+  import (doublon, mauvais lot) : \`dryRun\` par défaut, refusée pour un objet lié, présent dans une
+  campagne, inclus dans une version ou cité par une validation (\`OBJECT_IN_USE\`). Un objet
+  abandonné passe plutôt au statut terminal de son type.
 - \`list_links\` / \`create_links\` / \`delete_links\` — liens entre objets (vérification,
   implémentation…). \`create_links\`/\`delete_links\` ont \`dryRun\` par défaut ; \`create_links\`
   vérifie le type (\`linkTypes\` de \`get_schema\`), l'existence des objets, la compatibilité
@@ -264,6 +268,8 @@ Tools disponibles :
 - \`list_library\` / \`read_library_module\` / \`write_library_module\` — bibliothèque JS du projet
   (\`dashboards/lib/\`), importable par les scripts (\`import { … } from 'lib/campaign.js'\`).
   \`write_library_module\` a \`dryRun\` par défaut.
+- \`update_link_type\` — libellés, \`defaultVisible\`, \`sourceRefs\` / \`targetRefs\` d'un type de lien
+  existant (refusé si des liens existants n'y seraient plus acceptés : \`LINK_TYPE_IN_USE\`).
 - \`add_component\` / \`add_object_type\` / \`add_field\` / \`add_status\` / \`add_link_type\` —
   modification ciblée du modèle de données (\`.polenta/schema.yaml\`), avec vérification
   des invariants (nom déjà pris, \`prefix\` unique sur tout le projet, nœud

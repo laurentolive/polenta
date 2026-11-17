@@ -311,8 +311,8 @@ async function writeObjects() {
   })
 }
 
-type Migrated = { schema: ProjectSchema; migration: { migrated: string[]; skipped: unknown[]; failed: unknown[]; snapshots?: number } }
-type Preview = { dryRun: true; schema: ProjectSchema; preview: { withOld: number; withNew: number } }
+type Migrated = { type: ObjectTypeDefinition; schema?: ProjectSchema; migration: { migrated: string[]; skipped: unknown[]; failed: unknown[]; snapshots?: number } }
+type Preview = { dryRun: true; type: ObjectTypeDefinition; schema?: ProjectSchema; preview: { withOld: number; withNew: number } }
 
 describe('C — update_status', () => {
   beforeEach(writeObjects)
@@ -323,7 +323,9 @@ describe('C — update_status', () => {
     const res = await call<Preview>('update_status', { nodeName: 'root', typeName: 'exigence', name: 'review', to: 'relecture', dryRun: true })
     expect(res.dryRun).toBe(true)
     expect(res.preview).toEqual({ withOld: 2, withNew: 0 })
-    expect(res.schema.nodes[0].objectTypes![0].statuses!.map(s => s.name)).toEqual(['draft', 'relecture', 'approved'])
+    // GH384 — seul le type modifié, pas le schéma complet.
+    expect(res.type.statuses!.map(s => s.name)).toEqual(['draft', 'relecture', 'approved'])
+    expect(res.schema).toBeUndefined()
     expect(await filesBytes()).toEqual(before)
     expect(await schemaBytes()).toBe(schemaBefore)
   })
@@ -499,5 +501,68 @@ describe('G4 — appels pipelinés', () => {
     for (const [name, dto] of steps) await call(name, dto)
     expect(pipelined).toEqual(await onDiskSchema())
     expect((await typeOnDisk('validation')).decisions!.map(d => d.name)).toEqual(['en_attente', 'conforme', 'refuse', 'non_conforme', 'd1', 'd2', 'd3', 'd4', 'd5'])
+  })
+})
+
+// ── GH381 — statuts non marqués du type version : les versions sont migrées ───
+
+describe('V — GH381 : versions migrées par update_status / remove_status', () => {
+  const PV1 = 'versions/PV-0001.yaml'
+  const PV2 = 'versions/PV-0002.yaml'
+  const versionsBytes = () => Promise.all([PV1, PV2].map(f => fsP.readFile(path.join(dir, f), 'utf-8')))
+
+  beforeEach(async () => {
+    // Statut non marqué supplémentaire : `qualif`, cible de fusion.
+    await call('add_status', { nodeName: 'root', typeName: 'version', status: { name: 'qualif' } })
+    await git.writeYaml(dir, PV1, { id: 'PV-0001', objectTypeRef: 'root::version', title: '1.1', status: 'en_cours', fields: {}, history: historyOf('en_cours') })
+    await git.writeYaml(dir, PV2, {
+      id: 'PV-0002', objectTypeRef: 'root::version', title: '1.0', status: 'released', fields: {},
+      freeze: { tag: 'v1.0', sha: 'abc', at: OLD }, history: historyOf('en_cours', 'released'),
+    })
+  })
+
+  it('V1 — renommage : statut courant et history.status des versions, released comprise', async () => {
+    const res = await call<Migrated>('update_status', { nodeName: 'root', typeName: 'version', name: 'en_cours', to: 'ouverte' })
+    expect(res.migration.migrated.sort()).toEqual(['PV-0001', 'PV-0002'])
+    expect(res.migration.failed).toEqual([])
+    const v1 = await readObj(PV1)
+    expect(v1.status).toBe('ouverte')
+    expect(v1.history!.status!.map(e => e.value)).toEqual(['ouverte'])
+    const v2 = (await git.readYaml<Obj & { freeze: unknown }>(dir, PV2))!
+    expect(v2.status).toBe('released')
+    expect(v2.history!.status!.map(e => e.value)).toEqual(['ouverte', 'released'])
+    expect(v2.freeze).toEqual({ tag: 'v1.0', sha: 'abc', at: OLD })
+  })
+
+  it('V2 — dryRun : versions comptées, rien d\'écrit', async () => {
+    const before = await versionsBytes()
+    const res = await call<Preview>('update_status', { nodeName: 'root', typeName: 'version', name: 'en_cours', to: 'ouverte', dryRun: true })
+    expect(res.preview).toEqual({ withOld: 1, withNew: 0 })
+    expect(await versionsBytes()).toEqual(before)
+  })
+
+  it('V3 — remove_status : STATUS_IN_USE sans replaceWith, migration avec', async () => {
+    await expectRefused('remove_status', { nodeName: 'root', typeName: 'version', name: 'en_cours' }, 'STATUS_IN_USE', /1 objet\(s\) \(PV-0001\)/)
+    const res = await call<Migrated>('remove_status', { nodeName: 'root', typeName: 'version', name: 'en_cours', replaceWith: 'qualif' })
+    expect(res.migration.migrated.sort()).toEqual(['PV-0001', 'PV-0002'])
+    expect((await readObj(PV1)).status).toBe('qualif')
+    expect((await readObj(PV2)).history!.status!.map(e => e.value)).toEqual(['qualif', 'released'])
+    expect((await typeOnDisk('version')).statuses!.map(s => s.name)).toEqual(['released', 'abandonnee', 'qualif'])
+  })
+})
+
+describe('GH384 — réponse de update_status / remove_status', () => {
+  beforeEach(writeObjects)
+
+  it('S1 — type modifié seul ; includeSchema rend le schéma complet', async () => {
+    const res = await call<Migrated>('update_status', { nodeName: 'root', typeName: 'exigence', name: 'draft', to: 'brouillon', dryRun: true })
+    expect(Object.keys(res).sort()).toEqual(['dryRun', 'preview', 'type'])
+    expect(res.type.name).toBe('exigence')
+    const full = await call<Migrated>('remove_status', { nodeName: 'root', typeName: 'exigence', name: 'review', replaceWith: 'approved', dryRun: true, includeSchema: true })
+    expect(full.type).toBeUndefined()
+    expect(full.schema!.nodes.map(n => n.name)).toEqual(['root', 'lecture'])
+    const written = await call<Migrated>('update_status', { nodeName: 'root', typeName: 'exigence', name: 'draft', label: 'Brouillon' })
+    expect(Object.keys(written).sort()).toEqual(['migration', 'type'])
+    expect(written.type.statuses![0]).toEqual({ name: 'draft', label: 'Brouillon' })
   })
 })

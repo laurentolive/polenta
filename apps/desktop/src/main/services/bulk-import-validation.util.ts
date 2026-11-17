@@ -2,7 +2,7 @@ import { initialStatus, isUnknownStatus, prepareFieldsWrite } from '@polenta/typ
 import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
 import { findObjectTypeDef, findLocalNodeByRefPrefix, findOwningNode } from './schema-lookup.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
-import { fieldValuesError } from './field-values.util'
+import { fieldValuesErrors } from './field-values.util'
 
 /**
  * Couche de validation dry-run des tools `bulk_import_*` (T122 sprint 2 —
@@ -49,9 +49,13 @@ export interface BulkImportEntryDto {
 }
 
 /**
- * Valide chaque entrée d'un batch `bulk_import_*`, dans l'ordre suivant (la première
- * règle en échec arrête la validation de CETTE entrée — n'empêche pas la validation
- * des autres entrées du batch) :
+ * Valide chaque entrée d'un batch `bulk_import_*` selon les règles suivantes. Les règles 1-2
+ * (type, nœud) arrêtent la validation de l'entrée ; les règles 3-6 sont indépendantes et
+ * toutes leurs erreurs sont rapportées (GH384 : une erreur par champ en cause, pour corriger
+ * un gros import en un seul aller-retour). `prepareFieldsWrite` (liens, `requiredWhen`)
+ * n'est contrôlé que si les règles précédentes passent. Une entrée en erreur n'empêche pas
+ * la validation des autres entrées du batch ; `errors` peut porter plusieurs erreurs pour un
+ * même `index` :
  *
  * 1. `objectTypeRef` résout vers un `ObjectTypeDefinition` existant. `'unresolvable'`
  *    (ref cross-composant non vérifiable localement) est ACCEPTÉ, pas une erreur —
@@ -88,9 +92,9 @@ export function validateBulkEntries<TDto extends BulkImportEntryDto>(
   const errors: BulkEntryError[] = []
 
   entries.forEach((dto, index) => {
-    const error = validateEntry(schema, dto)
-    if (error) {
-      errors.push({ index, ...error })
+    const entryErrors = validateEntry(schema, dto)
+    if (entryErrors.length > 0) {
+      errors.push(...entryErrors.map((e) => ({ index, ...e })))
       return
     }
     valid.push({ index, dto, predictedId: nextIdPreview(dto.objectTypeRef) })
@@ -102,12 +106,12 @@ export function validateBulkEntries<TDto extends BulkImportEntryDto>(
 function validateEntry(
   schema: ProjectSchema,
   dto: BulkImportEntryDto,
-): { reason: string; field?: string } | null {
-  if (!dto.objectTypeRef) return null // ex. campagne sans type — rien à vérifier côté schéma
+): Array<{ reason: string; field?: string }> {
+  if (!dto.objectTypeRef) return [] // ex. campagne sans type — rien à vérifier côté schéma
 
   const resolved = findObjectTypeDef(schema, dto.objectTypeRef)
   if (resolved === null) {
-    return { reason: `objectTypeRef inconnu : "${dto.objectTypeRef}" ne correspond à aucun type déclaré dans schema.yaml` }
+    return [{ reason: `objectTypeRef inconnu : "${dto.objectTypeRef}" ne correspond à aucun type déclaré dans schema.yaml` }]
   }
 
   // Le nœud propriétaire peut être connu localement (déclaré dans schema.nodes, avec
@@ -124,44 +128,41 @@ function validateEntry(
     ? findLocalNodeByRefPrefix(schema, dto.objectTypeRef)
     : findOwningNode(schema, dto.objectTypeRef, resolved)
   if (node?.readonly) {
-    return { reason: `nœud '${node.name}' en lecture seule — écriture refusée` }
+    return [{ reason: `nœud '${node.name}' en lecture seule — écriture refusée` }]
   }
 
-  if (resolved === 'unresolvable') return null // type non vérifiable localement (ref cross-composant), nœud pas readonly (ou lui-même inconnu localement) — accepté, cf. schema-lookup.util.ts
+  if (resolved === 'unresolvable') return [] // type non vérifiable localement (ref cross-composant), nœud pas readonly (ou lui-même inconnu localement) — accepté, cf. schema-lookup.util.ts
 
-  const missingFields = resolved.fields.filter((f) => f.required && !isFilled(dto.fields?.[f.name]))
-  if (missingFields.length > 0) {
-    return {
-      reason: `champ(s) requis manquant(s) : ${missingFields.map((f) => f.name).join(', ')}`,
-      field: missingFields[0].name,
-    }
+  const errors: Array<{ reason: string; field?: string }> = []
+  for (const f of resolved.fields.filter((f) => f.required && !isFilled(dto.fields?.[f.name]))) {
+    errors.push({ reason: `champ requis manquant : ${f.name}`, field: f.name })
   }
 
-  const earsFields = resolved.fields.filter((f) => f.validator === 'EARS')
-  const nonCompliant = earsFields.find((f) => !isEarsCompliant(dto.fields?.[f.name]))
-  if (nonCompliant) {
-    return {
-      reason: `le champ '${nonCompliant.name}' ne respecte pas la syntaxe EARS (WHEN/WHILE/WHERE/IF...THEN/THE ... SHALL ...)`,
-      field: nonCompliant.name,
-    }
+  // Champ requis absent : déjà signalé, pas une seconde erreur EARS sur le même champ.
+  for (const f of resolved.fields.filter((f) => f.validator === 'EARS' && !(f.required && !isFilled(dto.fields?.[f.name])))) {
+    if (isEarsCompliant(dto.fields?.[f.name])) continue
+    errors.push({
+      reason: `le champ '${f.name}' ne respecte pas la syntaxe EARS (WHEN/WHILE/WHERE/IF...THEN/THE ... SHALL ...)`,
+      field: f.name,
+    })
   }
 
   if (dto.status && isUnknownStatus(resolved, dto.status)) {
-    return {
+    errors.push({
       reason: `statut inconnu : "${dto.status}" (statuts du type : ${resolved.statuses!.map((s) => s.name).join(', ')})`,
       field: 'status',
-    }
+    })
   }
 
   // GH372 — valeurs des champs : même règle que update_requirements / update_tests.
-  const valueError = fieldValuesError(schema, resolved, dto.objectTypeRef, dto.fields)
-  if (valueError) return valueError
+  errors.push(...fieldValuesErrors(schema, resolved, dto.objectTypeRef, dto.fields))
+  if (errors.length > 0) return errors
 
   // GH195 — liens (forme texte `libellé | URL` acceptée, URL contrôlées) et `requiredWhen`.
   const prepared = prepareFieldsWrite(resolved, null, { status: dto.status ?? initialStatus(resolved), fields: dto.fields })
-  if (!prepared.ok) return { reason: prepared.reason, field: prepared.field }
+  if (!prepared.ok) return [{ reason: prepared.reason, field: prepared.field }]
 
-  return null
+  return []
 }
 
 /**

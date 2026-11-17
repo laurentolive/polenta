@@ -264,11 +264,11 @@ describe('serveur MCP', () => {
     expect(await onDisk<Requirement>(`requirements/${req.id}.yaml`)).toMatchObject({ createdBy: 'alice', updatedBy: 'alice' })
   })
 
-  it('W11 — sans --user : by = local', async () => {
+  it('W11 — sans --user : by = mcp (GH384)', async () => {
     const mcp = createMcpContainer(dir)
     const tc = await mcp.tests.create(dir, { objectTypeRef: 'root::test', title: 'T', steps: [] } as never)
     const file = await onDisk<TestCase>(`tests/${tc.id}.yaml`)
-    expect(file.history?.status[0]).toMatchObject({ by: 'local', source: 'mcp' })
-    expect(file).toMatchObject({ createdBy: 'local', updatedBy: 'local' })
+    expect(file.history?.status[0]).toMatchObject({ by: 'mcp', source: 'mcp' })
+    expect(file).toMatchObject({ createdBy: 'mcp', updatedBy: 'mcp' })
   })
 })

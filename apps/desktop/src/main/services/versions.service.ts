@@ -1,12 +1,12 @@
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import type {
-  CreateVersionDto, ObjectTypeDefinition, ProductVersion, ProjectSchema, UpdateVersionDto, VersionBacklogItem,
+  CreateVersionDto, FieldRename, FieldRenameResult, ObjectTypeDefinition, ProductVersion, ProjectSchema, UpdateVersionDto, VersionBacklogItem,
   VersionChange, VersionChangeRow, VersionComponentNode, VersionElementRef, VersionErrorCode, VersionPage,
   VersionProblem, VersionReleasePreview, VersionSummary, WorkspaceTreeNode,
   ImpactAnalysisStatus, VersionAnalysis, VersionImpacted, VersionTestsToRun,
 } from '@polenta/types'
-import { ISSUE_IMPACT_LINK, IMPACT_ANALYSIS_STATUSES, initialStatus, isUnknownStatus, isValidTagName, suggestVersionTag, versionState } from '@polenta/types'
+import { ISSUE_IMPACT_LINK, IMPACT_ANALYSIS_STATUSES, initialStatus, renameFieldKeys, isUnknownStatus, isValidTagName, suggestVersionTag, versionState } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
 import type { SchemaService } from './schema.service'
@@ -825,6 +825,42 @@ export class VersionsService {
     const v = versions.find(x => x.id === basedOn)
     if (!v || v.id === self || versionState(typeDef, v.status) !== 'released') throw new VersionError('VERSION_NOT_FOUND', `${basedOn} (version released attendue)`)
     return basedOn
+  }
+
+  // ── Renommages du schéma ───────────────────────────────────────────────────
+
+  /** GH381 — renommage de champs du type version : valeur et historique. */
+  renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    return this.rewriteObjects(repoPath, objectTypeRef, o => renameFieldKeys(o, renames), result)
+  }
+
+  /**
+   * GH381 — réécriture brute des versions du type (renommage de statut / de valeur, de champ), released et
+   * abandonnées comprises : un renommage n'est pas une modification de la version (comme les validations
+   * signées). Le statut courant d'une version figée est marqué, gelé tant que des versions existent
+   * (`SchemaService.assertVersionTypeStable`) : seul son historique peut changer.
+   */
+  async rewriteObjects(
+    repoPath: string, objectTypeRef: string, transform: (obj: ProductVersion) => ProductVersion | 'conflict' | null, result: FieldRenameResult,
+  ): Promise<void> {
+    await this.enqueue(repoPath, async () => {
+      const files = (await this.git.listFiles(repoPath, VERSIONS_DIR).catch(() => []))
+        .filter(f => f.endsWith('.yaml') && f.split('/').length === 2)
+      for (const file of files) {
+        // Lecture brute (sans le `fields: {}` ajouté par `list`) : seul le renommage change le fichier.
+        const version = await this.git.readYaml<ProductVersion>(repoPath, file).catch(() => null)
+        if (!version?.id || version.objectTypeRef !== objectTypeRef) continue
+        try {
+          const next = transform(version)
+          if (next === 'conflict') result.skipped.push({ id: version.id, reason: 'target_exists' })
+          if (!next || next === 'conflict') continue
+          await this.git.writeYaml(repoPath, file, next)
+          result.migrated.push(version.id)
+        } catch (err) {
+          result.failed.push({ id: version.id, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+    })
   }
 
   private async assertWritable(repoPath: string, workspaceDir?: string): Promise<void> {

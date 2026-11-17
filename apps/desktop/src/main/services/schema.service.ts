@@ -56,6 +56,10 @@ export type SchemaValidationErrorCode =
   | 'STATUS_LIST_INVALID'
   | 'DECISION_NOT_FOUND'
   | 'DECISION_NAME_TAKEN'
+  // GH384 — modification d'un type de lien existant.
+  | 'LINK_TYPE_NOT_FOUND'
+  | 'LINK_TYPE_IN_USE'
+  | 'LINK_TYPE_INVALID'
 
 /**
  * Levée par les méthodes `addNode`/`addObjectType`/`addField`/`addStatus`/
@@ -965,6 +969,48 @@ export class SchemaService {
       const updated: ProjectSchema = { ...schema, linkTypes: [...schema.linkTypes, dto.linkType] }
       await this.save(repoPath, updated)
       return updated
+    })
+  }
+
+  /**
+   * GH384 — modifie un type de lien existant : libellés, `defaultVisible` (`false` retire la clé),
+   * `sourceRefs` / `targetRefs` (remplacés en bloc ; `null` retire la restriction). Le nom ne change pas
+   * (il est écrit dans chaque `links.yaml`). `linksBroken` (appelant : liens du workspace) rend les IDs
+   * des liens existants que le type modifié n'accepterait plus, dans aucun sens : refus
+   * `LINK_TYPE_IN_USE`, rien n'est écrit. Retourne le type modifié.
+   */
+  async updateLinkType(
+    repoPath: string,
+    dto: {
+      name: string; labelSourceToTarget?: string; labelTargetToSource?: string; defaultVisible?: boolean
+      sourceRefs?: string[] | null; targetRefs?: string[] | null
+    },
+    linksBroken: (next: LinkTypeDefinition) => Promise<string[]>,
+  ): Promise<LinkTypeDefinition> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const current = schema.linkTypes.find((lt) => lt.name === dto.name)
+      if (!current) {
+        throw new SchemaValidationError('LINK_TYPE_NOT_FOUND', `Type de lien "${dto.name}" introuvable dans ce projet.`)
+      }
+      for (const key of ['sourceRefs', 'targetRefs'] as const) {
+        if (dto[key]?.length === 0) {
+          throw new SchemaValidationError('LINK_TYPE_INVALID', `${key} vide : aucun lien ne serait possible (null retire la restriction).`)
+        }
+      }
+      const next: LinkTypeDefinition = { ...current }
+      if (dto.labelSourceToTarget !== undefined) next.labelSourceToTarget = dto.labelSourceToTarget
+      if (dto.labelTargetToSource !== undefined) next.labelTargetToSource = dto.labelTargetToSource
+      setOrDelete(next, 'defaultVisible', dto.defaultVisible === false ? null : dto.defaultVisible)
+      setOrDelete(next, 'sourceRefs', dto.sourceRefs)
+      setOrDelete(next, 'targetRefs', dto.targetRefs)
+      const refsChanged = dto.sourceRefs !== undefined || dto.targetRefs !== undefined
+      const broken = refsChanged ? await linksBroken(next) : []
+      if (broken.length > 0) {
+        throw new SchemaValidationError('LINK_TYPE_IN_USE', `${broken.length} lien(s) existant(s) du type "${dto.name}" ne seraient plus valides (${idList(broken)}) : les supprimer d'abord (delete_links) ou garder la ref qu'ils utilisent.`)
+      }
+      await this.save(repoPath, { ...schema, linkTypes: schema.linkTypes.map((lt) => (lt === current ? next : lt)) })
+      return next
     })
   }
 

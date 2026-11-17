@@ -17,10 +17,8 @@ import { isTabDragPayload, TAB_DRAG_MIME } from '../../../shared/tab-drag'
 
 /** GH343 — glisser hors de la fenêtre / entre fenêtres : desktop seulement (réordonner : partout). */
 const multiWindow = !isWeb
-
-function isEditableElement(el: Element | null): el is HTMLElement {
-  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable)
-}
+/** Durée de vie côté source d'un glisser parti (même échéance que le main). */
+const OUTGOING_TTL_MS = 60_000
 
 export function TabBar() {
   const { t } = useTranslation()
@@ -34,10 +32,11 @@ export function TabBar() {
   const stripRef = useRef<HTMLDivElement>(null)
   /** Emplacement d'insertion (0…n) sous le pointeur pendant un glisser accepté par cette barre. */
   const [dropIndex, setDropIndex] = useState<number | null>(null)
-  /** Onglet de cette fenêtre en cours de glisser (réordonnancement local). */
-  const localDrag = useRef<{ tabId: string; dragId: string } | null>(null)
-  /** Glisser venu d'une autre fenêtre : accepté par cette fenêtre (réponse du main) ? */
-  const remoteAccept = useRef(false)
+  /** Onglet de cette fenêtre en cours de glisser (`dropped` : déposé dans cette même barre). */
+  const localDrag = useRef<{ tabId: string; dragId: string; dropped?: boolean } | null>(null)
+  /** Glisser venu d'une autre fenêtre : réponse du main pour ce passage sur la barre (une seule
+   *  demande par passage ; refus tant que la réponse n'est pas là). */
+  const remote = useRef<'none' | 'pending' | 'accept' | 'refuse'>('none')
   /** Glissers partis de cette fenêtre : id → onglet, retiré quand une autre fenêtre le prend. */
   const outgoing = useRef(new Map<string, string>())
   const detachRef = useRef(detachTab)
@@ -68,17 +67,22 @@ export function TabBar() {
     e.dataTransfer.effectAllowed = 'move'
     localDrag.current = { tabId, dragId }
     if (!multiWindow) return
-    // Saisie du champ actif enregistrée (blur) et lue avant le départ de l'onglet.
-    if (tabId === activeTabId && isEditableElement(document.activeElement)) document.activeElement.blur()
+    // Quitte le champ actif (son enregistrement au blur) et lance les enregistrements temporisés
+    // (vue Édition…) : écrits avant que la page s'affiche ailleurs. Le blur est synchrone, la saisie
+    // lue juste après est donc complète.
+    const flushing = flushPendingEdits()
     const snapshot = snapshotTab(tabId)
     if (!snapshot) return
     outgoing.current.set(dragId, tabId)
+    setTimeout(() => outgoing.current.delete(dragId), OUTGOING_TTL_MS)
     const projectId = deriveCurrentProjectId(new URLSearchParams(snapshot.tab.searchParams).toString())
     void api.app.startTabDrag(dragId, { ...snapshot, projectId, tabCount: tabs.length })
-      // Enregistrements automatiques (vue Édition…) écrits avant que la page s'affiche ailleurs.
-      .then(() => flushPendingEdits())
-      .then(() => api.app.tabDragReady(dragId))
-      .catch(() => { outgoing.current.delete(dragId) })
+      .then(
+        // Un enregistrement en échec ne retient pas l'onglet (la saisie non sauvegardée voyage avec lui).
+        () => flushing.catch(() => {}).then(() => api.app.tabDragReady(dragId)),
+        () => { outgoing.current.delete(dragId) },   // glisser inconnu du main : il ne partira pas
+      )
+      .catch(() => {})
   }
 
   function onDragEnd(e: DragEvent) {
@@ -86,19 +90,26 @@ export function TabBar() {
     localDrag.current = null
     setDropIndex(null)
     if (!multiWindow || !drag) return
-    // `none` : lâché hors de toute cible (bureau, page) — le main décide d'une nouvelle fenêtre.
-    void api.app.endTabDrag(drag.dragId, e.dataTransfer.dropEffect !== 'none').catch(() => {})
+    // Réordonné dans cette barre : le glisser est libéré (pointeur sur la fenêtre). Sinon `none` =
+    // lâché hors de toute cible (bureau, page) — le main décide d'une nouvelle fenêtre.
+    if (drag.dropped) outgoing.current.delete(drag.dragId)
+    const dropped = !drag.dropped && e.dataTransfer.dropEffect !== 'none'
+    void api.app.endTabDrag(drag.dragId, dropped).catch(() => {})
   }
 
   function onDragEnter(e: DragEvent) {
     if (localDrag.current || !multiWindow || !e.dataTransfer.types.includes(TAB_DRAG_MIME)) return
+    if (remote.current !== 'none') return   // déjà demandé pour ce passage (entrée dans un onglet enfant)
+    remote.current = 'pending'
     // La valeur du glisser n'est lisible qu'au dépôt : le main dit si cette fenêtre l'accepte (D2).
-    void api.app.tabDragInfo().then(info => { remoteAccept.current = !!info?.accept }).catch(() => { remoteAccept.current = false })
+    void api.app.tabDragInfo()
+      .then(info => { if (remote.current === 'pending') remote.current = info?.accept ? 'accept' : 'refuse' })
+      .catch(() => { if (remote.current === 'pending') remote.current = 'refuse' })
   }
 
   function onDragOver(e: DragEvent) {
     if (!e.dataTransfer.types.includes(TAB_DRAG_MIME)) return
-    if (!localDrag.current && !remoteAccept.current) return   // refus : curseur « interdit »
+    if (!localDrag.current && remote.current !== 'accept') return   // refus (ou réponse attendue) : curseur « interdit »
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     const slot = slotAt(e.clientX)
@@ -108,6 +119,7 @@ export function TabBar() {
   function onDragLeave(e: DragEvent) {
     if (stripRef.current && e.relatedTarget instanceof Node && stripRef.current.contains(e.relatedTarget)) return
     setDropIndex(null)
+    remote.current = 'none'
   }
 
   function onDrop(e: DragEvent) {
@@ -116,11 +128,13 @@ export function TabBar() {
     const slot = dropIndex ?? slotAt(e.clientX)
     setDropIndex(null)
     if (localDrag.current) {
+      localDrag.current.dropped = true
       moveTab(localDrag.current.tabId, slot)
       return
     }
-    if (!multiWindow || !remoteAccept.current) return
-    remoteAccept.current = false
+    const accepted = remote.current === 'accept'
+    remote.current = 'none'
+    if (!multiWindow || !accepted) return
     const dragId = e.dataTransfer.getData(TAB_DRAG_MIME)
     void api.app.takeTabDrag(dragId).then(payload => {
       if (!isTabDragPayload(payload)) return

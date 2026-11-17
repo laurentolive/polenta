@@ -267,7 +267,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('workspace:mark-recent', (_e, workspaceDir: string) =>
     c.workspace.markRecent(workspaceDir))
   r.handle('workspace:get-last-opened', () => c.workspace.getLastOpened())
-  r.handle('workspace:clear-last-opened', () => c.workspace.clearLastOpened())
+  r.handle('workspace:clear-last-opened', (_e, workspaceDir?: string) =>
+    c.workspace.clearLastOpened(typeof workspaceDir === 'string' ? workspaceDir : undefined))
   r.handle('workspace:resolve', (_e, workspaceDir: string) =>
     c.workspace.resolve(workspaceDir))
   r.handle('workspace:open-project', (_e, dir: string) =>
@@ -313,7 +314,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('auth:detect-forge', (_e, serverUrl: string) => c.auth.detectForge(serverUrl))
   r.handle('auth:login-password', (_e, serverUrl: string, login: string, password: string, otp?: string) =>
     c.auth.loginWithPassword(serverUrl, login, password, otp))
-  r.handle('auth:current-account', () => c.auth.currentAccount())
+  r.handle('auth:current-account', (_e, remoteUrl?: string) =>
+    c.auth.currentAccount(typeof remoteUrl === 'string' ? remoteUrl : undefined))
   r.handle('app:get-machine-config', () => c.machineConfig)
   r.handle('app:get-team-config', () => c.forgeConfig.status())
   r.handle('app:refresh-team-config', () => c.forgeConfig.refresh())

@@ -7,6 +7,8 @@ import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { useVersioning } from '../contexts/VersioningContext'
 import { decodeProjectId } from '../lib/projectId'
+import { markRecentOnce } from '../lib/recentProject'
+import { takeStagedDraft, useTabDraft } from '../lib/tabDraft'
 import { StructureTab } from '../components/schema/StructureTab'
 import { ConfirmDelete, CancelConfirmModal } from '../components/schema/objectTypeEditor'
 import { ViewHeader } from '../components/layout/ViewHeader'
@@ -254,7 +256,7 @@ function SchemaEditorPage() {
   const repoPath = repoPathParam || contextRepoPath
 
   useEffect(() => {
-    if (workspaceDir) api.workspace.markRecent(workspaceDir)
+    if (workspaceDir) markRecentOnce(workspaceDir)   // GH343 — une fois par fenêtre
   }, [workspaceDir])
 
   const { data: schema, isLoading } = useProjectSchema(repoPath)
@@ -285,8 +287,10 @@ function SchemaEditorPage() {
     const isNew = serial !== lastSchema.current
     lastSchema.current = serial
     if (!state || !savedState || stateRepoPath !== editedRepoPath) {
-      setState(editable)
-      setSavedState(editable)
+      // GH343 — onglet glissé depuis une autre fenêtre avec un modèle en cours d'édition : repris tel quel.
+      const incoming = takeStagedDraft<{ state: EditorState; savedState: EditorState }>(`schema:${editedRepoPath}`)
+      setState(incoming?.state ?? editable)
+      setSavedState(incoming?.savedState ?? editable)
       setStateRepoPath(editedRepoPath)
       return
     }
@@ -313,6 +317,14 @@ function SchemaEditorPage() {
 
   const isDirty = savedState !== null && JSON.stringify(state) !== JSON.stringify(savedState)
   useRegisterTabDirty(isDirty)
+  // GH343 — le modèle en cours d'édition suit l'onglet glissé dans une autre fenêtre.
+  // Amorçage : effet du schéma ci-dessus ; page déjà affichée dans la fenêtre d'arrivée : `restore`.
+  useTabDraft<{ state: EditorState; savedState: EditorState }>(
+    editedRepoPath ? `schema:${editedRepoPath}` : null,
+    () => (isDirty && state && savedState ? { state, savedState } : null),
+    incoming => { setState(incoming.state); setSavedState(incoming.savedState) },
+    state !== null && stateRepoPath === editedRepoPath,
+  )
   const { pendingCloseId } = useTabs()
 
   const saveMutation = useMutation({

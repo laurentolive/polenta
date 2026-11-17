@@ -88,9 +88,10 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)
 }
 
-/** Une route restaurable : page d'un projet, interne à l'application. */
+/** Une route restaurable : page d'un projet, interne à l'application, ou l'accueil (GH343 : une
+ *  fenêtre fermée sur l'accueil y rouvre, sans saut vers le dernier projet). */
 export function isRestorableRoute(route: unknown): route is string {
-  return isValidAppRoute(route) && !!routeProjectId(route)
+  return isValidAppRoute(route) && (route === '/' || !!routeProjectId(route))
 }
 
 /** Lecture tolérante du contenu de `windows-state.json` : toute entrée invalide est ignorée. */

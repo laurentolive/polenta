@@ -1,6 +1,6 @@
 # SPEC-PROJECT-MANAGEMENT — Gestion de projet dans l'application desktop
 
-> Dernière révision : 2026-11-12 (GH342 — plusieurs fenêtres sur le même projet, §1, §5, §7)  
+> Dernière révision : 2026-11-17 (GH343 — glisser un onglet, deux projets dans deux fenêtres, §1, §5, §6)  
 > Dépend de : [SPEC-ELECTRON-DESKTOP.md](SPEC-ELECTRON-DESKTOP.md)
 
 ---
@@ -10,8 +10,8 @@
 | Règle | Détail |
 |-------|--------|
 | **1 fenêtre = 1 projet affiché** | Une `BrowserWindow` affiche un projet à la fois (avec ses onglets, T101). |
-| **Plusieurs fenêtres sur le même projet** | GH342 : Ctrl+Shift+N ou « Ouvrir dans une nouvelle fenêtre » (menu d'onglet) — §5. Instance unique : relancer l'exécutable ne crée pas de fenêtre. Deux projets différents dans deux fenêtres : #343. |
-| **Dernier projet utilisé** | T130 : pas de channel `workspace:mark-last-opened(id)`. Réel : `workspace:mark-recent` marque un projet comme récemment ouvert, `workspace:clear-last-opened` (sans paramètre) efface le dernier projet ouvert, `workspace:get-last-opened` le lit. Reflète le dernier projet utilisé *toutes fenêtres confondues*. Au redémarrage, les fenêtres mémorisées rouvrent sur leur page (§5) ; sans page mémorisée, l'accueil reprend ce projet. |
+| **Plusieurs fenêtres** | GH342 : même projet (Ctrl+Shift+N ou « Ouvrir dans une nouvelle fenêtre » du menu d'onglet). GH343 : projets différents (fenêtre vide, projet récent dans une nouvelle fenêtre) et onglet glissé hors de la fenêtre ou vers une autre — §5. Instance unique : relancer l'exécutable ne crée pas de fenêtre. |
+| **Dernier projet utilisé** | T130 : pas de channel `workspace:mark-last-opened(id)`. Réel : `workspace:mark-recent` marque un projet comme récemment ouvert, `workspace:clear-last-opened(workspaceDir?)` efface le dernier projet ouvert (GH343 : avec un dossier, seulement s'il le désigne), `workspace:get-last-opened` le lit. Pointeur unique, *toutes fenêtres confondues* : dernier projet ouvert (accueil, récents) ou dont une fenêtre est arrivée sur `/schema` / `/preferences` (une fois par projet et par fenêtre, `lib/recentProject.ts`). GH343 : il ne sert plus qu'au **saut du lancement** (§5) — une fenêtre qui revient à l'accueil en cours de session y reste. |
 
 ---
 
@@ -133,10 +133,11 @@ export function useMenuEvents(): void {
 
 ---
 
-## 5. Multi-fenêtres (GH342)
+## 5. Multi-fenêtres (GH342, GH343)
 
 Plusieurs fenêtres peuvent afficher **le même projet** (cas d'usage : exigences de composants
-différents sur deux écrans). Deux projets différents dans deux fenêtres : non garanti (#343).
+différents sur deux écrans, GH342) ou **des projets différents** (GH343) ; un onglet se glisse
+d'une fenêtre à l'autre ou hors de la fenêtre (§5.1).
 
 **Architecture.** Une seule instance (`app.requestSingleInstanceLock()`, GH45 : lien d'invitation
 `polenta://`) ; relancer l'exécutable sans lien met la dernière fenêtre active au premier plan. Un
@@ -146,10 +147,15 @@ onglets, historique, panneau, titre (GH338). Les fenêtres sont gérées par `ma
 
 | Action | Comportement |
 |---|---|
-| **Ctrl/Cmd+Shift+N** (desktop) | nouvelle fenêtre sur la page de l'onglet actif, décalée de +30/+30 sur le même écran |
+| **Ctrl/Cmd+Shift+N** (desktop) | nouvelle fenêtre sur la page de l'onglet actif, décalée de +30/+30 sur le même écran ; depuis l'accueil : fenêtre sur l'accueil |
 | **Clic droit sur un onglet** → « Ouvrir dans une nouvelle fenêtre » | nouvelle fenêtre sur la page de cet onglet ; l'onglet reste (copie). Web : nouvel onglet du navigateur. « Fermer l'onglet » dans le même menu |
+| **Panneau Projet** → icône « Nouvelle fenêtre » (GH343) | fenêtre sur l'accueil, sans saut vers le dernier projet (web : nouvel onglet `/?__home=1`) |
+| **Clic droit sur un projet récent** (panneau Projet) → « Ouvrir dans une nouvelle fenêtre » (GH343) | nouvelle fenêtre sur ce projet (`/schema`, comme le clic sur le récent) |
 | Ouverture sur une page | `index.html?__open=<route>` (même contrainte `file://` que `__print`) ; la route n'est suivie que si son projet existe encore (`workspace:resolve`), sinon démarrage habituel |
-| Données | une écriture dans une fenêtre arrive dans les autres par `repo:file-changed` (`useLiveFileSync`) |
+| **Saut vers le dernier projet** (GH343) | seulement au lancement, dans la fenêtre qui y a droit (`__jump=1`, posé par le main : fenêtre d'un premier lancement, première fenêtre rouverte ; web : premier chargement de `/` sans `__home`), une fois (`renderer/lib/startupJump.ts`). Toute autre arrivée sur l'accueil y reste |
+| Données | une écriture dans une fenêtre arrive dans les autres par `repo:file-changed` (`useLiveFileSync`) ; GH343 : une fenêtre sur un projet ignore les repos situés hors du dossier de son workspace (`lib/pathScope.ts`) |
+| Compte (GH343) | panneau / menu Compte d'une fenêtre sur un projet = compte connecté de l'hôte de son `origin` (`auth:current-account(remoteUrl)`), sinon compte par défaut ; « Se déconnecter » déconnecte ce compte (`auth:logout(key)`, clé déjà déconnectée : rien). Configuration d'équipe : celle du compte par défaut, commune |
+| Fermer le projet (GH343) | la fenêtre revient à l'accueil ; le dernier projet ouvert n'est effacé que s'il désigne ce projet et qu'aucune autre fenêtre ne l'affiche (`app:project-shown-elsewhere`) ; les autres fenêtres ne changent pas |
 | Pull automatique (T155) | une seule fenêtre par projet le fait : la plus ancienne dont la route porte ce `projectId` (`app:auto-pull-owner`) ; web : chaque onglet |
 | Terminal (GH238) | sortie envoyée au seul webContents propriétaire |
 | Dialogues natifs | rattachés à la fenêtre appelante (modaux sur elle, sur son écran) |
@@ -171,28 +177,67 @@ chaque fenêtre enregistre ses saisies (`app:flush-requested` → `app:close-win
 `{ version: 1, windows: [{ x, y, width, height, maximized?, fullScreen?, route? }] }`.
 - Écrite à la fermeture de la dernière fenêtre et à `before-quit` : les fenêtres ouvertes à ce
   moment ; une fenêtre fermée en cours de session n'est pas rouverte.
-- `route` : page de l'onglet actif (`app:window-state`), seulement une page de projet.
-- Au lancement : une fenêtre par entrée (8 au plus). Une fenêtre reste sur l'écran qui en recouvre
-  au moins la moitié (ramenée dans son aire de travail) ; sinon (écran débranché) recentrée sur
-  l'écran principal. Sous Windows avec mise à l'échelle, la taille relue après `setBounds` est
+- `route` : page de l'onglet actif (`app:window-state`) : une page de projet, ou l'accueil `/`
+  (GH343 : une fenêtre fermée sur l'accueil y rouvre, sans saut).
+- Au lancement : une fenêtre par entrée (8 au plus) ; seule la première a droit au saut vers le
+  dernier projet (GH343, repli si sa page n'est plus valide). Une fenêtre reste sur l'écran qui en
+  recouvre au moins la moitié (ramenée dans son aire de travail) ; sinon (écran débranché) recentrée
+  sur l'écran principal. Sous Windows avec mise à l'échelle, la taille relue après `setBounds` est
   compensée (sinon la fenêtre grandissait à chaque relance).
-- Aucune entrée : une fenêtre 1280×800, démarrage habituel.
+- Aucune entrée : une fenêtre 1280×800, démarrage habituel (saut vers le dernier projet).
 
 **Client web.** Mêmes appels `api.app.*` implémentés par le bridge : nouvel onglet
 (`window.open`), `beforeunload` si un onglet Polenta est non sauvegardé. Une URL de page ouverte
-directement (nouvel onglet, favori, F5) affiche cette page.
+directement (nouvel onglet, favori, F5) affiche cette page. Pas de glisser entre onglets du
+navigateur (réordonner dans la barre : oui).
+
+### 5.1 Glisser un onglet (GH343)
+
+| Geste (desktop) | Effet |
+|---|---|
+| Entre deux onglets de la même barre | réordonne (aussi sur le web) |
+| Sur la barre d'onglets d'une autre fenêtre du **même projet**, ou d'une fenêtre **à l'accueil** | l'onglet y est inséré à l'emplacement du lâcher (fenêtre à l'accueil : il remplace son onglet d'accueil et la fenêtre ouvre le projet), activé ; il quitte la fenêtre d'origine, qui se ferme si c'était son dernier onglet |
+| Sur une fenêtre d'un **autre projet** | refusé (curseur « interdit ») |
+| Hors de toute fenêtre Polenta | nouvelle fenêtre à l'endroit du lâcher, à la taille de la fenêtre d'origine, avec cet onglet ; dernier onglet d'une fenêtre : rien |
+| Sur le contenu d'une fenêtre | rien |
+
+**Ce qui suit l'onglet** : page, titre, historique Précédent / Suivant (GH228) et position dedans,
+saisie non sauvegardée de la page affichée (exigence, test, Schéma, édition des champs d'une
+campagne, éditeur de fichier d'un diff — non enregistrée, point « modifié » compris). Les saisies à
+enregistrement automatique (vue Édition, cellules) sont enregistrées au départ du glisser
+(`flushPendingEdits`). À l'arrivée, un champ modifié ailleurs entre-temps déclenche le bandeau
+« modifié ailleurs » (GH342). Ne suivent pas : défilement, sélection de l'arbre, onglets fermés
+récemment.
+
+**Mécanisme.** Glisser HTML5 natif ; le `dataTransfer` ne porte que l'id du glisser
+(`application/x-polenta-tab`, `shared/tab-drag.ts`). Le contenu (`TabDragPayload` : onglet,
+`projectId`, nombre d'onglets de la source, saisie) passe par le main (`main/host/tab-drag.ts`,
+un glisser à la fois, 60 s) : `app:tab-drag-start` / `-ready` (enregistrements de la source
+terminés, ≤ 2,5 s) / `-info` (la fenêtre survolée accepterait-elle ? D2) / `-take` (prise par la
+cible, la source reçoit `app:tab-moved` et retire l'onglet sans garde) / `-end` (lâché hors des
+fenêtres : `createAppWindow({ adopt })`, `__adopt=<id>` ; la nouvelle fenêtre prend l'onglet au
+démarrage). Saisies : `renderer/lib/tabDraft.ts` (un éditeur déclaré à la fois, reprise une fois par
+l'éditeur de même clé ; fenêtre d'arrivée déjà sur la même page : remise directe).
+
+**Limite connue.** Un glisser abandonné par Échap avec le pointeur hors des fenêtres se termine
+comme un lâcher sur le bureau (Chromium ne distingue pas les deux) : une nouvelle fenêtre s'ouvre.
 
 ## 6. Bouton "Fermer" dans l'UI projet
 
-En complément du menu natif, le panneau latéral Projet expose un bouton "Fermer le projet" (`ProjectPanel.tsx`, `WithProjectPanel` — la route `/project/$id` qui l'hébergeait avant T86 a été retirée ; `/schema` est désormais la page d'atterrissage du projet, mais ce bouton reste dans la sidebar, pas dans une route dédiée). Son comportement est identique à l'action menu :
+En complément du menu natif, le panneau latéral Projet expose un bouton "Fermer le projet" (`ProjectPanel.tsx`, `WithProjectPanel` — la route `/project/$id` qui l'hébergeait avant T86 a été retirée ; `/schema` est désormais la page d'atterrissage du projet, mais ce bouton reste dans la sidebar, pas dans une route dédiée). GH343 : il ne touche qu'à la fenêtre où il est cliqué :
 
 ```typescript
 // Dans ProjectPanel.tsx, WithProjectPanel
-async function handleClose() {
-  await api.workspace.clearLastOpened()
+const handleClose = async () => {
+  markProjectJustClosed()
+  // Dernier projet ouvert effacé seulement s'il désigne ce projet et qu'aucune autre fenêtre ne l'affiche.
+  const elsewhere = await api.app.projectShownElsewhere(projectId).catch(() => false)
+  if (!elsewhere) await api.workspace.clearLastOpened(decodeProjectId(projectId))
   navigate({ to: '/' })
 }
 ```
+
+Le menu natif (§2–§4, désactivé) appelle encore `clearLastOpened()` sans paramètre.
 
 ---
 

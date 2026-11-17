@@ -1,7 +1,8 @@
 import { app, ipcMain, dialog, shell, BrowserWindow, type IpcMainInvokeEvent, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { takePendingInvite } from '../host/invite-link'
 import { applyZoom } from '../host/app-zoom'
-import { isAutoPullOwner, openWindowFrom, pendingInviteWindow, releaseStartupInviteWindow, respondToClose, setWindowState, type CloseWindowAction, type WindowStatePatch } from '../host/app-windows'
+import { endTabDrag, startTabDrag, tabDragInfo, tabDragReady, takeTabDrag } from '../host/app-windows'
+import { isAutoPullOwner, openWindowFrom, projectShownElsewhere, pendingInviteWindow, releaseStartupInviteWindow, respondToClose, setWindowState, type CloseWindowAction, type WindowStatePatch } from '../host/app-windows'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { isAcceptedLinkUrl, isHttpLinkUrl } from '@polenta/types'
@@ -82,7 +83,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   handle('auth:device-flow-poll', (_e, remote: string, deviceCode: string) =>
     c.auth.pollDeviceFlow(remote, deviceCode))
   // GH45 — déconnexion du compte courant (le web a sa propre déconnexion de session).
-  handle('auth:logout', () => c.auth.logout())
+  handle('auth:logout', (_e, key?: string) => c.auth.logout(typeof key === 'string' ? key : undefined))
   handle('auth:open-password-change', () => c.auth.openPasswordChange())
   // GH45 S2b — lien d'invitation reçu avant que l'interface ne soit prête (spec §3ter).
   // GH342 — plusieurs fenêtres rouvertes au lancement : une seule la prend (fixée au lancement) ;
@@ -150,6 +151,15 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
     if (patch && typeof patch === 'object') setWindowState((e as IpcMainInvokeEvent).sender, patch)
   })
   handle('app:auto-pull-owner', (e) => isAutoPullOwner((e as IpcMainInvokeEvent).sender))
+  // GH343 — « Fermer le projet » : le dernier projet ouvert n'est effacé que si aucune autre fenêtre l'affiche.
+  handle('app:project-shown-elsewhere', (e, projectId: string) =>
+    typeof projectId === 'string' && projectShownElsewhere((e as IpcMainInvokeEvent).sender, projectId))
+  // GH343 — glisser un onglet hors de la fenêtre / vers une autre fenêtre (contenu par le main).
+  handle('app:tab-drag-start', (e, id: string, payload: unknown) => startTabDrag((e as IpcMainInvokeEvent).sender, id, payload))
+  handle('app:tab-drag-ready', (e, id: string) => tabDragReady((e as IpcMainInvokeEvent).sender, id))
+  handle('app:tab-drag-info', (e) => tabDragInfo((e as IpcMainInvokeEvent).sender))
+  handle('app:tab-drag-take', (e, id: string) => takeTabDrag((e as IpcMainInvokeEvent).sender, id))
+  handle('app:tab-drag-end', (e, id: string, dropped: boolean) => endTabDrag((e as IpcMainInvokeEvent).sender, id, dropped))
   handle('app:close-window', (e, action: CloseWindowAction) => {
     if (['ack', 'close', 'cancel', 'flushed'].includes(action)) respondToClose((e as IpcMainInvokeEvent).sender, action)
   })

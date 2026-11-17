@@ -1,5 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { useRouterState } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
+import { decodeProjectId } from '../lib/projectId'
+import { isInsideWorkspace } from '../lib/pathScope'
+import { deriveCurrentProjectId } from '../components/layout/AppLayout'
 import { EVENTS_RECONNECTED } from '../lib/webEvents'
 import { WORKSPACE_LINK_QUERY_KEYS } from './useWorkspaceLinks'
 
@@ -19,12 +23,30 @@ import { WORKSPACE_LINK_QUERY_KEYS } from './useWorkspaceLinks'
  */
 const DASHBOARD_KEYS = ['dashboards', 'dashboard', 'print-dashboard', 'suivi-updates']
 
+/** GH343 — dossier du projet affiché (`projectId` de la route), `null` sans projet ou id illisible. */
+function workspaceDirOf(projectId: string | null): string | null {
+  if (!projectId) return null
+  try {
+    return decodeProjectId(projectId)
+  } catch {
+    return null
+  }
+}
+
 export function useLiveFileSync(): void {
   const qc = useQueryClient()
+  // GH343 — fenêtre sur un projet : les changements des repos d'un autre projet (ouvert dans une
+  // autre fenêtre) ne la concernent pas — sans ce filtre, toute écriture là-bas relançait ici les
+  // lectures des clés globales (couverture, widgets, versions…). Sans projet (accueil) : tout passe.
+  const projectId = useRouterState({ select: s => deriveCurrentProjectId(s.location.searchStr) })
+  const workspaceDirRef = useRef<string | null>(null)
+  workspaceDirRef.current = workspaceDirOf(projectId)
 
   useEffect(() => {
     const unsubscribe = window.polenta.on('repo:file-changed', (...args: unknown[]) => {
       const [repoPath, relPath] = args as [string, string]
+      const workspaceDir = workspaceDirRef.current
+      if (workspaceDir && typeof repoPath === 'string' && !isInsideWorkspace(workspaceDir, repoPath)) return
 
       // T175 — l'analyse locale couvre tout le workspace (clé indexée sur le repo racine) : tout
       // changement d'élément/lien ou de ref dans n'importe quel repo la rend périmée.

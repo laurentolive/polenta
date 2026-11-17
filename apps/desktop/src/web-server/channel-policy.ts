@@ -178,6 +178,7 @@ export const ROOT_ARGS: Record<string, number[]> = {
   'forge:update-repo-settings': [0], 'forge:set-collaborator': [0], 'forge:remove-collaborator': [0], 'forge:set-repo-team': [0],
   'forge:remove-repo-team': [0], 'forge:cancel-invitation': [0], 'forge:readme-state': [0], 'forge:sync-readme': [0],
   'integration:create': [0], 'integration:designate': [0], 'integration:state': [0],
+  'workspace:clear-last-opened': [0],
   'workspace:detect': [0], 'workspace:get-tree': [0], 'workspace:init': [0, 1],
   'workspace:is-empty-dir': [0], 'workspace:mark-recent': [0], 'workspace:open': [0],
   'workspace:open-project': [0], 'workspace:rebuild-tree': [0], 'workspace:remove-repo-dir': [0],

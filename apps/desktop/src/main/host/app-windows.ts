@@ -5,6 +5,8 @@ import { BRAND } from '../../shared/brand'
 import { attachContextMenu } from './context-menu'
 import { attachAppZoom, currentZoomFactor } from './app-zoom'
 import { routeProjectId } from '../../shared/app-route'
+import { isTabDragPayload } from '../../shared/tab-drag'
+import { TabDragRegistry } from './tab-drag'
 import {
   fitToDisplays, isRestorableRoute, isValidAppRoute, offsetPlacement, parseSavedWindows,
   type SavedWindow, type WindowPlacement,
@@ -144,10 +146,16 @@ export interface CreateWindowOptions {
   /** Page à ouvrir (`pathname?search`) ; absente = démarrage habituel (accueil / dernier projet). */
   route?: string
   placement?: WindowPlacement
+  /** GH343 — la fenêtre peut sauter vers le dernier projet ouvert (`__jump`) : seulement une fenêtre
+   *  de lancement. Défaut : vrai sans `route` (premier lancement, macOS sans fenêtre), faux sinon. */
+  jump?: boolean
+  /** GH343 — la fenêtre prend l'onglet d'un glisser en cours (`__adopt`, id du glisser). */
+  adopt?: string
 }
 
 export function createAppWindow(opts: CreateWindowOptions = {}): BrowserWindow {
-  const { route, placement } = opts
+  const { route, placement, adopt } = opts
+  const jump = opts.jump ?? (route === undefined && adopt === undefined)
   const win = new BrowserWindow({
     ...(placement
       ? { x: placement.x, y: placement.y, width: placement.width, height: placement.height }
@@ -214,7 +222,11 @@ export function createAppWindow(opts: CreateWindowOptions = {}): BrowserWindow {
 
   // GH342 — page d'ouverture passée au renderer comme `__print` (T43) : `index.html` est le seul
   // point d'entrée en `file://`.
-  const search = route && isValidAppRoute(route) ? `__open=${encodeURIComponent(route)}` : ''
+  const params = new URLSearchParams()
+  if (route && isValidAppRoute(route)) params.set('__open', route)
+  if (jump) params.set('__jump', '1')
+  if (adopt) params.set('__adopt', adopt)
+  const search = params.toString()
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(search ? `${process.env['ELECTRON_RENDERER_URL']}?${search}` : process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -250,9 +262,11 @@ export function restoreOrCreateWindows(): void {
   }
   const displays = screen.getAllDisplays()
   const primary = screen.getPrimaryDisplay()
-  for (const w of saved) {
-    startupInviteWindow = createAppWindow({ route: w.route, placement: fitToDisplays(w, displays, primary) })
-  }
+  // GH343 — seule la première fenêtre rouverte peut sauter vers le dernier projet (repli si sa page
+  // n'est plus valide) : les suivantes restent sur l'accueil.
+  saved.forEach((w, i) => {
+    startupInviteWindow = createAppWindow({ route: w.route, placement: fitToDisplays(w, displays, primary), jump: i === 0 })
+  })
 }
 
 /** Fenêtre qui prend une invitation reçue avant que l'interface ne soit prête : fixée au lancement
@@ -359,4 +373,84 @@ export function isAutoPullOwner(sender: WebContents): boolean {
     if (routeProjectId(e.route) === project) return w === win
   }
   return true
+}
+
+/** GH343 — une autre fenêtre affiche ce projet (« Fermer le projet » garde alors le dernier projet ouvert). */
+export function projectShownElsewhere(sender: WebContents, projectId: string): boolean {
+  const self = BrowserWindow.fromWebContents(sender)
+  for (const [w, e] of registry) {
+    if (w === self || w.isDestroyed() || !e.route) continue
+    if (routeProjectId(e.route) === projectId) return true
+  }
+  return false
+}
+
+// ─── GH343 — glisser un onglet hors de la fenêtre / vers une autre fenêtre ────────────────────────
+
+function appWindowOf(webContentsId: number): BrowserWindow | undefined {
+  return liveWindows().find(w => w.webContents.id === webContentsId)
+}
+
+const tabDrags = new TabDragRegistry({
+  projectOf: id => {
+    const win = appWindowOf(id)
+    const route = win ? registry.get(win)?.route : undefined
+    return route ? routeProjectId(route) : null
+  },
+  isAlive: id => !!appWindowOf(id),
+  notifyMoved: (sourceId, dragId) => appWindowOf(sourceId)?.webContents.send('app:tab-moved', dragId),
+  now: () => Date.now(),
+})
+
+const DRAG_ID = /^[0-9a-f-]{8,64}$/i
+
+/** Début du geste : la source décrit l'onglet (page, historique, saisie). */
+export function startTabDrag(sender: WebContents, id: unknown, payload: unknown): void {
+  if (typeof id !== 'string' || !DRAG_ID.test(id) || !isTabDragPayload(payload)) throw new Error('Glisser d’onglet invalide')
+  if (!appWindowOf(sender.id)) return
+  tabDrags.start(sender.id, id, payload)
+}
+
+/** Saisies à enregistrement automatique de la source écrites : l'onglet peut s'afficher ailleurs. */
+export function tabDragReady(sender: WebContents, id: unknown): void {
+  if (typeof id === 'string') tabDrags.markReady(sender.id, id)
+}
+
+/** Survol d'une barre d'onglets : cette fenêtre accepterait-elle le glisser en cours ? */
+export function tabDragInfo(sender: WebContents): { accept: boolean; sameWindow: boolean } | null {
+  return tabDrags.info(sender.id)
+}
+
+/** Dépôt sur cette fenêtre (ou démarrage de la fenêtre créée par le glisser) : l'onglet, ou `null`. */
+export async function takeTabDrag(sender: WebContents, id: unknown): Promise<unknown> {
+  if (typeof id !== 'string') return null
+  const payload = await tabDrags.take(sender.id, id)
+  const win = BrowserWindow.fromWebContents(sender)
+  if (payload && win && !win.isDestroyed()) win.focus()   // fenêtre d'arrivée au premier plan
+  return payload
+}
+
+function cursorOverAppWindow(point: { x: number; y: number }): boolean {
+  return liveWindows().some(w => {
+    if (!w.isVisible() || w.isMinimized()) return false
+    const b = w.getBounds()
+    return point.x >= b.x && point.x < b.x + b.width && point.y >= b.y && point.y < b.y + b.height
+  })
+}
+
+/** Fin du geste côté source. Lâché hors de toute fenêtre : nouvelle fenêtre à l'endroit du lâcher. */
+export function endTabDrag(sender: WebContents, id: unknown, dropped: unknown): void {
+  if (typeof id !== 'string') return
+  const source = appWindowOf(sender.id)
+  if (!source) return
+  const cursor = screen.getCursorScreenPoint()
+  const open = tabDrags.end(sender.id, id, { dropped: dropped === true, cursorOverAppWindow: cursorOverAppWindow(cursor) })
+  if (!open) return
+  const size = source.getNormalBounds()
+  // Coin haut-gauche près du pointeur (l'onglet « sous » le pointeur), ramené sur un écran.
+  const placement = fitToDisplays(
+    { x: cursor.x - 40, y: cursor.y - 12, width: size.width, height: size.height },
+    screen.getAllDisplays(), screen.getPrimaryDisplay(),
+  )
+  createAppWindow({ placement, adopt: id, jump: false })
 }

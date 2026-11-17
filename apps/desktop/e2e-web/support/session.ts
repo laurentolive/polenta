@@ -2,7 +2,7 @@ import { test, expect, type Browser, type BrowserContext, type Page } from '@pla
 import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
-import { E2E } from './env'
+import { E2E, currentStack } from './env'
 import { collectErrors, invoke, rpc } from './helpers'
 
 export interface ProjectInfo {
@@ -52,7 +52,7 @@ export function setupSession(options: SessionOptions = {}) {
 
   test.beforeAll(async ({ browser }: { browser: Browser }, testInfo) => {
     const t = timer()
-    context = await browser.newContext({ acceptDownloads: true })
+    context = await browser.newContext({ acceptDownloads: true, baseURL: E2E.baseUrl })
     page = await context.newPage()
     errors = collectErrors(page)
     t.lap('context')
@@ -178,7 +178,7 @@ async function prepareAndOpen(page: Page, repo: string, name: string, t: Timer):
     const project = await cloneAndOpen(page, repo, name, t)
     t.mode = 'clone'
     if (signature !== null) {
-      const dir = path.join(E2E.root, 'templates', `${repo.replace(/[\\/]/g, '_')}-${templates.size}-${Date.now()}`)
+      const dir = path.join(currentStack().root, 'templates', `${repo.replace(/[\\/]/g, '_')}-${templates.size}-${Date.now()}`)
       fs.cpSync(project.workspaceDir, dir, { recursive: true, preserveTimestamps: true })
       templates.set(repo, { dir, signature })
       t.lap('template')

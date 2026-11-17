@@ -42,8 +42,8 @@ S'applique à toutes les phases et n'ajoute aucun stop.
 
 ## Niveaux de vérification
 
-La suite e2e complète est la vérification la plus coûteuse (≈ 14 min, 259 tests en série, build en
-sus) ; les tests unitaires complets prennent moins d'une minute. **Chaque niveau se lance au moment
+La suite e2e complète est la vérification la plus coûteuse (≈ 7 min build compris, 398 tests sur
+4 workers, GH387) ; les tests unitaires complets prennent moins d'une minute. **Chaque niveau se lance au moment
 indiqué, pas plus souvent.**
 
 | Niveau | Quand | Quoi |

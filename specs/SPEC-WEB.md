@@ -229,6 +229,9 @@ la version web »).
 - Bout en bout (Playwright, `apps/desktop/e2e-web/`) : serveur en mode dev contre une forge git
   locale (parité des parcours, impression), et OIDC réel contre l'instance de test quand
   `POLENTA_E2E_SSH` est défini. Mode d'emploi : `e2e-web/README.md`.
+  Exécution parallèle (GH387) : une pile par worker Playwright (serveur web, forge git, faux service
+  d'administration, dossier de données) sur des ports libres, démarrée par le global setup ; chaque
+  fichier part d'une copie du projet de démo cloné une fois par worker.
 
 ## 11. Limites connues
 

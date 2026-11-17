@@ -15,7 +15,8 @@ let reqPage: string
 
 test.beforeAll(async () => {
   await s.openView('Exigences')
-  await expect.poll(() => new URL(s.page.url()).searchParams.get('projectId')).toBeTruthy()
+  // GH387 — l'URL est complétée après l'ouverture de la vue (repo, nœud, type affichés).
+  await expect.poll(() => new URL(s.page.url()).searchParams.get('type')).toBeTruthy()
   reqPage = pageOf(s.page.url())
 })
 

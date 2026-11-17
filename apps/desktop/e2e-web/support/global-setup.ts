@@ -13,11 +13,8 @@ import { planStack, startStack } from './stack'
  */
 export default async function globalSetup(config: FullConfig): Promise<() => Promise<void>> {
   const seed = path.join(E2E.root, 'seed')
-  const bare = path.join(seed, 'demo-ll800-produit.git')
-  if (!fs.existsSync(bare)) {
-    fs.mkdirSync(seed, { recursive: true })
-    execFileSync('git', ['clone', '--bare', '--quiet', E2E.demoSource, bare], { stdio: 'inherit' })
-  }
+  fs.mkdirSync(seed, { recursive: true })
+  fs.cpSync(cachedDemo(), path.join(seed, 'demo-ll800-produit.git'), { recursive: true })
 
   const stacks = await Promise.all(Array.from({ length: Math.max(1, config.workers) }, (_, i) => planStack(i)))
   fs.writeFileSync(STACKS_FILE, JSON.stringify(stacks, null, 2))
@@ -30,4 +27,28 @@ export default async function globalSetup(config: FullConfig): Promise<() => Pro
     throw failed.reason
   }
   return teardown
+}
+
+/**
+ * GH387 — repo nu de la démo gardé d'une exécution à l'autre (`%TEMP%/polenta-e2e-web/cache`) : mis
+ * à jour depuis `E2E.demoSource` quand la source répond, utilisé tel quel sinon (coupure réseau
+ * passagère), cloné s'il n'existe pas encore.
+ */
+function cachedDemo(): string {
+  const key = E2E.demoSource.replace(/[^a-zA-Z0-9]+/g, '_').slice(-80)
+  const cache = path.join(path.dirname(E2E.root), 'cache', `${key}.git`)
+  if (!fs.existsSync(cache)) {
+    fs.mkdirSync(path.dirname(cache), { recursive: true })
+    const tmp = `${cache}.${process.pid}`
+    execFileSync('git', ['clone', '--bare', '--quiet', E2E.demoSource, tmp], { stdio: 'inherit' })
+    fs.renameSync(tmp, cache)
+    return cache
+  }
+  try {
+    execFileSync('git', ['--git-dir', cache, 'fetch', '--quiet', '--prune', '--force', E2E.demoSource,
+      '+refs/heads/*:refs/heads/*', '+refs/tags/*:refs/tags/*'], { stdio: ['ignore', 'ignore', 'pipe'] })
+  } catch (err) {
+    process.stderr.write(`[e2e] démo non mise à jour (${E2E.demoSource}), copie en cache utilisée : ${String(err).split('\n')[0]}\n`)
+  }
+  return cache
 }

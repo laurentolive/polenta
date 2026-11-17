@@ -62,3 +62,32 @@ test('T18 — « Fermer le projet » : l’onglet reste sur l’accueil, les aut
   expect(projectOf(s.page)).toBe(projectId)
   await other.close()
 })
+
+test('T24 — glisser un onglet entre deux autres de la même barre le réordonne ; l’onglet actif ne change pas', async () => {
+  const page = await s.context.newPage()
+  await page.goto(new URL(s.page.url()).pathname + new URL(s.page.url()).search)
+  await expect.poll(() => projectOf(page)).toBe(projectId)
+  const tabs = page.getByTestId('tab')
+  const newTab = () => page.getByTitle('Nouvel onglet (Ctrl+T)').click()
+  // Trois onglets aux titres distincts : modèle de données, préférences, modèle de données (nouveau).
+  await expect(tabs).toHaveCount(1)
+  await newTab()
+  await expect(tabs).toHaveCount(2)
+  await showProjectPanel(page)
+  await page.getByRole('link', { name: 'Préférences' }).click()
+  await expect(tabs.nth(1)).toContainText('Préférences')
+  await newTab()
+  await expect(tabs).toHaveCount(3)
+  const titles = () => tabs.evaluateAll(els => els.map(e => (e as HTMLElement).title))
+  const [a, b, c] = await titles()
+  expect(b).toContain('Préférences')
+
+  await tabs.nth(2).dragTo(tabs.nth(0), { targetPosition: { x: 3, y: 10 } })
+  await expect.poll(titles).toEqual([c, a, b])
+  // L'onglet glissé était l'actif : il le reste, la page ne change pas.
+  await expect(tabs.nth(0)).toHaveClass(/bg-canvas/)
+
+  await tabs.nth(0).dragTo(page.getByTitle('Nouvel onglet (Ctrl+T)'), { targetPosition: { x: 2, y: 10 } })
+  await expect.poll(titles).toEqual([a, b, c])
+  await page.close()
+})

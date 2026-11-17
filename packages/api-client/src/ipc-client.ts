@@ -59,6 +59,11 @@ export function createIpcClient(
       closeWindow: (action) => invoke('app:close-window', action),
       isAutoPullOwner: () => invoke('app:auto-pull-owner') as Promise<boolean>,
       projectShownElsewhere: (projectId) => invoke('app:project-shown-elsewhere', projectId) as Promise<boolean>,
+      startTabDrag: (id, payload) => invoke('app:tab-drag-start', id, payload),
+      tabDragReady: (id) => invoke('app:tab-drag-ready', id),
+      tabDragInfo: () => invoke('app:tab-drag-info') as Promise<{ accept: boolean; sameWindow: boolean } | null>,
+      takeTabDrag: (id) => invoke('app:tab-drag-take', id),
+      endTabDrag: (id, dropped) => invoke('app:tab-drag-end', id, dropped),
     },
     update: {
       getState: () => invoke('update:get-state'),

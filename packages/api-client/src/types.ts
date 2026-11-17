@@ -475,6 +475,14 @@ export interface ApiClient {
     isAutoPullOwner(): Promise<boolean>
     /** GH343 — une autre fenêtre affiche-t-elle ce projet (desktop) ? Web : toujours faux. */
     projectShownElsewhere(projectId: string): Promise<boolean>
+    /** GH343 — desktop : glisser un onglet hors de la fenêtre / vers une autre fenêtre. Le contenu
+     *  (`TabDragPayload`, `apps/desktop/src/shared/tab-drag.ts`) passe par le main ; seul l'id voyage
+     *  dans le glisser HTML5. Fin du geste : `app:tab-moved` (id) à la source quand l'onglet est pris. */
+    startTabDrag(id: string, payload: unknown): Promise<void>
+    tabDragReady(id: string): Promise<void>
+    tabDragInfo(): Promise<{ accept: boolean; sameWindow: boolean } | null>
+    takeTabDrag(id: string): Promise<unknown>
+    endTabDrag(id: string, dropped: boolean): Promise<void>
   }
   /** GH26 — mise à jour automatique ; les changements d'état arrivent par l'événement
    *  'update:state-changed' (window.polenta.on). */

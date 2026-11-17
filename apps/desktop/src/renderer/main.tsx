@@ -7,6 +7,9 @@ import { api } from './api'
 import { isWeb } from './platform'
 import { decodeProjectId } from './lib/projectId'
 import { initStartupJump } from './lib/startupJump'
+import { setBootTab } from './lib/bootTab'
+import { stageIncomingDraft } from './lib/tabDraft'
+import { isTabDragPayload, type TabDragPayload } from '../shared/tab-drag'
 import { isValidAppRoute, routeProjectId, splitAppRoute } from '../shared/app-route'
 import './index.css'
 import './i18n'
@@ -63,10 +66,29 @@ async function canOpen(route: string): Promise<boolean> {
   }
 }
 
+// GH343 — fenêtre créée en lâchant un onglet hors des fenêtres (`__adopt` = id du glisser).
+const adoptId = isWeb ? null : bootParams.get('__adopt')
+
+async function takeAdoptedTab(id: string): Promise<TabDragPayload | null> {
+  try {
+    const payload = await api.app.takeTabDrag(id)
+    return isTabDragPayload(payload) ? payload : null
+  } catch {
+    return null   // glisser expiré : démarrage sur l'accueil, la source garde l'onglet
+  }
+}
+
 async function boot() {
+  const adopted = adoptId ? await takeAdoptedTab(adoptId) : null
   if (printTarget) {
     bootParams.delete('__print')
     await router.navigate({ to: printTarget as never, search: Object.fromEntries(bootParams) as never, replace: true })
+  } else if (adopted) {
+    // GH343 — fenêtre créée par un glisser : l'onglet reçu (page, historique, saisie).
+    initStartupJump(false)
+    setBootTab(adopted.tab)
+    stageIncomingDraft(adopted.draft)
+    await router.navigate({ to: adopted.tab.pathname as never, search: adopted.tab.searchParams as never, replace: true })
   } else if (openTarget && await canOpen(openTarget)) {
     initStartupJump(false)
     const { pathname, search } = splitAppRoute(openTarget)

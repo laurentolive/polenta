@@ -4,6 +4,10 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { deducePanel, deriveCurrentProjectId, type Panel } from '../components/layout/AppLayout'
 import { recordLocation, sameDestination, type TabHistory } from '../lib/tabHistory'
+import { getBootTab } from '../lib/bootTab'
+import { captureActiveDraft } from '../lib/tabDraft'
+import { api } from '../api'
+import type { TabDragPayload } from '../../shared/tab-drag'
 
 /** GH228 — `history[historyIndex]` est la page affichée ; `pathname`/`searchParams`/`title` en
  *  restent la copie courante (activation d'onglet, menu, « Récemment fermés »). */
@@ -40,6 +44,16 @@ interface TabsContextValue {
   pendingHistoryIndex: number | null
   confirmHistoryNav: () => void
   cancelHistoryNav: () => void
+  /** GH343 — réordonne : l'onglet `id` va à la position `toIndex` (emplacement avant le glisser, 0…n). */
+  moveTab: (id: string, toIndex: number) => void
+  /** GH343 — onglet parti dans une autre fenêtre : retiré sans garde ni « Récemment fermés » ; dernier
+   *  onglet → la fenêtre se ferme. */
+  detachTab: (id: string) => void
+  /** GH343 — onglet reçu d'une autre fenêtre (historique compris), inséré à `index` et activé ; une
+   *  fenêtre sans projet (accueil) le prend à la place de ses onglets. */
+  adoptTab: (tab: TabDragPayload['tab'], index?: number) => void
+  /** GH343 — contenu transporté d'un onglet glissé (saisie de la page affichée comprise). */
+  snapshotTab: (id: string) => Pick<TabDragPayload, 'tab' | 'draft'> | null
 }
 
 const TabsContext = createContext<TabsContextValue | null>(null)
@@ -232,7 +246,12 @@ export function TabsProvider({ children }: Props) {
   const tRef = useRef(t)
   useEffect(() => { tRef.current = t }, [t])
 
-  const [tabs, setTabs] = useState<Tab[]>(() => sessionCache?.tabs ?? [makeTab(pathname, parseSearch(search), t)])
+  // GH343 — fenêtre créée par un glisser : l'onglet reçu, avec son historique.
+  const [tabs, setTabs] = useState<Tab[]>(() => {
+    if (sessionCache) return sessionCache.tabs
+    const boot = getBootTab()
+    return [boot ? { ...boot, id: crypto.randomUUID() } : makeTab(pathname, parseSearch(search), t)]
+  })
   const [activeTabId, setActiveTabId] = useState<string>(() => sessionCache?.activeTabId ?? tabs[0].id)
   const [recentlyClosed, setRecentlyClosed] = useState<Tab[]>(() => sessionCache?.recentlyClosed ?? [])
   const [dirtyTabIds, setDirtyTabIds] = useState<Set<string>>(new Set())
@@ -474,11 +493,77 @@ export function TabsProvider({ children }: Props) {
     setPendingHistoryIndex(null)
   }
 
+  // ─── GH343 — glisser un onglet ─────────────────────────────────────────────────────────────────
+
+  function moveTab(id: string, toIndex: number) {
+    setTabs(prev => {
+      const from = prev.findIndex(tab => tab.id === id)
+      if (from === -1) return prev
+      const target = Math.max(0, Math.min(toIndex > from ? toIndex - 1 : toIndex, prev.length - 1))
+      if (target === from) return prev
+      const next = prev.filter(tab => tab.id !== id)
+      next.splice(target, 0, prev[from])
+      return next
+    })
+  }
+
+  function detachTab(id: string) {
+    const index = tabs.findIndex(item => item.id === id)
+    if (index === -1) return
+    setDirtyTabIds(prev => {
+      if (!prev.has(id)) return prev
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    if (tabs.length === 1) {
+      // Rien ne reste dans cette fenêtre : elle se ferme, sans garde (la saisie est partie avec l'onglet).
+      void api.app.closeWindow('close')
+      return
+    }
+    const remaining = tabs.filter(item => item.id !== id)
+    setTabs(remaining)
+    if (id === activeTabId) {
+      const neighbor = remaining[Math.min(index, remaining.length - 1)]
+      setActiveTabId(neighbor.id)
+      goTo(neighbor)
+    }
+  }
+
+  function adoptTab(incoming: TabDragPayload['tab'], index?: number) {
+    const tab: Tab = { ...incoming, id: crypto.randomUUID() }
+    const incomingProject = deriveCurrentProjectId(new URLSearchParams(incoming.searchParams).toString())
+    if (currentProjectId === null) {
+      // Fenêtre à l'accueil : elle ouvre le projet de l'onglet, qui remplace ses onglets d'accueil.
+      // Projet connu d'avance : l'arrivée sur ce projet n'est pas un changement de projet (pas de remise à zéro).
+      lastNonNullProjectId.current = incomingProject
+      setTabs([tab])
+    } else {
+      setTabs(prev => {
+        const next = [...prev]
+        next.splice(index === undefined ? next.length : Math.max(0, Math.min(index, next.length)), 0, tab)
+        return next
+      })
+    }
+    setActiveTabId(tab.id)
+    goTo(tab)
+  }
+
+  function snapshotTab(id: string): Pick<TabDragPayload, 'tab' | 'draft'> | null {
+    const tab = tabs.find(item => item.id === id)
+    if (!tab) return null
+    const { pathname, searchParams, title, history, historyIndex } = tab
+    // Seule la page de l'onglet actif est montée : un onglet inactif n'a pas de saisie en cours.
+    const draft = id === activeTabId ? captureActiveDraft() : undefined
+    return { tab: { pathname, searchParams, title, history, historyIndex }, ...(draft ? { draft } : {}) }
+  }
+
   return (
     <TabsContext.Provider value={{
       tabs, activeTabId, recentlyClosed, dirtyTabIds, openTab, closeTab, attemptCloseTab, activateTab, reopenClosedTab,
       pendingCloseId, confirmCloseTab, cancelCloseTab, setTabDirty, setTabTitleOverride,
       activeTab, attemptHistoryNav, pendingHistoryIndex, confirmHistoryNav, cancelHistoryNav,
+      moveTab, detachTab, adoptTab, snapshotTab,
     }}>
       {children}
     </TabsContext.Provider>

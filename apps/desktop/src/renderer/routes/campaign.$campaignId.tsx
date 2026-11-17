@@ -22,6 +22,7 @@ import { NotApprovedBadge, NotApprovedRunsBanner } from '../components/campaign/
 import { TestPickerModal, EMPTY_PICKER_RESULT, type PickerResult } from '../components/campaign/TestPickerModal'
 import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
+import { useTabDraft } from '../lib/tabDraft'
 import { UnresolvedParamsBanner } from '../components/UnresolvedParamsBanner'
 import { ExportButton } from '../components/export/ExportButton'
 import { ExecutionSheetMenu } from '../components/campaign/ExecutionSheetMenu'
@@ -92,6 +93,13 @@ function CampaignDetailPage() {
   // editingFields !== null means the "Modifier les champs" panel is open with an unsaved draft
   // (Annuler/Enregistrer, same explicit-draft shape as schema.tsx/req.$reqId.tsx's isDirty/hasChanges).
   useRegisterTabDirty(editingFields !== null)
+  // GH343 — l'édition des champs en cours suit l'onglet glissé dans une autre fenêtre.
+  useTabDraft<Record<string, string>>(
+    repoPath ? `campaign:${repoPath}::${campaignId}` : null,
+    () => editingFields,
+    fields => setEditingFields(fields),
+    !!campaign,
+  )
 
   const { data: schema } = useProjectSchema(repoPath)
   // GH64 — éligibilité d'un test reporté : même règle que l'ajout normal. GH68 — tout statut est

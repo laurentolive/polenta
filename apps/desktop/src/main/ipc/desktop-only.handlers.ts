@@ -1,6 +1,7 @@
 import { app, ipcMain, dialog, shell, BrowserWindow, type IpcMainInvokeEvent, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { takePendingInvite } from '../host/invite-link'
 import { applyZoom } from '../host/app-zoom'
+import { endTabDrag, startTabDrag, tabDragInfo, tabDragReady, takeTabDrag } from '../host/app-windows'
 import { isAutoPullOwner, openWindowFrom, projectShownElsewhere, pendingInviteWindow, releaseStartupInviteWindow, respondToClose, setWindowState, type CloseWindowAction, type WindowStatePatch } from '../host/app-windows'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
@@ -153,6 +154,12 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   // GH343 — « Fermer le projet » : le dernier projet ouvert n'est effacé que si aucune autre fenêtre l'affiche.
   handle('app:project-shown-elsewhere', (e, projectId: string) =>
     typeof projectId === 'string' && projectShownElsewhere((e as IpcMainInvokeEvent).sender, projectId))
+  // GH343 — glisser un onglet hors de la fenêtre / vers une autre fenêtre (contenu par le main).
+  handle('app:tab-drag-start', (e, id: string, payload: unknown) => startTabDrag((e as IpcMainInvokeEvent).sender, id, payload))
+  handle('app:tab-drag-ready', (e, id: string) => tabDragReady((e as IpcMainInvokeEvent).sender, id))
+  handle('app:tab-drag-info', (e) => tabDragInfo((e as IpcMainInvokeEvent).sender))
+  handle('app:tab-drag-take', (e, id: string) => takeTabDrag((e as IpcMainInvokeEvent).sender, id))
+  handle('app:tab-drag-end', (e, id: string, dropped: boolean) => endTabDrag((e as IpcMainInvokeEvent).sender, id, dropped))
   handle('app:close-window', (e, action: CloseWindowAction) => {
     if (['ack', 'close', 'cancel', 'flushed'].includes(action)) respondToClose((e as IpcMainInvokeEvent).sender, action)
   })

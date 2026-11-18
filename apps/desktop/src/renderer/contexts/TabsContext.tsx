@@ -18,6 +18,14 @@ export interface Tab extends TabHistory {
   title: string
 }
 
+/** GH405 — action qui quitte la page de l'onglet actif, en attente de confirmation si l'onglet
+ *  est dirty (une seule popup, « Quitter cette page ? », pour toutes). */
+export type LeaveAction =
+  | { kind: 'history'; index: number }
+  | { kind: 'activate'; id: string }
+  | { kind: 'open'; pathname?: string; searchParams?: Record<string, string> }
+  | { kind: 'reopen'; id: string }
+
 interface TabsContextValue {
   tabs: Tab[]
   activeTabId: string
@@ -29,8 +37,16 @@ interface TabsContextValue {
   /** Guarded entry point for the UI (tab croix, Ctrl+W) — flushes a focused field, then either
    *  closes immediately or opens the confirm-close popup if the tab is registered dirty. */
   attemptCloseTab: (id: string) => void
+  /** Non gardé : appels programmatiques. L'UI passe par `attemptActivateTab`. */
   activateTab: (id: string) => void
+  /** Non gardé : appels programmatiques. L'UI passe par `attemptReopenClosedTab`. */
   reopenClosedTab: (id: string) => void
+  /** GH405 — points d'entrée de l'UI qui quittent la page de l'onglet actif (clic sur un onglet,
+   *  menu ▾, `+` / Ctrl+T, « Récemment fermés », Ctrl+Tab) : quittent le champ actif puis agissent,
+   *  ou ouvrent « Quitter cette page ? » si l'onglet actif est dirty. */
+  attemptActivateTab: (id: string) => void
+  attemptOpenTab: (pathname?: string, searchParams?: Record<string, string>) => void
+  attemptReopenClosedTab: (id: string) => void
   pendingCloseId: string | null
   confirmCloseTab: () => void
   cancelCloseTab: () => void
@@ -41,9 +57,10 @@ interface TabsContextValue {
   /** GH228 — point d'entrée de l'UI pour aller à l'entrée `index` de l'historique de l'onglet
    *  actif : quitte le champ actif puis navigue, ou ouvre la popup si l'onglet est dirty. */
   attemptHistoryNav: (index: number) => void
-  pendingHistoryIndex: number | null
-  confirmHistoryNav: () => void
-  cancelHistoryNav: () => void
+  /** GH405 — départ en attente de confirmation (`ConfirmLeavePageModal`), `null` sinon. */
+  pendingLeave: LeaveAction | null
+  confirmLeave: () => void
+  cancelLeave: () => void
   /** GH343 — réordonne : l'onglet `id` va à la position `toIndex` (emplacement avant le glisser, 0…n). */
   moveTab: (id: string, toIndex: number) => void
   /** GH343 — onglet parti dans une autre fenêtre : retiré sans garde ni « Récemment fermés » ; dernier
@@ -256,7 +273,7 @@ export function TabsProvider({ children }: Props) {
   const [recentlyClosed, setRecentlyClosed] = useState<Tab[]>(() => sessionCache?.recentlyClosed ?? [])
   const [dirtyTabIds, setDirtyTabIds] = useState<Set<string>>(new Set())
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null)
-  const [pendingHistoryIndex, setPendingHistoryIndex] = useState<number | null>(null)
+  const [pendingLeave, setPendingLeave] = useState<LeaveAction | null>(null)
 
   useEffect(() => {
     sessionCache = { tabs, activeTabId, recentlyClosed }
@@ -471,26 +488,54 @@ export function TabsProvider({ children }: Props) {
     goTo(entry, true)
   }
 
-  /** See TabsContextValue.attemptHistoryNav. */
-  function attemptHistoryNav(index: number) {
-    if (index === activeTab.historyIndex || !activeTab.history[index]) return
-    // Même séquence que attemptCloseTab : l'enregistrement au blur du champ actif d'abord.
+  function runLeave(action: LeaveAction) {
+    switch (action.kind) {
+      case 'history': goToHistoryIndex(action.index); break
+      case 'activate': activateTab(action.id); break
+      case 'open': openTab(action.pathname, action.searchParams); break
+      case 'reopen': reopenClosedTab(action.id); break
+    }
+  }
+
+  /** GH228 / GH405 — même séquence que attemptCloseTab : l'enregistrement au blur du champ actif
+   *  d'abord, puis la popup si l'onglet actif reste dirty (sa page va être démontée). */
+  function attemptLeave(action: LeaveAction) {
     const active = document.activeElement
     if (active && isEditableElement(active)) (active as HTMLElement).blur()
     if (dirtyTabIds.has(activeTab.id)) {
-      setPendingHistoryIndex(index)
+      setPendingLeave(action)
       return
     }
-    goToHistoryIndex(index)
+    runLeave(action)
   }
 
-  function confirmHistoryNav() {
-    if (pendingHistoryIndex !== null) goToHistoryIndex(pendingHistoryIndex)
-    setPendingHistoryIndex(null)
+  /** See TabsContextValue.attemptHistoryNav. */
+  function attemptHistoryNav(index: number) {
+    if (index === activeTab.historyIndex || !activeTab.history[index]) return
+    attemptLeave({ kind: 'history', index })
   }
 
-  function cancelHistoryNav() {
-    setPendingHistoryIndex(null)
+  function attemptActivateTab(id: string) {
+    if (id === activeTabId || !tabs.some(tab => tab.id === id)) return
+    attemptLeave({ kind: 'activate', id })
+  }
+
+  function attemptOpenTab(pathname?: string, searchParams?: Record<string, string>) {
+    attemptLeave({ kind: 'open', pathname, searchParams })
+  }
+
+  function attemptReopenClosedTab(id: string) {
+    if (!recentlyClosed.some(tab => tab.id === id)) return
+    attemptLeave({ kind: 'reopen', id })
+  }
+
+  function confirmLeave() {
+    if (pendingLeave) runLeave(pendingLeave)
+    setPendingLeave(null)
+  }
+
+  function cancelLeave() {
+    setPendingLeave(null)
   }
 
   // ─── GH343 — glisser un onglet ─────────────────────────────────────────────────────────────────
@@ -561,8 +606,9 @@ export function TabsProvider({ children }: Props) {
   return (
     <TabsContext.Provider value={{
       tabs, activeTabId, recentlyClosed, dirtyTabIds, openTab, closeTab, attemptCloseTab, activateTab, reopenClosedTab,
+      attemptActivateTab, attemptOpenTab, attemptReopenClosedTab,
       pendingCloseId, confirmCloseTab, cancelCloseTab, setTabDirty, setTabTitleOverride,
-      activeTab, attemptHistoryNav, pendingHistoryIndex, confirmHistoryNav, cancelHistoryNav,
+      activeTab, attemptHistoryNav, pendingLeave, confirmLeave, cancelLeave,
       moveTab, detachTab, adoptTab, snapshotTab,
     }}>
       {children}

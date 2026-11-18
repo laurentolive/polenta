@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ChevronDown, X } from 'lucide-react'
 import { useTabs } from '../../contexts/TabsContext'
@@ -22,7 +22,7 @@ const OUTGOING_TTL_MS = 60_000
 
 export function TabBar() {
   const { t } = useTranslation()
-  const { tabs, activeTabId, dirtyTabIds, openTab, attemptCloseTab, activateTab, moveTab, detachTab, adoptTab, snapshotTab } = useTabs()
+  const { tabs, activeTabId, dirtyTabIds, attemptOpenTab, attemptCloseTab, attemptActivateTab, moveTab, detachTab, adoptTab, snapshotTab } = useTabs()
   const [showMenu, setShowMenu] = useState(false)
   // GH342 — menu contextuel d'un onglet (clic droit).
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
@@ -30,6 +30,19 @@ export function TabBar() {
 
   // ─── GH343 — glisser un onglet ──────────────────────────────────────────────────────────────────
   const stripRef = useRef<HTMLDivElement>(null)
+
+  // GH405 — l'onglet activé (Ctrl+Tab, menu ▾, ouverture) devient visible quand la barre déborde.
+  // Seule la barre défile (pas ses ancêtres, comme le ferait scrollIntoView).
+  useLayoutEffect(() => {
+    const strip = stripRef.current
+    const tab = strip?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(activeTabId)}"]`)
+    if (!strip || !tab) return
+    const s = strip.getBoundingClientRect()
+    const r = tab.getBoundingClientRect()
+    if (r.left < s.left) strip.scrollLeft -= s.left - r.left
+    else if (r.right > s.right) strip.scrollLeft += r.right - s.right
+  }, [activeTabId])
+
   /** Emplacement d'insertion (0…n) sous le pointeur pendant un glisser accepté par cette barre. */
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   /** Onglet de cette fenêtre en cours de glisser (`dropped` : déposé dans cette même barre). */
@@ -175,11 +188,13 @@ export function TabBar() {
                 draggable
                 onDragStart={e => onDragStart(e, tab.id)}
                 onDragEnd={onDragEnd}
-                onClick={() => !active && activateTab(tab.id)}
+                onClick={() => !active && attemptActivateTab(tab.id)}
                 onMouseDown={e => { if (e.button === 1) e.preventDefault() }}
                 onAuxClick={e => { if (e.button === 1) attemptCloseTab(tab.id) }}
                 onContextMenu={e => { e.preventDefault(); setTabMenu({ x: e.clientX, y: e.clientY, tabId: tab.id }) }}
                 data-testid="tab"
+                data-tab-id={tab.id}
+                data-active={active || undefined}
                 className={[
                   'group flex items-center gap-1.5 h-8 px-3 max-w-[200px] shrink-0 text-xs border-r border-edge transition-colors',
                   active ? 'bg-canvas text-ink' : 'text-ink-3 hover:bg-hover hover:text-ink',
@@ -204,7 +219,7 @@ export function TabBar() {
           {dropIndex === tabs.length && <DropIndicator />}
           <button
             type="button"
-            onClick={() => openTab()}
+            onClick={() => attemptOpenTab()}
             title={t('layout.tabBar.newTab')}
             className="flex items-center justify-center w-8 h-8 shrink-0 text-ink-3 hover:text-ink hover:bg-hover transition-colors"
           >

@@ -49,7 +49,7 @@ export function ParamPicker({ anchor, candidates, canCreate, onPick, onCreate, o
   return (
     <div
       ref={rootRef}
-      className="fixed z-50 w-[340px] bg-surface border border-edge rounded-lg shadow-xl flex flex-col"
+      data-floating-menu className="fixed z-50 w-[340px] bg-surface border border-edge rounded-lg shadow-xl flex flex-col"
       style={{ top, left }}
       onKeyDown={e => {
         if (e.key === 'Escape') { e.preventDefault(); onClose() }

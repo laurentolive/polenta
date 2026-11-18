@@ -186,7 +186,8 @@ export class RequirementsService {
       ? await this.history.stampObject(repoPath, after.objectTypeRef, before, after, `requirements/${after.id}.yaml`, targetRepo, opts.comment)
       : after
     await this.git.writeYaml(targetRepo, `requirements/${stamped.id}.yaml`, auditForWrite(stamped))
-    this.index.upsert(repoPath, stamped)
+    // GH404 — index du repo qui porte le fichier (composant compris), pas celui de l'appelant.
+    this.index.upsert(targetRepo, stamped)
     // Notifications rendues à l'appelant, jamais écrites ni indexées.
     return transitionWarnings.length > 0 ? { ...stamped, transitionWarnings } : stamped
   }

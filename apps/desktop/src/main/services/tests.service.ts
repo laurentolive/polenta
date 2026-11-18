@@ -207,7 +207,8 @@ export class TestsService {
       ? await this.history.stampObject(repoPath, after.objectTypeRef, before, after, `tests/${after.id}.yaml`, targetRepo, opts.comment)
       : after
     await this.git.writeYaml(targetRepo, `tests/${stamped.id}.yaml`, auditForWrite(stamped))
-    this.testsIndex.upsertTestCase(repoPath, stamped)
+    // GH404 — index du repo qui porte le fichier (composant compris), pas celui de l'appelant.
+    this.testsIndex.upsertTestCase(targetRepo, stamped)
     // Notifications rendues à l'appelant, jamais écrites ni indexées.
     return transitionWarnings.length > 0 ? { ...stamped, transitionWarnings } : stamped
   }
@@ -287,7 +288,8 @@ export class TestsService {
     }
 
     await this.git.writeYaml(targetRepo, `test-runs/${testCaseId}/${runId}.yaml`, run)
-    this.testsIndex.upsertRun(repoPath, run)
+    // GH404 — le run est écrit dans le repo du test : c'est son index qui le reçoit.
+    this.testsIndex.upsertRun(targetRepo, run)
     return run
   }
 

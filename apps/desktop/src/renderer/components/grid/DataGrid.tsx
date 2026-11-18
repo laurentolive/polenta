@@ -21,7 +21,7 @@ import { CHECK_COL, EXPAND_COL, type GridColumn } from './gridTypes'
 import type { GridKeyAction } from './gridKeyboard'
 import { groupState, toggleGroup } from './rowSelection'
 import { RowMaxLinesContext, useCellClamp } from './RowClamp'
-import { useColumnFilters } from './useColumnFilters'
+import { useColumnFilters, type ControlledColumnFilters } from './useColumnFilters'
 import { useColumnLayout } from './useColumnLayout'
 import { useGridKeyboard } from './useGridKeyboard'
 import { useGridPrefs, type GridPrefsSource } from './useGridPrefs'
@@ -91,6 +91,10 @@ export interface DataGridProps<R> {
   scrollMemoryKey?: string | null
   /** Grille dans une modale : panneau 👁 au-dessus d'elle. */
   layer?: 'page' | 'modal'
+  /** GH400 — filtres par colonne tenus par l'écran ; absent : état local de la grille. */
+  columnFilters?: ControlledColumnFilters
+  /** GH400 — colonnes affichées en plus de la préférence (ajoutées en fin), sans l'écrire. */
+  forceVisible?: readonly string[]
 }
 
 /** Cellule éditable : grille éditable, colonne avec éditeur, ligne acceptée par la colonne. */
@@ -129,6 +133,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
   const {
     gridId, title, rows, getRowId, columns, prefs: prefSource, migrateColumns, savedViews, toolbarStart, rowFilter, selection,
     onCellEdit, onActivate, renderExpanded, canExpand, expandLabel, expanded: controlledExpanded, onToggleExpanded, rowClassName, groupOf, renderGroup, compact, noColumnPicker, noExport, noReorder, noFreeze, exportRepoPath, scrollMemoryKey, layer,
+    columnFilters, forceVisible,
   } = props
   const { t } = useTranslation()
   const nav = useElementNav()
@@ -141,14 +146,22 @@ export function DataGrid<R>(props: DataGridProps<R>) {
     const list = migrateColumns ? migrateColumns(stored) : stored
     const known = [...new Set(list)].filter(k => byKey.has(k))
     const locked = columns.filter(c => c.locked && !known.includes(c.key)).map(c => c.key)
-    return [...locked, ...known]
-  }, [migrateColumns, byKey, columns])
+    const forced = (forceVisible ?? []).filter(k => byKey.has(k) && !known.includes(k) && !locked.includes(k))
+    return [...locked, ...known, ...forced]
+  }, [migrateColumns, byKey, columns, forceVisible])
   const visibleKey = normalize(prefs.columns).join('\n')
   const visibleKeys = useMemo(() => (visibleKey ? visibleKey.split('\n') : []), [visibleKey])
   const shownCols = useMemo(() => visibleKeys.map(k => byKey.get(k)!), [visibleKeys, byKey])
+  // GH400 — une colonne seulement forcée (`forceVisible`) n'est jamais écrite dans la préférence.
+  const forcedOnlyKey = (forceVisible ?? []).filter(k => !prefs.columns.includes(k)).join('\n')
+  const setPrefColumns = prefs.setColumns
+  const saveOrder = useCallback((order: string[]) => {
+    const forcedOnly = forcedOnlyKey ? forcedOnlyKey.split('\n') : []
+    setPrefColumns(order.filter(k => !forcedOnly.includes(k)))
+  }, [forcedOnlyKey, setPrefColumns])
 
   // ── Filtres ─────────────────────────────────────────────────────────────────
-  const filters = useColumnFilters(visibleKeys, gridId)
+  const filters = useColumnFilters(visibleKeys, gridId, columnFilters)
   const getText = useCallback((row: R, key: string) => byKey.get(key)?.getText(row) ?? '', [byKey])
   const filteredRows = useMemo(
     () => rows.filter(r => (!rowFilter || rowFilter(r)) && matchesColumnFilters(r, filters.active, getText)),
@@ -179,7 +192,7 @@ export function DataGrid<R>(props: DataGridProps<R>) {
     onWidthsChange: prefs.setWidths,
     freezeCount: compact || noFreeze ? 0 : prefs.freezeCount,
     leadingWidth,
-    onReorder: noReorder || compact ? undefined : prefs.setColumns,
+    onReorder: noReorder || compact ? undefined : saveOrder,
   })
   const [freezeMenu, setFreezeMenu] = useState<{ colIdx: number; x: number; y: number } | null>(null)
   const openFreezeMenu = useCallback((colIdx: number, x: number, y: number) => setFreezeMenu({ colIdx, x, y }), [])

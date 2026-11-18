@@ -7,7 +7,8 @@ import type { TestedDriftItem } from './tested-config'
 // tests qui couvrent une exigence (règle T179), plus les entrées en attente des campagnes ouvertes.
 // Données brutes assemblées par le main ; aucun indicateur calculé (GH79).
 
-export type ExecutionHistoryTarget = { testId: string } | { requirementId: string }
+/** GH400 — `objectTypeRef` : exécutions de tous les tests d'un type (vue Exécutions). */
+export type ExecutionHistoryTarget = { testId: string } | { requirementId: string } | { objectTypeRef: string }
 
 export interface ExecutionHistoryRow {
   /** Id du run, ou `pending:<campagne>:<entrée>` pour une entrée en attente. */

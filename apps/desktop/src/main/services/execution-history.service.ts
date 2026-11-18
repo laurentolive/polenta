@@ -26,11 +26,20 @@ export class ExecutionHistoryService {
     const requirementId = 'requirementId' in target ? target.requirementId : undefined
     const tests = requirementId
       ? await this.coveringTests(repoPath, requirementId, allTests)
-      : allTests.filter(t => t.id === (target as { testId: string }).testId)
+      : 'objectTypeRef' in target
+        ? allTests.filter(t => t.objectTypeRef === target.objectTypeRef)   // GH400 — vue Exécutions
+        : allTests.filter(t => t.id === (target as { testId: string }).testId)
 
     // Une erreur de lecture des campagnes remonte : sinon chaque run serait affiché « campagne introuvable ».
     const campaigns = await this.campaigns.list(repoPath)
     const campaignById = new Map(campaigns.map(c => [c.id, c]))
+    // GH400 — run antérieur à GH73 (sans `campaignEntry`) : rattaché à l'entrée qui le désigne.
+    const entryByRunId = new Map<string, NonNullable<TestRun['campaignEntry']>>()
+    for (const campaign of campaigns) {
+      for (const entry of [...campaign.runs, ...(campaign.removedRuns ?? [])]) {
+        if (entry.runId && !entryByRunId.has(entry.runId)) entryByRunId.set(entry.runId, { campaignId: campaign.id, entryId: entry.entryId })
+      }
+    }
     const pendingByTest = new Map<string, { campaign: TestCampaign; entry: CampaignTestRun }[]>()
     for (const campaign of campaigns) {
       if (!isOpenCampaignStatus(campaign.status)) continue
@@ -49,7 +58,7 @@ export class ExecutionHistoryService {
     tests.forEach((test, i) => {
       const base = { testCaseId: test.id, testTitle: test.title, objectTypeRef: test.objectTypeRef }
       for (const run of runsByTest[i]) {
-        if (forTarget(run.requirementId)) rows.push(runRow(run, base, campaignById))
+        if (forTarget(run.requirementId)) rows.push(runRow(run, base, campaignById, entryByRunId))
       }
       for (const { campaign, entry } of pendingByTest.get(test.id) ?? []) {
         if (!forTarget(entry.requirementId)) continue
@@ -94,9 +103,14 @@ export class ExecutionHistoryService {
  * remplacé par un nouvel essai garde sa campagne et son `entryId`, mais ni les données de l'entrée
  * (version, paramètres de l'essai courant) ni le lien d'ouverture (`superseded`).
  */
-function runRow(run: TestRun, base: Pick<ExecutionHistoryRow, 'testCaseId' | 'testTitle' | 'objectTypeRef'>, campaigns: Map<string, TestCampaign>): ExecutionHistoryRow {
+function runRow(
+  run: TestRun,
+  base: Pick<ExecutionHistoryRow, 'testCaseId' | 'testTitle' | 'objectTypeRef'>,
+  campaigns: Map<string, TestCampaign>,
+  entryByRunId: Map<string, NonNullable<TestRun['campaignEntry']>>,
+): ExecutionHistoryRow {
   const row: ExecutionHistoryRow = { key: run.id, kind: 'run', ...base, run }
-  const ref = run.campaignEntry
+  const ref = run.campaignEntry ?? entryByRunId.get(run.id)
   if (!ref) return row
   const campaign = campaigns.get(ref.campaignId)
   if (!campaign) return { ...row, campaignMissing: true }

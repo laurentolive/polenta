@@ -36,8 +36,8 @@ export function ExecutionsSection({ repoPath, projectId, workspaceDir, target, t
         {error && <p className="text-xs text-status-danger">{error instanceof Error ? error.message : String(error)}</p>}
         {data && (
           <ExecutionHistoryGrid repoPath={repoPath} projectId={projectId} history={data} typeKey={typeKey}
-            withTestColumn={'requirementId' in target}
-            title={`${t('executionHistory.title')} ${'requirementId' in target ? target.requirementId : target.testId}`} />
+            withTestColumn={!('testId' in target)}
+            title={`${t('executionHistory.title')} ${'requirementId' in target ? target.requirementId : 'testId' in target ? target.testId : target.objectTypeRef}`} />
         )}
       </div>
     </details>

@@ -2,15 +2,12 @@ import { useEffect, useRef } from 'react'
 import { useTabs } from '../contexts/TabsContext'
 import { IS_MAC } from '../components/layout/sidebarCollapse'
 import { isEditableTarget } from '../lib/editableTarget'
+import { modalOpen } from '../lib/modalOpen'
 import { historyNavDirection, stepHistory } from '../lib/tabHistory'
 
 /** Sous Windows, un bouton latéral de la souris (ou une touche multimédia) arrive à la fois en
  *  événement DOM et en `app-command` du main : le second déclenchement est ignoré. */
 const DEDUP_MS = 300
-
-function modalOpen(): boolean {
-  return !!document.querySelector('[role="dialog"], .fixed.inset-0')
-}
 
 /** GH228 — déclencheurs Précédent / Suivant des navigateurs : raccourcis clavier, boutons
  *  latéraux de la souris, et (desktop) `app-command` Windows / balayage macOS relayés par le

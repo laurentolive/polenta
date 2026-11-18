@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatLinksText, readLinkValues } from '@polenta/types'
 import { LinkEditor } from './LinkEditor'
+import { useAnchoredTop } from '../../hooks/useAnchoredTop'
 
 // GH195 — édition d'un champ `link` depuis une cellule de la vue Excel : popover ancré (position
 // `fixed` calculée par l'appelant, même gabarit que `MultiEnumPopover`). Brouillon local : un clic
@@ -13,13 +14,17 @@ interface Props {
   /** Forme texte `libellé | URL` ; appelé seulement si la valeur a changé. */
   onCommit: (text: string) => void
   onClose: () => void
+  /** GH401 — bas de la cellule + écart, et haut de la cellule : au-dessus s'il ne tient pas dessous. */
+  top: number
+  anchorTop: number
   style: CSSProperties
 }
 
-export function LinkFieldPopover({ value, multiple, onCommit, onClose, style }: Props) {
+export function LinkFieldPopover({ value, multiple, onCommit, onClose, top, anchorTop, style }: Props) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState(value)
   const ref = useRef<HTMLDivElement>(null)
+  const placedTop = useAnchoredTop(ref, top, anchorTop)
   const draftRef = useRef(draft)
   draftRef.current = draft
 
@@ -42,7 +47,7 @@ export function LinkFieldPopover({ value, multiple, onCommit, onClose, style }: 
     <div
       ref={ref}
       data-link-field-popover
-      style={{ ...style, position: 'fixed', zIndex: 50 }}
+      style={{ ...style, top: placedTop, position: 'fixed', zIndex: 50 }}
       className="bg-surface border border-edge rounded shadow-lg p-2 space-y-2"
       onClick={e => e.stopPropagation()}
       onDoubleClick={e => e.stopPropagation()}

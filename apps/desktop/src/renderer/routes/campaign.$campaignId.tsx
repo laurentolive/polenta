@@ -1,4 +1,4 @@
-﻿import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'

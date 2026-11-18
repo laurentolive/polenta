@@ -167,7 +167,7 @@ export function treeRename(root: TypeTreeNode[], id: string, name: string): Type
 }
 
 export function treeFindParentId(root: TypeTreeNode[], id: string): string | null {
-  function search(nodes: TypeTreeNode[], parentId: string | null): string | null {
+  function search(nodes: TypeTreeNode[], _parentId: string | null): string | null {
     for (const n of nodes) {
       if (n.children.some(c => c.id === id)) return n.id
       const found = search(n.children, n.id)

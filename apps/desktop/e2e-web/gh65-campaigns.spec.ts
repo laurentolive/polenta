@@ -56,7 +56,6 @@ test('1.7 — dashboard « Campagnes » privé créé à l\'ouverture de Suivi',
 })
 
 test('1.10 — un résultat saisi met à jour le dashboard ouvert sans action', async () => {
-  const { localPath } = s.project
   await s.openView('Suivi')
   await s.page.getByText('Campagnes', { exact: true }).click()
   await s.page.waitForLoadState('networkidle')

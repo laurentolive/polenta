@@ -1,5 +1,5 @@
 import { initialStatus, isUnknownStatus, prepareFieldsWrite } from '@polenta/types'
-import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
+import type { ProjectSchema } from '@polenta/types'
 import { findObjectTypeDef, findLocalNodeByRefPrefix, findOwningNode } from './schema-lookup.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
 import { fieldValuesErrors } from './field-values.util'

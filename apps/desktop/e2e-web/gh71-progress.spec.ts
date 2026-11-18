@@ -97,7 +97,7 @@ test('W1 / W2 / N1 — widget du seed : étapes ordonnées, drill-down « en rev
   // N1 — ouverture de l'entrée (non exécutée) : campagne filtrée sur son statut brut.
   // GH389 — grille commune : clic = sélection, double-clic = ouverture de la ligne.
   await rows.filter({ hasText: campaign.id }).dblclick()
-  await expect(s.page).toHaveURL(new RegExp(`/campaign/${campaign.id}\?.*status=pending`))
+  await expect(s.page).toHaveURL(new RegExp(`/campaign/${campaign.id}\\?.*status=pending`))
   await expect(s.page.getByText(reviewId, { exact: true })).toBeVisible()
 })
 

@@ -194,6 +194,8 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
+    // GH395 — closeDrop n'appelle que des setters d'état (stables) : pas de dépendance réelle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   // Recompute position on scroll/resize

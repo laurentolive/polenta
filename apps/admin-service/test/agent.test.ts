@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { SocketAgent } from '../src/agent-client'
 
 const require = createRequire(import.meta.url)
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const agent = require('../../../deploy/admin/host-agent/polenta-host-agent.js')
 
 /** Exécuteur simulé : aucune commande réelle, trace des argv. */

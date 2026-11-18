@@ -105,6 +105,7 @@ test('S2b-7 — instance unique : un second lancement transmet le lien à la fen
   const { app, page } = await launch(profile)
   try {
     await expect(page.locator('select')).toBeVisible()
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- chemin du binaire Electron (export CommonJS)
     const electronBin = require('electron') as unknown as string
     const second = spawn(electronBin, [MAIN, inviteLink('itest-testeur')], { env: electronEnv(profile), stdio: 'ignore' })
     await expect(loginInput(page)).toHaveValue('itest-testeur', { timeout: 30_000 })

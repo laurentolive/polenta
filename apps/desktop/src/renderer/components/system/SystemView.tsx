@@ -42,11 +42,11 @@ import { requirementsExportBaseName, testsExportBaseName } from '../export/expor
 import { buildDisplayedExportRows, buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep, type ExtraExportColumns } from '../../lib/exportColumns'
 import type { SchemaFieldType } from '@polenta/types'
 import { normalizeObject } from '../../lib/normalizeObject'
-import type { ObjectCategory, ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Issue, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell, SavedViewRef } from '@polenta/types'
+import type { ObjectLink, LinkTypeDefinition, Issue, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell, SavedViewRef } from '@polenta/types'
 import { flattenSystemNodes, isComputedColumnKey, fieldValueToText } from '@polenta/types'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
-import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
+import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { FieldConfigModal, type ConfigTab } from './FieldConfigModal'
 import { SavedViewsMenu } from './SavedViewsMenu'
 import { layoutPatch, resolveLayout, sameLayout, type ViewLayout } from './savedViewSettings'
@@ -130,9 +130,7 @@ export function SystemView() {
     filterOptions,
     handleInlineEdit,
     pendingEdits,
-    clearPendingEdits,
     clearPendingEditsFor,
-    isEditsDirty,
     editingNodeId,
     setEditingNodeId,
     generateId,
@@ -284,7 +282,7 @@ export function SystemView() {
     return null
   }, [loadedObject, effectiveType?.category])
 
-  const [isCreating, setIsCreating] = useState(false)
+  const [, setIsCreating] = useState(false)
 
   // ── Test steps state (edit view only) ────────────────────────────────────
   const [testSteps, setTestSteps] = useState<StepDraft[]>([])
@@ -394,34 +392,6 @@ export function SystemView() {
     return { ...payload, outline: outline.map((e, i) => ({ ...e, values: values[i] })) }
   }
 
-  const saveInlineEditsMutation = useMutation({
-    mutationFn: async (edits: Record<string, Record<string, string>>) => {
-      const cat = effectiveType?.category
-      if (!cat || !repoPath) return
-      await Promise.all(
-        Object.entries(edits).map(([objectId, changes]) => {
-          const WRITE_BLOCKED = SYSTEM_FIELDS_SET
-          const customChanges = Object.fromEntries(
-            Object.entries(changes).filter(([k]) => !WRITE_BLOCKED.has(k) && k !== 'title' && !isComputedColumnKey(k))
-          )
-          const dto = {
-            ...(changes.title ? { title: changes.title } : {}),
-            ...(Object.keys(customChanges).length > 0 ? { fields: customChanges } : {}),
-          }
-          if (cat === 'requirement') return api.requirements.update(repoPath, objectId, dto)
-          if (cat === 'test') return api.tests.update(repoPath, objectId, dto as UpdateTestCaseDto)
-          if (cat === 'issue') return api.issues.update(repoPath, objectId, dto)
-          return Promise.resolve()
-        })
-      )
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['objects', repoPath, effectiveType?.category, effectiveNodeId, effectiveTypeId] })
-      invalidateCandidateObjects()
-      clearPendingEdits()
-    },
-  })
-
   // ── Steps editing from Word/Excel views ──────────────────────────────────
   const stepsTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
@@ -450,7 +420,7 @@ export function SystemView() {
   const [showFieldConfig, setShowFieldConfig] = useState(false)
   const [visibleFieldsExcel, setVisibleFieldsExcel] = useState<string[]>(['section', 'name', 'id', 'status'])
   const [visibleFieldsWord, setVisibleFieldsWord] = useState<string[]>(['section', 'name', 'id', 'status'])
-  const [visibleFieldsEdit, setVisibleFieldsEdit] = useState<string[]>(['section', 'name', 'id', 'status'])
+  const [, setVisibleFieldsEdit] = useState<string[]>(['section', 'name', 'id', 'status'])
   // GH229 — champs de la popup d'aperçu (onglet « Popup » du panneau ⚙️) ; défaut : aucun.
   const [visibleFieldsPopup, setVisibleFieldsPopup] = useState<string[]>([])
   // T162 — titres de dossiers affichés dans les vues Tableau / Document (par type, persisté avec les colonnes)
@@ -949,7 +919,7 @@ export function SystemView() {
       }
     }
     return true
-  }, [editingObjectId, editingNodeId, editingTreeNode, effectiveType, repoPath, objectData, effectiveNodeId, effectiveTypeId, qc, root, setRoot, invalidateCandidateObjects])
+  }, [editingObjectId, editingNodeId, editingTreeNode, effectiveType, repoPath, objectData, effectiveNodeId, effectiveTypeId, qc, root, setRoot, invalidateCandidateObjects, t])
 
   // GH389 — écriture des préférences du type par la brique commune (`useGridPrefs`) : écriture
   // partielle, appliquée d'abord à l'entrée en cache (partagée avec le sélecteur de tests GH176) puis
@@ -974,11 +944,6 @@ export function SystemView() {
   const handleChangeWord = useCallback((fields: string[]) => {
     setVisibleFieldsWord(fields)
     persistPrefs({ word: fields })
-  }, [persistPrefs])
-
-  const handleChangeEdit = useCallback((fields: string[]) => {
-    setVisibleFieldsEdit(fields)
-    persistPrefs({ edit: fields })
   }, [persistPrefs])
 
   const handleChangePopup = useCallback((fields: string[]) => {

@@ -252,7 +252,6 @@ export class ValidationsService {
       // proposition reste à confirmer, et un signal « à revoir » reste levé jusqu'à la confirmation.
       const existing = validation.entries.find(e => e.requirementId === dto.requirementId)
       if (existing && existing.decision === dto.decision) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { comment, fields, ...kept } = existing
         return withEntry(validation, { ...kept, ...details })
       }
@@ -271,7 +270,6 @@ export class ValidationsService {
       if (!entry) throw new ValidationError('NO_DECISION', requirementId)
       const state = (await requirement(requirementId)).state
       const actor = await this.history.currentActor(repoPath)
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { carriedFrom, proposed, proposedBy, proposedAt, ...rest } = entry
       return withEntry(validation, { ...rest, contentHash: contentHash(state), decidedBy: actor.by, decidedAt: new Date().toISOString() })
     })

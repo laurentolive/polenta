@@ -552,7 +552,6 @@ const InlineCell = memo(function InlineCell({
 const LinkCell = memo(function LinkCell({
   nodeId,
   col,
-  typeName,
   value,
   isOpen,
   freezeStyle,
@@ -961,7 +960,6 @@ function ExcelContextMenu({
 
 function GroupRow({
   node,
-  depth,
   columns,
   isExpanded,
   section,

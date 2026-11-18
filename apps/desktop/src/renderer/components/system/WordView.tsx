@@ -3,7 +3,7 @@ import { memo, useState, useRef, useEffect, useCallback, useMemo, type ReactNode
 import { useTranslation } from 'react-i18next'
 import { ElementLink } from '../element/ElementLink'
 import { ElementRefText } from '../element/elementRefDelegation'
-import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
+import { Pencil, ChevronDown, ChevronRight } from 'lucide-react'
 import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor, linkTypeVisibility } from './LinkTypeEditor'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
@@ -526,6 +526,9 @@ function ItemCard({
   const isLocked = !!typeDef?.statuses?.find(s => s.name === currentStatus)?.isApproval
 
   const [localSteps, setLocalSteps] = useState<StepDraft[]>(steps ?? [])
+  // GH395 — réinitialisé au changement d'élément seulement : les pas en cours d'édition ne sont pas
+  // écrasés par chaque nouvelle valeur de `steps`.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setLocalSteps(steps ?? []) }, [node.id])
 
   const handleStepsChange = (newSteps: StepDraft[]) => {

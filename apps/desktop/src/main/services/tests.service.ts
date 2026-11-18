@@ -56,6 +56,11 @@ export class TestsService {
     return this.testsIndex.findRuns(repoPath, testCaseId)
   }
 
+  /** GH399 — tous les runs du repo, par test (index en mémoire). */
+  async runsMap(repoPath: string): Promise<Map<string, TestRun[]>> {
+    return this.testsIndex.getRunsMap(repoPath)
+  }
+
   async create(repoPath: string, dto: CreateTestCaseDto, workspaceDir?: string): Promise<WithTransitionWarnings<TestCase>> {
     // GH149 — cf. RequirementsService.create : statut initial lu dans le schéma.
     const typeDef = await this.readTypeDef(repoPath, dto.objectTypeRef)

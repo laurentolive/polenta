@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ExecutionHistoryRow, ValidationRow, ValidationSignedRun } from '@polenta/types'
-import { isOpenCampaignStatus } from '@polenta/types'
 import { api } from '../../api'
 import { VERDICT_CLASS, VERDICT_KEY } from '../executions/ExecutionHistoryGrid'
 import { driftText, testedValueText } from '../executions/TestedConfigView'
@@ -63,13 +62,6 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
   if (error && !frozen) return <p className="text-xs text-status-danger">{String(error)}</p>
   if (byTest.length === 0) return <p className="text-xs text-ink-3 italic" data-testid="validation-no-test">{t('validation.noTest')}</p>
 
-  const canOpen = (row: ExecutionHistoryRow) => !!row.campaign && !!row.entry && !row.removed && !row.superseded
-  // Comme la grille d'historique : l'exécution ouverte, ou son résultat si la campagne est fermée.
-  const openRun = (row: ExecutionHistoryRow) => void navigate({
-    to: isOpenCampaignStatus(row.campaign!.status) ? '/campaign/$campaignId/execute/$testId' : '/campaign/$campaignId/run/$testId',
-    params: { campaignId: row.campaign!.id, testId: row.entry!.entryId },
-    search: { repoPath, projectId },
-  } as never)
   // Version testée : lien vers sa page, dans son repo (GH389 §1.8).
   const testedVersion = (row: ExecutionHistoryRow) => {
     const config = row.run?.testedConfig
@@ -134,9 +126,10 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
                 <tr key={row.key} className="border-b border-edge-subtle bg-hover/40" data-testid={`validation-run-${row.key}`}>
                   <td />
                   <td className="py-1 pr-3 whitespace-nowrap text-ink-3">
-                    {canOpen(row)
-                      ? <button type="button" className="text-prim hover:underline" onClick={() => openRun(row)} data-testid={`validation-run-link-${row.key}`}>{row.run ? runDate(row.run.executedAt, 16) : ''}</button>
-                      : row.run ? runDate(row.run.executedAt, 16) : ''}
+                    {/* GH399 — lien d'exécution : popup, page d'exécution ou relecture (règle de `follow`). */}
+                    {row.run
+                      ? <span data-testid={`validation-run-link-${row.key}`}><ElementLink id={row.run.id} className="text-prim">{runDate(row.run.executedAt, 16)}</ElementLink></span>
+                      : ''}
                   </td>
                   <td className="py-1 pr-3">
                     <div className="text-ink-2">{testedVersion(row)}</div>

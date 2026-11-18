@@ -388,6 +388,7 @@ export function createIpcClient(
     // GH197 — historique des exécutions
     executions: {
       history: (p, target, workspaceDir) => invoke('executions:history', p, target, workspaceDir ?? null),
+      runIds: p => invoke('executions:run-ids', p),
     },
     drawio: {
       pickFile: (repoPath) => invoke('dialog:pick-drawio-file', repoPath),

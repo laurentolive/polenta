@@ -1,6 +1,6 @@
 import type { RefObject } from 'react'
 import type { TFunction } from 'i18next'
-import { fieldValueToText, testedDeviations, type ExecutionHistory, type ExecutionHistoryRow, type StepResultValue, type TestedConfigNode, stripRichTextColorTags } from '@polenta/types'
+import { fieldValueToText, isOpenCampaignStatus, testedDeviations, type ExecutionHistory, type ExecutionHistoryRow, type StepResultValue, type TestedConfigNode, stripRichTextColorTags } from '@polenta/types'
 import { RichTextViewer } from '../RichTextViewer'
 import { RunFieldValue } from '../runs/RunFieldValues'
 import { ElementLink } from '../element/ElementLink'
@@ -34,12 +34,10 @@ export const VERDICT_CLASS: Record<string, string> = {
 
 /** Gestes des cellules, lus par une ref : colonnes stables (cellules mémoïsées). */
 export interface ExecutionGestures {
-  open(row: ExecutionHistoryRow): void
   openVersion(versionId: string, versionRepo: string): void
+  /** Entrée en attente d'une campagne ouverte : page d'exécution. */
+  openPending(row: ExecutionHistoryRow): void
 }
-
-/** Ligne ouvrable : entrée vivante d'une campagne (Q5 de GH197) — ni retirée, ni remplacée. */
-export const canOpenRow = (row: ExecutionHistoryRow) => !!row.campaign && !!row.entry && !row.removed && !row.superseded
 
 /** GH202 — composants de la copie, à plat : `chemin = valeur`. */
 function structureLines(node: TestedConfigNode, prefix = ''): string[] {
@@ -120,22 +118,30 @@ export function buildExecutionColumns({ history, withTestColumn, t, language, re
         }
       case 'campaignStatus': return { getText: row => (row.campaign ? t(`executionHistory.campaignStatus.${row.campaign.status}`) : '') }
       case 'entry':
+        // GH399 — lien d'exécution (popup, navigation de `follow`) sur toute ligne de run ; exécution
+        // isolée : son ID, en grisé, à la place de l'entrée. Entrée en attente d'une campagne ouverte :
+        // bouton vers la page d'exécution, comme avant (pas d'exécution à prévisualiser).
         return {
-          getText: entryText,
+          getText: row => (row.entry ? entryText(row) : row.run?.id ?? ''),
           render: row => {
-            if (!row.entry) return ''
-            const clickable = !print && canOpenRow(row)
+            if (!row.entry && !row.run) return ''
+            const text = row.entry?.entryId ?? row.run!.id
+            const textClass = row.entry ? 'font-mono text-status-info' : 'font-mono text-ink-3'
+            const pendingOpen = !print && !row.run && row.campaign && row.entry && isOpenCampaignStatus(row.campaign.status)
             return (
               <span className="inline-flex items-center gap-1">
-                {clickable
-                  ? <button type="button" data-cell-link data-cell-dblclick-ignore className="font-mono text-status-info hover:underline"
-                      onClick={e => { e.stopPropagation(); gestures.current?.open(row) }}>{row.entry.entryId}</button>
-                  : <span className="font-mono">{row.entry.entryId}</span>}
+                {row.run && !print
+                  ? <ElementLink id={row.run.id} className={textClass}>{text}</ElementLink>
+                  : pendingOpen
+                    ? <button type="button" data-cell-link data-cell-dblclick-ignore className="font-mono text-status-info hover:underline"
+                        onClick={e => { e.stopPropagation(); gestures.current?.openPending(row) }}>{text}</button>
+                    : <span className="font-mono">{text}</span>}
                 {row.removed && <span className="text-[10px] px-1 rounded bg-status-neutral-bg text-status-neutral">{t('executionHistory.removed')}</span>}
                 {row.superseded && <span className="text-[10px] px-1 rounded bg-status-neutral-bg text-status-neutral" title={t('executionHistory.supersededTitle')}>{t('executionHistory.superseded')}</span>}
               </span>
             )
           },
+          elementId: row => (print ? undefined : row.run?.id),
         }
       case 'entryRequirement':
         return {

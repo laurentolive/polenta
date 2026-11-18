@@ -546,6 +546,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   // GH200 — diff d'un élément entre deux états (départ → commit, ou disque).
   r.handle('sync:diff-element', (_e, repoPath: string, filepath: string, baseSha: string | null, newSha: string | null) =>
     c.sync.diffElement(repoPath, filepath, baseSha, newSha))
+  // GH399 — ID des exécutions du repo (index des liens d'exécution).
+  r.handle('executions:run-ids', (_e, repoPath: string) => c.executionHistory.runIds(repoPath))
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
     c.executionHistory.history(repoPath, target, workspaceDir))

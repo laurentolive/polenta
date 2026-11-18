@@ -344,7 +344,9 @@ Le texte n'est jamais modifié et le lien affiche ce qui est écrit (pas l'ID af
 reconnaissance dans du code Markdown, le texte d'un lien Markdown, un bloc `drawio`, ni pendant la
 saisie ; les valeurs d'ID affiché personnalisé ne sont pas reconnues. Rendu : règle markdown-it
 `element_refs` (`lib/elementRefs.ts`), décoration Tiptap `ElementRefDecoration` (viewer en lecture
-seule), `ElementRefText` (texte brut) ; gestes délégués au conteneur.
+seule), `ElementRefText` (texte brut) ; gestes délégués au conteneur. **GH399** : un ID d'exécution
+existant (`GHX-0001-run-0003`, pris en entier) devient un lien d'exécution. Un ID d'exécution
+inexistant reste du texte, et l'ID du test qu'il contient n'est pas lié.
 
 ### 3.2h Couleur du texte et surlignage (GH299)
 
@@ -879,7 +881,8 @@ Modification du produit non tracée dans les exigences (bug, non-conformité, é
 
 - **Type et fichier** : catégorie `issue`, plusieurs types par nœud local (« + Issue » du modèle de données) ;
   `issues/<ID>.yaml` du repo du composant : `id`, `objectTypeRef`, `title`, `status`, `version`, `fields`,
-  `origin` (`runs`, `decisions`), `history`. Statuts par défaut : `ouverte`, `en_cours`, `corrigee`, `rejetee`
+  `origin` (`runs`, `decisions`), `history`. Les exécutions d'`origin.runs` sont affichées en liens
+  d'exécution dans la fiche (GH399). Statuts par défaut : `ouverte`, `en_cours`, `corrigee`, `rejetee`
   (`isTerminal`) ; `corrigee` n'est pas terminal, un terminal sortant du backlog.
 - **Pas de verrou** : ni contrôle de contenu, ni incrément de `version`, même avec un statut `isApproval`.
 - **Pas de suppression individuelle** (§9) : statut terminal ; cascade du type (GH104) et renommage (GH100) inclus.

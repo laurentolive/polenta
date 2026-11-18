@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from '../element/ElementLink'
 import type { ObjectTypeDefinition, SchemaField, SchemaFieldType, LinkTypeDefinition, ObjectLink, CoverageStatus, MatrixCell, TestCase } from '@polenta/types'
 import { isFieldRequiredNow, objectFieldReader, statusValueLabels } from '@polenta/types'
 import { api } from '../../api'
@@ -721,8 +722,15 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
               hors du pipeline orderedFields/FieldRow — champ non éditable, pas un SchemaField. */}
           {/* GH244 — exécutions à l'origine de l'issue (lecture seule). */}
           {typeDef?.category === 'issue' && objectData?.['originRuns'] && (
+            // GH399 — liens d'exécution (popup, navigation) ; ID inconnu : texte.
             <p className="text-xs text-ink-3" data-testid="issue-origin">
-              {t('issues.originRuns', { ids: objectData['originRuns'] })}
+              {t('issues.originRunsLabel')}{' '}
+              {String(objectData['originRuns']).split(',').map(s => s.trim()).filter(Boolean).map((runId, i) => (
+                <React.Fragment key={`${i}:${runId}`}>
+                  {i > 0 && ', '}
+                  <ElementLink id={runId} className="font-mono text-prim" />
+                </React.Fragment>
+              ))}
             </p>
           )}
           {typeDef?.category === 'requirement' && objectData && (

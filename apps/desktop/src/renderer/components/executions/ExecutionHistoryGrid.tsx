@@ -1,14 +1,14 @@
 import { useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { isOpenCampaignStatus, type ExecutionHistory, type ExecutionHistoryRow, type SchemaField } from '@polenta/types'
+import type { ExecutionHistory, ExecutionHistoryRow, SchemaField } from '@polenta/types'
 import { RichTextViewer } from '../RichTextViewer'
 import { RunFieldValue } from '../runs/RunFieldValues'
 import { DataGrid } from '../grid/DataGrid'
 import type { ControlledColumnFilters } from '../grid/useColumnFilters'
 import { useGridScrollKey } from '../grid/useGridScrollKey'
 import { defaultExecutionColumns, unionRunFields } from './executionColumns'
-import { buildExecutionColumns, canOpenRow, STEP_KEY, VERDICT_CLASS, type ExecutionGestures } from './executionColumnDefs'
+import { buildExecutionColumns, STEP_KEY, VERDICT_CLASS, type ExecutionGestures } from './executionColumnDefs'
 
 export { VERDICT_CLASS, VERDICT_KEY } from './executionColumnDefs'
 
@@ -41,23 +41,25 @@ export function ExecutionSteps({ row, stepFields, repoPath }: { row: ExecutionHi
   )
 }
 
-/** Ouverture d'une ligne (Q5 de GH197) : page d'exécution si la campagne est ouverte, relecture sinon. */
-export function useExecutionGestures(repoPath: string, projectId?: string) {
+/**
+ * Gestes des cellules : page d'une version testée hors de l'index, page d'exécution d'une entrée en
+ * attente. L'ouverture d'une exécution passe par son lien d'exécution (GH399, `ElementNav.follow`).
+ */
+export function useExecutionCellGestures(repoPath: string, projectId?: string) {
   const navigate = useNavigate()
-  const open = (row: ExecutionHistoryRow) => {
-    if (!canOpenRow(row)) return
-    const execute = isOpenCampaignStatus(row.campaign!.status)
+  const openVersion = (versionId: string, versionRepo: string) =>
+    void navigate({ to: '/version/$versionId', params: { versionId }, search: { projectId: projectId ?? '', repoPath: versionRepo } } as never)
+  const openPending = (row: ExecutionHistoryRow) => {
+    if (!row.campaign || !row.entry) return
     void navigate({
-      to: execute ? '/campaign/$campaignId/execute/$testId' : '/campaign/$campaignId/run/$testId',
-      params: { campaignId: row.campaign!.id, testId: row.entry!.entryId },
+      to: '/campaign/$campaignId/execute/$testId',
+      params: { campaignId: row.campaign.id, testId: row.entry.entryId },
       search: { repoPath, projectId: projectId ?? '' },
     } as never)
   }
-  const openVersion = (versionId: string, versionRepo: string) =>
-    void navigate({ to: '/version/$versionId', params: { versionId }, search: { projectId: projectId ?? '', repoPath: versionRepo } } as never)
   // Gestes lus par une ref : colonnes stables (cellules mémoïsées).
-  const gestures = useRef<ExecutionGestures>({ open, openVersion })
-  gestures.current = { open, openVersion }
+  const gestures = useRef<ExecutionGestures>({ openVersion, openPending })
+  gestures.current = { openVersion, openPending }
   return gestures
 }
 
@@ -88,7 +90,7 @@ interface Props {
 export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, withTestColumn, title, prefView = 'executions', defaults: viewDefaults, columnFilters, forceVisible, noColumnPicker, fill }: Props) {
   const { t, i18n } = useTranslation()
   const scrollKey = useGridScrollKey(prefView === 'executions' ? 'executions' : `executions-${prefView}`)
-  const gestures = useExecutionGestures(repoPath, projectId)
+  const gestures = useExecutionCellGestures(repoPath, projectId)
 
   const columns = useMemo(
     () => buildExecutionColumns({ history, withTestColumn, t, language: i18n.language, repoPath, gestures }),

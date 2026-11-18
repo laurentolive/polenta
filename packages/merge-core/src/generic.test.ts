@@ -9,6 +9,7 @@ import {
 
 const labels = { left: 'dev-x', right: 'integration' }
 const dump = (o: unknown) => yaml.dump(o, YAML_DUMP_OPTIONS)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- accès libre aux YAML fusionnés dans les assertions
 const loadOut = (s: string) => yaml.load(s) as Record<string, any>
 
 describe('YAML générique — schema.yaml', () => {

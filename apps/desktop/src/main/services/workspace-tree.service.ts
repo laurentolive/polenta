@@ -36,18 +36,6 @@ import { safeCheckout } from './safe-checkout.util'
 
 // ── Internal types ────────────────────────────────────────────────────────────
 
-/** A flat dependency record collected during pass-1. */
-interface FlatDep {
-  /** Mount name (directory name). */
-  name: string
-  url: string
-  pin: string
-  /** The parent repo name that declared this dependency. */
-  requiredBy: string
-  /** Absolute path to the parent repo. */
-  parentPath: string
-}
-
 /** Intermediate graph node built during pass-1. */
 interface GraphNode {
   name: string

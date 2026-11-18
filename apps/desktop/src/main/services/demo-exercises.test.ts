@@ -18,7 +18,7 @@ const GENERATOR = path.join(ROOT, 'scripts/demo-lave-linge/generate.mjs')
 const TSX_CLI = createRequire(__filename).resolve('tsx/cli')
 
 let template: string
-let copies: string[] = []
+const copies: string[] = []
 
 beforeAll(() => {
   template = fs.mkdtempSync(path.join(os.tmpdir(), 'gh278-ex-'))
@@ -76,7 +76,7 @@ describe('GH278 — exercices à refus', () => {
   }, 60_000)
 
   it('tutoriel 4 : un test du moteur reste hors des campagnes produit, il a sa campagne moteur', async () => {
-    const { ws, product, motor, app } = await demo()
+    const { product, motor, app } = await demo()
     // Le sélecteur de tests d'une campagne liste les tests du dépôt (`tests:list`).
     const offered = (await app.tests.findAll(product)).map(t => t.id)
     expect(offered).toContain('TSYS-0001')

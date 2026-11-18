@@ -144,7 +144,7 @@ export function useWorkspaceLinks(currentProjectId: string | undefined): Workspa
     } finally {
       invalidate()
     }
-  }, [rootRepoPath, workspaceDir, invalidate]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rootRepoPath, workspaceDir, invalidate])
 
   const deleteLink = useCallback(async (linkId: string) => {
     if (!rootRepoPath) notReady()
@@ -154,7 +154,7 @@ export function useWorkspaceLinks(currentProjectId: string | undefined): Workspa
     } finally {
       invalidate()
     }
-  }, [rootRepoPath, workspaceDir, invalidate]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rootRepoPath, workspaceDir, invalidate])
 
   return {
     rootRepoPath, workspaceDir, linkTypes, typesLoaded: !!types, declaredBy,

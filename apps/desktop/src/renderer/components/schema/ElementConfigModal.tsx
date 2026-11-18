@@ -95,6 +95,9 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
     setPrefixError(null)
   }
 
+  // GH395 — recréée à chaque rendu : l'effet clavier ci-dessous se réabonne à chaque rendu et voit
+  // toujours le brouillon courant (comportement voulu, inchangé).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleSave = () => {
     if (draft.prefix && existingPrefixes.has(draft.prefix)) {
       setPrefixError(t('schema.elementConfig.prefixInUse', { prefix: draft.prefix }))
@@ -103,6 +106,8 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
     onSave(draft)
   }
 
+  // GH395 — même raison que handleSave (effet clavier réabonné à chaque rendu).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const requestClose = () => {
     // Same "confirm if dirty" rule for new and existing elements alike — a new
     // element the user has actually filled in is real work too. Only an

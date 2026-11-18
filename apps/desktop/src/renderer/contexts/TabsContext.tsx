@@ -353,7 +353,6 @@ export function TabsProvider({ children }: Props) {
     }
 
     if (currentProjectId !== null) lastNonNullProjectId.current = currentProjectId
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId, pathname, t])
 
   function openTab(pathname?: string, searchParams?: Record<string, string>) {

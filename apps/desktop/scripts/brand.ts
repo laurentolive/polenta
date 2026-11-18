@@ -19,6 +19,7 @@ const ID_RE = /^[a-z0-9-]+$/
 const RGB_RE = /^(\d{1,3}) (\d{1,3}) (\d{1,3})$/
 // productName nomme le dossier userData, le raccourci et l'exécutable : caractères interdits dans un
 // nom de fichier Windows exclus, ainsi qu'un point ou une espace finale.
+// eslint-disable-next-line no-control-regex -- caractères de contrôle interdits dans un nom de fichier Windows
 const FILE_NAME_FORBIDDEN_RE = /[<>:"/\\|?*\u0000-\u001f]|[. ]$/
 const ICON_FILES = { ico: 'icon.ico', png: 'icon.png', png256: 'icon-256.png', svg: 'icon.svg' } as const
 

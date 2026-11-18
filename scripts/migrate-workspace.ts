@@ -123,7 +123,6 @@ function migrate(repoPath: string): void {
   // 4. Remove url and branch from nodes in schema.yaml
   const updatedNodes = schema.nodes.map(n => {
     if (!n.url) return n
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { url: _url, branch: _branch, ...rest } = n
     return rest
   })

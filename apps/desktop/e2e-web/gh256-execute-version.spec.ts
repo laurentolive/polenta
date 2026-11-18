@@ -45,7 +45,7 @@ test.beforeAll(async () => {
 
   const root = schema.nodes.find(n => n.name === 'root')!
   const versionType = typeOfCategory(root, 'version', { name: 'web-version', label: 'Version', prefix: 'WVR', category: 'version', fields: [], statuses: statuses({ name: 'en_cours' }, { name: 'released', isApproval: true }) } as TypeLike)
-  const issueType = typeOfCategory(root, 'issue', { name: 'web-issue', label: 'Issue', prefix: 'WIS', category: 'issue', fields: [], statuses: statuses({ name: 'ouverte' }) } as TypeLike)
+  typeOfCategory(root, 'issue', { name: 'web-issue', label: 'Issue', prefix: 'WIS', category: 'issue', fields: [], statuses: statuses({ name: 'ouverte' }) } as TypeLike)
   await s.invoke('schema:save', localPath, schema)
   fs.mkdirSync(path.join(localPath, 'versions'), { recursive: true })
   fs.writeFileSync(path.join(localPath, 'versions', `${VERSION_ID}.yaml`), [

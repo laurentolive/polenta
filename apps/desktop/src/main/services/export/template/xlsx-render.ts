@@ -19,7 +19,7 @@ interface SheetInfo {
  *  depuis le contenu d'un champ). Préfixées d'un espace insécable de largeur nulle : affichées telles
  *  quelles, jamais évaluées. */
 function neutralizeFormulas<T>(value: T): T {
-  if (typeof value === 'string') return (value.startsWith('=') ? `​${value}` : value) as T
+  if (typeof value === 'string') return (value.startsWith('=') ? `\u200B${value}` : value) as T
   if (Array.isArray(value)) return value.map(neutralizeFormulas) as T
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, neutralizeFormulas(v)])) as T

@@ -130,6 +130,9 @@ export function gitEnv(opts: GitEnvOptions = {}, base: NodeJS.ProcessEnv = proce
     env.LC_ALL = 'C'
     env.LANGUAGE = 'C'
     env.GCM_INTERACTIVE = 'never'
+    // Les chemins passés par Polenta sont des noms de fichiers, jamais des motifs : `a[1].yaml` ne doit
+    // pas viser `a1.yaml` (add, restore, status, log…). Le terminal garde les pathspecs usuels.
+    env.GIT_LITERAL_PATHSPECS = '1'
   }
   if (opts.readOnly) env.GIT_OPTIONAL_LOCKS = '0'
   if (opts.extra) Object.assign(env, opts.extra)

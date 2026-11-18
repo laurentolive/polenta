@@ -157,7 +157,9 @@ rejetée §11).
 - `createBranch(name, start)` ; `deleteBranch(name, { force })` ; `tag(name, target)` ;
   `annotatedTag(name, target, message, tagger)` ; `deleteTag(name)`
 - `checkout(rev, { detach?, create? })` : fichiers écrits par Polenta (`node-checkout.ts`, Defender
-  épargné, GH337-sprint0.md § Essai), repli sur `git checkout` hors du chemin simple ;
+  épargné, GH337-sprint0.md § Essai), repli sur `git checkout` hors du chemin simple. Windows
+  seulement : Defender n'existe que là, et `check-attr --source` exige git ≥ 2.40 (Docker : 2.39) ;
+  ailleurs, `git checkout` ;
   `resetHard(rev)` ; `resetSoft(rev)`
 - `mergeFastForward(target)` (`merge --ff-only`)
 

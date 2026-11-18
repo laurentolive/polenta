@@ -30,6 +30,10 @@ RUN cd apps/desktop \
 FROM node:20-bookworm-slim
 WORKDIR /app
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# GH337 — git natif (moteur de Polenta, hors Windows : le `git` du PATH, ≥ 2.38 ; bookworm : 2.39).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git openssh-client \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/runtime-package.json /app/runtime/package.json
 # Dépendances directes aux versions exactes du lockfile pnpm ; leurs dépendances transitives sont
 # résolues au build (pas de lockfile npm) : une image est construite une fois par version, testée

@@ -1,6 +1,17 @@
 import * as fs from 'fs'
 import git from 'isomorphic-git'
+
+import { gitFor } from '../git/git-backend'
 import { assertNotVersionTag, frozenVersionTags } from './version-tags.util'
+
+/** Noms des tags du dépôt (`[]` hors dépôt, comme `listTags` d'isomorphic-git dans un `.catch`). */
+async function listTagNames(repoPath: string): Promise<string[]> {
+  try {
+    return await gitFor(repoPath).refNames('refs/tags')
+  } catch {
+    return []
+  }
+}
 
 export interface BaselineComponentRecord {
   name: string
@@ -34,8 +45,7 @@ export interface CreateBaselineDto {
 export class BaselineService {
   private async tagExists(repoPath: string, tag: string): Promise<boolean> {
     try {
-      await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${tag}` })
-      return true
+      return (await gitFor(repoPath).resolve(`refs/tags/${tag}`)) !== null
     } catch {
       return false
     }
@@ -47,20 +57,23 @@ export class BaselineService {
    * commit sha, message and tagger date. Falls back to a lightweight tag (oid is the commit itself).
    */
   private async readTagMeta(repoPath: string, tag: string): Promise<{ createdAt: string; message: string }> {
+    const epoch = { createdAt: new Date(0).toISOString(), message: '' }
     try {
-      const oid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${tag}` })
-      try {
-        const { tag: tagObj } = await git.readTag({ fs, dir: repoPath, oid })
+      const g = gitFor(repoPath)
+      const ref = `refs/tags/${tag}`
+      const oid = await g.resolve(ref)
+      if (!oid) return epoch
+      const tagObj = await g.readTag(oid)
+      if (tagObj?.tagger) {
         return {
           createdAt: new Date(tagObj.tagger.timestamp * 1000).toISOString(),
           message: tagObj.message.trim(),
         }
-      } catch {
-        const { commit } = await git.readCommit({ fs, dir: repoPath, oid })
-        return { createdAt: new Date(commit.committer.timestamp * 1000).toISOString(), message: '' }
       }
+      const commit = await g.readCommit(ref) // `ref^{commit}` : tag annoté sans tagger pelé
+      return commit ? { createdAt: new Date(commit.committer.timestamp * 1000).toISOString(), message: '' } : epoch
     } catch {
-      return { createdAt: new Date(0).toISOString(), message: '' }
+      return epoch
     }
   }
 
@@ -76,7 +89,7 @@ export class BaselineService {
   async list(repoPath: string, components: BaselineComponentRef[] = []): Promise<BaselineRecord[]> {
     // GH268 — le tag d'une version n'est pas une baseline, même sans composants.
     const versionTags = await frozenVersionTags(repoPath)
-    const mainTags = (await git.listTags({ fs, dir: repoPath }).catch(() => [] as string[])).filter(tag => !versionTags.has(tag))
+    const mainTags = (await listTagNames(repoPath)).filter(tag => !versionTags.has(tag))
 
     const results = await Promise.all(
       mainTags.map(async tag => {

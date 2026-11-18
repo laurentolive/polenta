@@ -1,13 +1,11 @@
-import * as fs from 'fs'
 import * as fsPromises from 'fs/promises'
 import * as path from 'path'
-import { execFile } from 'child_process'
-import git from 'isomorphic-git'
 import { prepareRunFields } from '@polenta/types'
 import type {
   CampaignTestRun, ProjectSchema, ResultsImportErrorCode, ResultsImportItem, ResultsImportReason, ResultsImportRejection,
   ResultsImportReport, ResultsImportWarning, TestCampaign, TestCase, TestRun, TestRunResult, WorkspaceLink, WorkspaceObject,
 } from '@polenta/types'
+import { gitFindRoot, gitFor } from '../git/git-backend'
 import type { CampaignsService } from './campaigns.service'
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
@@ -73,22 +71,13 @@ const sameEntry = (run: TestRun, campaignId?: string, entryId?: string) =>
 
 /**
  * `user.name` de la config git du dépôt qui contient `repoPath` (un projet peut en être un
- * sous-dossier) : `git config` (local, worktree, global), sinon lecture directe du dépôt
- * (isomorphic-git, sans binaire git).
+ * sous-dossier) : git embarqué (GH337), config locale du dépôt puis config globale de Polenta
+ * (compte actif) ; `''` si absent ou illisible.
  */
 export async function gitUserName(repoPath: string): Promise<string> {
-  const viaCli = await new Promise<string | null>(resolve => {
-    execFile('git', ['config', 'user.name'], { cwd: repoPath, timeout: 5000, windowsHide: true }, (err, stdout) => {
-      // Code 1 : clé absente, réponse fiable ; autre échec (git absent…) : repli.
-      if (err) resolve((err as { code?: unknown }).code === 1 ? '' : null)
-      else resolve(stdout.trim())
-    })
-  })
-  if (viaCli !== null) return viaCli
   try {
-    const dir = await git.findRoot({ fs, filepath: repoPath })
-    const name = await git.getConfig({ fs, dir, path: 'user.name' })
-    return typeof name === 'string' ? name.trim() : ''
+    const root = (await gitFindRoot(repoPath)) ?? repoPath
+    return (await gitFor(root).config('user.name'))?.trim() ?? ''
   } catch {
     return ''
   }

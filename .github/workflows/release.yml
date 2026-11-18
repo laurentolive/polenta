@@ -138,6 +138,15 @@ jobs:
             exit 1
           fi
 
+      # GH337 — git embarqué (PortableGit élagué, SHA-256 vérifié) : vendor/git est ignoré par git,
+      # il faut le télécharger avant l'empaquetage (extraResources vendor/git → resources/git).
+      - name: Fetch embedded git
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          pnpm git:fetch
+          test -f vendor/git/ucrt64/bin/git.exe || test -f vendor/git/mingw64/bin/git.exe
+
       - name: Package desktop app
         working-directory: apps/desktop
         env:

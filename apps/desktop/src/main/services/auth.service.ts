@@ -1,10 +1,9 @@
 import { randomBytes } from 'crypto'
-import * as fs from 'fs'
 import * as fsPromises from 'fs/promises'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import type { ForgeAccount, ForgeDetection, ForgeIdentity, ForgeKind, PasswordLoginResult } from '@polenta/types'
 
+import { gitFor } from '../git/git-backend'
 import type { GitAuthor } from './git.service'
 import type { HostContext } from '../host/host-context'
 import { migrateLocalPref } from './pref-store.util'
@@ -563,8 +562,8 @@ export class AuthService {
 
 async function getOriginUrl(repoPath: string): Promise<string | null> {
   try {
-    const remotes = await git.listRemotes({ fs, dir: repoPath })
-    return remotes.find(r => r.remote === 'origin')?.url ?? null
+    const remotes = await gitFor(repoPath).remotes()
+    return remotes.find(r => r.name === 'origin')?.url ?? null
   } catch {
     return null
   }

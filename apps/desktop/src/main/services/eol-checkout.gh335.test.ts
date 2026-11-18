@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AuthService } from './auth.service'
 import { SyncService } from './sync.service'
 import { eolAwareStatusMatrix } from './eol-status.util'
+import { GITATTRIBUTES_CONTENT } from './repo-conformity.util'
 
 /**
  * GH335 — checkout bloqué par des fichiers qui ne diffèrent de HEAD que par les fins de ligne
@@ -31,6 +32,8 @@ beforeEach(async () => {
   repo = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh335-'))
   sync = new SyncService({ getAuthor: async () => AUTHOR } as unknown as AuthService)
   await git.init({ fs, dir: repo, defaultBranch: 'main' })
+  // GH337 — règle EOL portée par .gitattributes (spec §4.3)
+  await write('.gitattributes', GITATTRIBUTES_CONTENT)
   await write('tree.yaml', 'a: 1\nb: 1\n')
   await write('other.yaml', 'x: 1\n')
   await commitAll('base')

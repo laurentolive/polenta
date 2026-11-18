@@ -6,6 +6,7 @@ import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { AuthService } from './auth.service'
+import { GITATTRIBUTES_CONTENT } from './repo-conformity.util'
 import { SyncService } from './sync.service'
 
 /**
@@ -39,6 +40,8 @@ beforeEach(async () => {
   repo = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh296-'))
   sync = new SyncService({ getAuthor: async () => AUTHOR } as unknown as AuthService)
   await git.init({ fs, dir: repo, defaultBranch: 'main' })
+  // GH337 — règle EOL portée par .gitattributes (spec §4.3)
+  await write('.gitattributes', GITATTRIBUTES_CONTENT)
   await write('lf.yaml', LF)
   await write('other.yaml', LF)
   await write('crlf-in-git.js', CRLF)
@@ -57,9 +60,12 @@ describe('GH296 — statut', () => {
     expect(status.staged).toEqual([])
   })
 
-  it('un fichier CRLF dans git, LF sur le disque, n\'est pas modifié', async () => {
+  // GH337 — spec §3.1 « mêmes résultats que git en ligne de commande » : avec `* text=auto eol=lf`,
+  // git normalise le disque (LF) avant de le comparer au blob CRLF : contenus différents, donc modifié.
+  // (Ancien comportement GH296, propre à isomorphic-git : non modifié. À confirmer à la validation.)
+  it('un fichier CRLF dans git, LF sur le disque : modifié, comme pour git en ligne de commande', async () => {
     await write('crlf-in-git.js', LF)
-    expect((await sync.status(repo)).unstaged).toEqual([])
+    expect((await sync.status(repo)).unstaged).toEqual([{ path: 'crlf-in-git.js', marker: 'M' }])
   })
 
   it('un vrai changement reste signalé, même en CRLF', async () => {

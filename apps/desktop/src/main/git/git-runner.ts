@@ -1,4 +1,5 @@
 import { spawn } from 'child_process'
+import { appendFileSync } from 'fs'
 
 import { gitInstall } from './git-binary'
 import { gitEnv, type GitEnvOptions } from './git-config'
@@ -35,6 +36,11 @@ const writeQueues = new Map<string, Promise<unknown>>()
 
 export { repoKey }
 
+/** Une écriture de Polenta est en cours ou en file sur `repo`. */
+export function isRepoWriteBusy(repo: string): boolean {
+  return writeQueues.has(repoKey(repo))
+}
+
 /** Sérialise `fn` derrière les écritures en cours sur `repo`. */
 export function withRepoWriteLock<T>(repo: string, fn: () => Promise<T>): Promise<T> {
   const key = repoKey(repo)
@@ -57,7 +63,21 @@ export async function gitText(cwd: string, args: string[], opts: RunOptions = {}
   return (await runGit(cwd, args, opts)).stdout.toString('utf8')
 }
 
+/**
+ * Nombre de processus lancés par sous-commande (mesures : chaque lancement coûte ~50 à 140 ms sous
+ * Windows). `POLENTA_GIT_SPAWN_STATS=<fichier>` y ajoute une ligne par lancement (sous-commande).
+ */
+export const gitSpawnStats = new Map<string, number>()
+const statsFile = process.env.POLENTA_GIT_SPAWN_STATS
+
+/** Compte un lancement de git (ponctuel ici, persistant dans `cat-file-batch`). */
+export function countGitSpawn(sub: string): void {
+  gitSpawnStats.set(sub, (gitSpawnStats.get(sub) ?? 0) + 1)
+  if (statsFile) appendFileSync(statsFile, `${sub}\n`)
+}
+
 function spawnGit(cwd: string, args: string[], opts: RunOptions): Promise<RunResult> {
+  countGitSpawn(args.find((a, i) => !a.startsWith('-') && args[i - 1] !== '-c') ?? '?')
   const { gitExe } = gitInstall()
   const env = gitEnv({ readOnly: !opts.write, ...opts.env })
   return new Promise<RunResult>((resolve, reject) => {

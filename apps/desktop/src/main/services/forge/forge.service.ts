@@ -1,13 +1,12 @@
-import * as fs from 'fs'
 import * as fsPromises from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import type {
   CreateRepoInput, DefaultBranchOutcome, ForgeAccount, ForgeKind, ForgeMember, ForgeMemberSuggestion, ForgeOwners, ForgeRepo,
   ForgeRepoAccess, ForgeRepoDetails, ForgeTeam, RepoAccessLevel, RepoMemberGrant, RepoSettings, RepoVisibility,
 } from '@polenta/types'
 
+import { gitFor } from '../../git/git-backend'
 import type { AuthService } from '../auth.service'
 import type { SyncService } from '../sync.service'
 import type { WorkspaceService } from '../workspace.service'
@@ -419,8 +418,8 @@ function providerFor(kind: ForgeKind): ForgeProvider | null {
 
 async function originUrl(repoPath: string): Promise<string | null> {
   try {
-    const remotes = await git.listRemotes({ fs, dir: repoPath })
-    return remotes.find(r => r.remote === 'origin')?.url ?? null
+    const remotes = await gitFor(repoPath).remotes()
+    return remotes.find(r => r.name === 'origin')?.url ?? null
   } catch {
     return null
   }

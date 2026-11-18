@@ -160,6 +160,40 @@ async function pool<T>(items: T[], n: number, fn: (item: T) => Promise<void>): P
   }))
 }
 
+/** Fichiers (chemins `/`, relatifs à `root`) sous le dossier `rel`. */
+async function filesUnder(root: string, rel: string): Promise<string[]> {
+  const out: string[] = []
+  const walk = async (r: string): Promise<void> => {
+    for (const e of await fs.promises.readdir(path.join(root, ...r.split('/')), { withFileTypes: true })) {
+      const child = `${r}/${e.name}`
+      if (e.isDirectory()) await walk(child)
+      else out.push(child)
+    }
+  }
+  await walk(rel)
+  return out
+}
+
+/** Premier chemin à écrire qui heurterait un dossier ou un fichier restant sur le disque, ou `null`. */
+async function findDirFileConflict(root: string, writes: string[], deleted: Set<string>): Promise<string | null> {
+  const stat = (rel: string): Promise<fs.Stats | null> =>
+    fs.promises.lstat(path.join(root, ...rel.split('/'))).catch(() => null)
+  const checkedParents = new Set<string>()
+  for (const p of writes) {
+    const st = await stat(p)
+    if (st?.isDirectory() && (await filesUnder(root, p)).some(f => !deleted.has(f))) return p
+    const parts = p.split('/')
+    for (let i = 1; i < parts.length; i++) {
+      const parent = parts.slice(0, i).join('/')
+      if (checkedParents.has(parent)) continue
+      checkedParents.add(parent)
+      const ps = await stat(parent)
+      if (ps && !ps.isDirectory() && !deleted.has(parent)) return p
+    }
+  }
+  return null
+}
+
 async function removeEmptyParents(root: string, file: string): Promise<void> {
   let dir = path.dirname(file)
   while (dir.length > root.length && dir.startsWith(root)) {
@@ -215,6 +249,12 @@ export function nodeCheckout(dir: string, target: string, opts: NodeCheckoutOpti
     if (blocked) return fallback(`fichier non suivi : ${blocked.path}`)
 
     const writes = changes.filter(c => c.status !== 'D')
+    // Conflits dossier / fichier, vérifiés avant de toucher au disque (rien n'est annulable ensuite) :
+    // un fichier à écrire là où resterait un dossier (fichiers ignorés ou non suivis), ou sous un
+    // « dossier » qui est un fichier non supprimé. git checkout les traite (ou refuse proprement).
+    const deleted = new Set(changes.filter(c => c.status === 'D').map(c => c.path))
+    const dfConflict = await findDirFileConflict(dir, writes.map(c => c.path), deleted)
+    if (dfConflict) return fallback(`conflit dossier / fichier : ${dfConflict}`)
     let contents: Buffer[] = []
     if (writes.length) {
       const [attrOut, blobOut] = await Promise.all([

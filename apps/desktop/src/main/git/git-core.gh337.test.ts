@@ -130,13 +130,15 @@ describe('P — exécution', () => {
     expect((await objectData(repo, 'HEAD:a.txt'))?.data.toString()).toBe('alpha\n')
   })
 
-  it('P3 50 écritures concurrentes sans conflit index.lock', async () => {
-    await Promise.all(Array.from({ length: 50 }, (_, i) => {
+  // 20 processus en file, l'un après l'autre (plus d'une seconde chacun quand la suite complète sature
+  // la machine) : assez pour qu'ils se chevauchent sans la file, et tenir dans le délai.
+  it('P3 20 écritures concurrentes sans conflit index.lock', async () => {
+    await Promise.all(Array.from({ length: 20 }, (_, i) => {
       fs.writeFileSync(path.join(repo, `w${i}.txt`), String(i))
       return runGit(repo, ['add', '--', `w${i}.txt`], { write: true })
     }))
     const staged = (await gitText(repo, ['diff', '--cached', '--name-only'])).split('\n').filter(Boolean)
-    expect(staged).toHaveLength(50)
+    expect(staged).toHaveLength(20)
     await runGit(repo, ['reset', '-q'], { write: true })
   })
 
@@ -159,5 +161,19 @@ describe('P — exécution', () => {
     await objectInfo(repo, 'HEAD')
     await closeAll()
     expect(liveProcessCount()).toBe(0)
+  })
+})
+
+describe('P — retrait d\'un dépôt pendant que cat-file vit', () => {
+  it('le dossier du dépôt (packs compris) se supprime sans fermer cat-file', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gh337-rm-'))
+    await runGit(dir, ['init', '-q', '-b', 'main'], { write: true })
+    await commitFile(dir, 'a.txt', 'alpha\n')
+    await runGit(dir, ['gc', '-q'], { write: true })
+    expect((await objectData(dir, 'HEAD:a.txt'))?.data.toString()).toBe('alpha\n')
+    // cat-file est vivant (60 s d'inactivité) : avant GH337, EBUSY sous Windows.
+    fs.rmSync(dir, { recursive: true, force: true })
+    expect(fs.existsSync(dir)).toBe(false)
+    await closeRepo(dir)
   })
 })

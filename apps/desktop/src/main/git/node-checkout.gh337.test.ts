@@ -22,7 +22,10 @@ function mk(): { dir: string; g: GitBackend } {
 async function commit(dir: string, g: GitBackend, files: Record<string, string | null>): Promise<string> {
   for (const [f, c] of Object.entries(files)) {
     const p = path.join(dir, f)
-    if (c === null) fs.rmSync(p)
+    if (c === null) {
+      fs.rmSync(p)
+      try { fs.rmdirSync(path.dirname(p)) } catch { /* dossier non vide */ }
+    }
     else { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, c) }
   }
   await g.addAll()
@@ -123,5 +126,41 @@ describe('nodeCheckout', () => {
     expect(await nodeCheckout(dir, 'feature')).toBe(false)
     expect(fs.readFileSync(path.join(dir, 'new/dir/y.txt'), 'utf8')).toBe('local\n')
     expect(await g.currentBranch()).toBe('main')
+  })
+
+  it('rend la main, sans rien toucher, sur un dossier remplacé par un fichier qui garde un fichier ignoré', async () => {
+    const { dir, g } = mk()
+    await g.init('main')
+    await commit(dir, g, { '.gitignore': 'a/cache\n', 'a/x.txt': 'x\n', 'b.txt': 'b\n' })
+    await g.createBranch('feature')
+    await g.checkout('feature')
+    await commit(dir, g, { 'a/x.txt': null, 'a': 'fichier\n', 'b.txt': 'b2\n' })
+    await g.checkout('main')
+    fs.writeFileSync(path.join(dir, 'a/cache'), 'ignoré\n')
+    const before = tree(dir)
+    const reasons: string[] = []
+    expect(await nodeCheckout(dir, 'feature', { onFallback: r => reasons.push(r) })).toBe(false)
+    expect(reasons[0]).toMatch(/conflit dossier \/ fichier : a$/)
+    expect(tree(dir)).toEqual(before)
+    expect(await g.currentBranch()).toBe('main')
+  })
+
+  it('dossier remplacé par un fichier, sans reste : écrit par Polenta, comme git checkout', async () => {
+    const make = async (): Promise<{ dir: string; g: GitBackend }> => {
+      const r = mk()
+      await r.g.init('main')
+      await commit(r.dir, r.g, { 'a/x.txt': 'x\n', 'b.txt': 'b\n' })
+      await r.g.createBranch('feature')
+      await r.g.checkout('feature')
+      await commit(r.dir, r.g, { 'a/x.txt': null, 'a': 'fichier\n' })
+      await r.g.checkout('main')
+      return r
+    }
+    const ref = await make()
+    const exp = await make()
+    await exp.g.checkout('feature')
+    expect(await nodeCheckout(ref.dir, 'feature')).toBe(true)
+    expect(tree(ref.dir)).toEqual(tree(exp.dir))
+    expect(await ref.g.status()).toEqual([])
   })
 })

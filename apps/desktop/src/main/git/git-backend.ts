@@ -2,9 +2,9 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
-import { objectData, objectInfo, type ObjectInfo } from './cat-file-batch'
+import { objectData, objectInfo, resolveGitDir, type ObjectInfo } from './cat-file-batch'
 import { GitError, isGitError } from './git-errors'
-import { gitText, repoKey, runGit, splitZ, type RunOptions } from './git-runner'
+import { gitText, isRepoWriteBusy, repoKey, runGit, splitZ, withRepoWriteLock, type RunOptions } from './git-runner'
 import { closeRepo } from './process-registry'
 
 /**
@@ -112,6 +112,26 @@ function parseTagObject(oid: string, data: Buffer): TagInfo {
   return t
 }
 
+/**
+ * Objet arbre brut (`<mode> <nom>\0<oid binaire>` répété) → entrées, chemins préfixés par `base`.
+ * Modes affichés comme `ls-tree` (`040000` pour un dossier).
+ */
+export function parseTreeObject(data: Buffer, base: string, oidBytes = 20): TreeEntry[] {
+  const out: TreeEntry[] = []
+  let pos = 0
+  while (pos < data.length) {
+    const sp = data.indexOf(0x20, pos)
+    const nul = data.indexOf(0, sp)
+    const mode = data.subarray(pos, sp).toString('latin1').padStart(6, '0')
+    const name = data.subarray(sp + 1, nul).toString('utf8')
+    const oid = data.subarray(nul + 1, nul + 1 + oidBytes).toString('hex')
+    const type: TreeEntry['type'] = mode === '040000' ? 'tree' : mode === '160000' ? 'commit' : 'blob'
+    out.push({ mode, type, oid, path: base + name })
+    pos = nul + 1 + oidBytes
+  }
+  return out
+}
+
 /** `status --porcelain=v2 -z` → entrées (les renommages occupent deux champs NUL). */
 export function parseStatusV2(out: Buffer | string): StatusEntry[] {
   const parts = splitZ(out)
@@ -164,6 +184,9 @@ function tzOf(dateField: string): number {
 }
 
 export interface LogEntry extends CommitInfo { changes?: NameStatus[] }
+
+/** `fileHistories` : dates de commit (secondes) et auteurs de la création et de la dernière modification d'un fichier. */
+export interface PathDates { created: number; createdBy: string; updated: number; updatedBy: string }
 
 /** Analyse la sortie de `log -z --format=LOG_FORMAT [--name-status]`. */
 export function parseLog(out: Buffer | string, withChanges: boolean): LogEntry[] {
@@ -231,10 +254,22 @@ export class GitBackend {
   }
 
   async currentBranch(): Promise<string | null> {
+    // Chemin chaud (vérification de lecture seule à chaque écriture) : le fichier HEAD se lit sans
+    // lancer de processus. `symbolic-ref` en repli (hors dépôt, reftable `refs/heads/.invalid`).
+    const gitDir = resolveGitDir(this.dir)
+    if (gitDir) {
+      const head = await fs.promises.readFile(path.join(gitDir, 'HEAD'), 'utf8').catch(() => null)
+      const m = head === null ? null : /^ref: refs\/heads\/(.+?)\s*$/.exec(head)
+      if (m && m[1] !== '.invalid') return m[1]
+      if (head !== null && /^[0-9a-f]{40,64}\s*$/.test(head)) return null
+    }
     try {
-      return (await this.text(['symbolic-ref', '-q', '--short', 'HEAD'])).trim() || null
+      // Pas `--short` : il rend `heads/x` quand un tag porte le même nom que la branche.
+      return (await this.text(['symbolic-ref', '-q', 'HEAD'])).trim().replace(/^refs\/heads\//, '') || null
     } catch (err) {
-      if (isGitError(err)) return null
+      // `symbolic-ref -q` : 1 = tête détachée. Hors dépôt (128), on lève, comme isomorphic-git :
+      // `GitService.currentBranch` traduirait sinon un dossier quelconque en « détaché » (lecture seule).
+      if (isGitError(err) && err.exitCode === 1) return null
       throw err
     }
   }
@@ -260,6 +295,13 @@ export class GitBackend {
 
   /** Entrées de l'arbre de `rev` sous `prefix` (récursif par défaut, fichiers seulement). */
   async lsTree(rev: string, opts: { prefix?: string; recursive?: boolean; trees?: boolean } = {}): Promise<TreeEntry[]> {
+    // Par le `cat-file` persistant : pas de processus par appel (chemin chaud des listes d'exigences
+    // et de tests ; ~180 `ls-tree` par fichier de test). Même résultat que `ls-tree -z --full-tree`.
+    return this.lsTreeBatch(rev, opts)
+  }
+
+  /** `ls-tree` en processus ponctuel : référence de `lsTreeBatch` (test d'équivalence). */
+  async lsTreeProcess(rev: string, opts: { prefix?: string; recursive?: boolean; trees?: boolean } = {}): Promise<TreeEntry[]> {
     const args = ['ls-tree', '-z', '--full-tree']
     if (opts.recursive !== false) args.push('-r')
     if (opts.trees) args.push('-t')
@@ -277,6 +319,51 @@ export class GitBackend {
       const [mode, type, oid] = line.slice(0, tab).split(' ')
       return { mode, type: type as TreeEntry['type'], oid, path: line.slice(tab + 1) }
     })
+  }
+
+  private async lsTreeBatch(rev: string, opts: { prefix?: string; recursive?: boolean; trees?: boolean }): Promise<TreeEntry[]> {
+    const recursive = opts.recursive !== false
+    const root = await objectInfo(this.dir, `${rev}^{tree}`)
+    if (!root) return []
+    const readTree = async (oid: string, base: string): Promise<TreeEntry[]> => {
+      const o = await objectData(this.dir, oid)
+      return o && o.type === 'tree' ? parseTreeObject(o.data, base, oid.length / 2) : []
+    }
+    const out: TreeEntry[] = []
+    // Pathspec `ls-tree` : `prefix` (sans `/`) vise l'entrée de ce nom ; en non récursif, `prefix/`
+    // liste son contenu.
+    const prefix = (opts.prefix ?? '').replace(/\/$/, '')
+    const walk = async (entries: TreeEntry[]): Promise<void> => {
+      for (const e of entries) {
+        if (e.type !== 'tree') { out.push(e); continue }
+        if (!recursive) { out.push(e); continue }
+        if (opts.trees) out.push(e)
+        await walk(await readTree(e.oid, `${e.path}/`))
+      }
+    }
+    if (!prefix) {
+      await walk(await readTree(root.oid, ''))
+      return out
+    }
+    // Descente jusqu'au dossier parent de `prefix`.
+    const parts = prefix.split('/')
+    let entries = await readTree(root.oid, '')
+    for (let i = 0; i < parts.length - 1; i++) {
+      const dir = entries.find(e => e.type === 'tree' && e.path === parts.slice(0, i + 1).join('/'))
+      if (!dir) return out
+      if (opts.trees) out.push(dir) // `-t` : dossiers traversés pour atteindre le préfixe
+      entries = await readTree(dir.oid, `${dir.path}/`)
+    }
+    const target = entries.find(e => e.path === prefix)
+    if (!target) return out
+    // Non récursif : le pathspec est `prefix/`, qu'un fichier de ce nom ne satisfait pas.
+    if (target.type !== 'tree') return recursive ? [...out, target] : out
+    if (!recursive) {
+      if (opts.trees) out.push(target)
+      return [...out, ...await readTree(target.oid, `${target.path}/`)]
+    }
+    await walk([target])
+    return out
   }
 
   /** Commits de `revs` (plus récents d'abord). `changes` : fichiers modifiés (premier parent, fusions incluses si `mergesVsFirstParent`). */
@@ -311,7 +398,22 @@ export class GitBackend {
     })
   }
 
+  /** Dernier résultat de `remotes()`, valable tant que `.git/config` garde sa date et sa taille. */
+  private remotesCache: { key: string; value: { name: string; url: string }[] } | null = null
+
   async remotes(): Promise<{ name: string; url: string }[]> {
+    // Chemin chaud (identifiants, URL du remote à chaque opération) : pas de processus tant que la
+    // config du dépôt n'a pas changé. Les écritures (addRemote, setRemoteUrl) changent sa date.
+    const gitDir = resolveGitDir(this.dir)
+    const st = gitDir ? await fs.promises.stat(path.join(gitDir, 'config'), { bigint: true }).catch(() => null) : null
+    const key = st ? `${st.mtimeNs}:${st.ctimeNs}:${st.size}` : null
+    if (key && this.remotesCache?.key === key) return this.remotesCache.value.map(r => ({ ...r }))
+    const value = await this.remotesProcess()
+    if (key) this.remotesCache = { key, value }
+    return value.map(r => ({ ...r }))
+  }
+
+  private async remotesProcess(): Promise<{ name: string; url: string }[]> {
     let out: string
     try {
       out = await this.text(['config', '--get-regexp', '^remote\\..*\\.url$'])
@@ -332,6 +434,11 @@ export class GitBackend {
       if (isGitError(err) && err.exitCode === 1) return null
       throw err
     }
+  }
+
+  /** Commits accessibles depuis `tip` qu'aucune branche `refs/remotes/<remote>/*` ne contient. */
+  async notOnRemotes(tip: string, remote = 'origin'): Promise<string[]> {
+    return (await this.text(['rev-list', tip, '--not', `--remotes=${remote}`])).split('\n').filter(Boolean)
   }
 
   async isAncestor(ancestor: string, descendant: string): Promise<boolean> {
@@ -365,8 +472,45 @@ export class GitBackend {
     // Contenu identique à l'index une fois les filtres appliqués (fins de ligne, GH296/GH335/#336 ;
     // taille sur disque différente de celle notée dans l'index) : rafraîchir l'entrée d'index, sans
     // toucher au disque ni créer de modification (design §9).
-    await this.add([...statOnly])
+    await this.refreshStatOnly([...statOnly])
     return entries.filter(e => !statOnly.has(e.path))
+  }
+
+  /**
+   * Rafraîchit l'entrée d'index de fichiers dont le contenu filtré est déjà celui de l'index. Au mieux,
+   * le statut renvoyé étant juste sans lui : sauté si une écriture de Polenta est en file (un fetch
+   * long ne bloque pas le statut), sans effet si l'index est verrouillé par un autre processus
+   * (terminal). Un fichier réenregistré entre le hachage et `add` n'est pas laissé indexé : son entrée
+   * reprend l'ancien blob (il apparaîtra modifié).
+   */
+  private async refreshStatOnly(paths: string[]): Promise<void> {
+    if (isRepoWriteBusy(this.dir)) return
+    await withRepoWriteLock(this.dir, () => this.refreshStatOnlyNow(paths))
+  }
+
+  private async refreshStatOnlyNow(paths: string[]): Promise<void> {
+    const expected = new Map<string, { mode: string; oid: string }>()
+    for (const line of splitZ((await this.run(['ls-files', '-s', '-z', '--', ...paths])).stdout)) {
+      const tab = line.indexOf('\t')
+      const [mode, oid] = line.slice(0, tab).split(' ')
+      expected.set(line.slice(tab + 1), { mode, oid })
+    }
+    try {
+      await runGit(this.dir, ['add', '--', ...paths])
+    } catch (err) {
+      if (isGitError(err)) return
+      throw err
+    }
+    const raced: string[] = []
+    for (const line of splitZ((await this.run(['ls-files', '-s', '-z', '--', ...paths])).stdout)) {
+      const tab = line.indexOf('\t')
+      const p = line.slice(tab + 1)
+      const e = expected.get(p)
+      if (e && line.slice(0, tab).split(' ')[1] !== e.oid) raced.push(`${e.mode},${e.oid},${p}`)
+    }
+    for (const info of raced) {
+      await runGit(this.dir, ['update-index', '--cacheinfo', info]).catch(() => undefined)
+    }
   }
 
   /** Chemins dont le contenu filtré (`.gitattributes`) est identique au blob de l'index. */
@@ -379,19 +523,108 @@ export class GitBackend {
     }
     const candidates = paths.filter(p => indexOid.has(p) && fs.existsSync(path.join(this.dir, p)))
     if (candidates.length === 0) return []
-    const hashes = (await this.text(['hash-object', '--stdin-paths'], { stdin: candidates.join('\n') + '\n' }))
-      .split('\n').filter(Boolean)
+    const hashes = await this.hashFiles(candidates)
     return candidates.filter((p, i) => hashes[i] === indexOid.get(p))
+  }
+
+  /**
+   * Oid qu'auraient les fichiers `paths` (relatifs, existants) une fois ajoutés : contenu filtré par
+   * `.gitattributes`, rien n'est écrit. Un seul processus, dans l'ordre de `paths`.
+   */
+  async hashFiles(paths: string[]): Promise<string[]> {
+    if (paths.length === 0) return []
+    if (paths.some(p => /[\r\n]/.test(p))) throw new GitError('other', ['hash-object'], null, 'chemin avec retour ligne')
+    return (await this.text(['hash-object', '--stdin-paths'], { stdin: paths.join('\n') + '\n' })).split('\n').filter(Boolean)
   }
 
   async checkIgnore(paths: string[]): Promise<Set<string>> {
     if (paths.length === 0) return new Set()
-    const r = await this.run(['check-ignore', '--stdin', '-z'], { stdin: paths.join('\0') + '\0', okExitCodes: [1] })
+    // `check-ignore` prend des noms de fichiers et refuse `GIT_LITERAL_PATHSPECS` (« pathspec magic not
+    // supported by this command: 'literal' »).
+    const r = await this.run(['check-ignore', '--stdin', '-z'], {
+      stdin: paths.join('\0') + '\0', okExitCodes: [1], env: { extra: { GIT_LITERAL_PATHSPECS: '0' } },
+    })
     return new Set(splitZ(r.stdout))
   }
 
   async lsFiles(prefixes: string[] = []): Promise<string[]> {
     return splitZ((await this.run(['ls-files', '-z', '--', ...prefixes])).stdout)
+  }
+
+  /**
+   * Noms des refs sous `prefix` (`refs/heads`, `refs/tags`, `refs/remotes/origin`), préfixe retiré,
+   * triés par nom (`for-each-ref`) : remplace `listBranches` / `listTags` d'isomorphic-git. Une
+   * branche distante `HEAD` (symref) figure dans la liste, comme chez isomorphic-git.
+   */
+  async refNames(prefix: string): Promise<string[]> {
+    const base = prefix.replace(/\/+$/, '') + '/'
+    return (await this.refs([base])).map(r => r.ref.slice(base.length))
+  }
+
+  /**
+   * Commits atteignables depuis `rev` qui modifient un chemin sous `paths`, avec ces changements
+   * (`--name-status`, sans renommages ; une fusion est comparée à son premier parent ; commit racine
+   * ou greffé d'un dépôt superficiel : tous ses fichiers). Pas de simplification d'historique
+   * (`--full-history --sparse`) : une fusion identique à l'un de ses parents est quand même examinée.
+   * Enfants avant parents (`--topo-order`). `firstParent` : chaîne des premiers parents seulement.
+   * `[]` si `rev` est absente ou si `paths` est vide.
+   */
+  async pathCommits(rev: string, paths: string[], opts: { firstParent?: boolean; stopAt?: string } = {}): Promise<LogEntry[]> {
+    if (paths.length === 0) return []
+    const args = ['--literal-pathspecs', 'log', '-z', `--format=${LOG_FORMAT}`, '--date=raw', '--full-history', '--sparse',
+      '--topo-order', '--name-status', '--no-renames', '--diff-merges=first-parent']
+    if (opts.firstParent) args.push('--first-parent')
+    // `stopAt` et la chaîne de ses premiers parents sont exclus (git ≥ 2.38) ; absent : ignoré.
+    const stop = opts.stopAt ? await this.resolve(opts.stopAt) : null
+    if (stop) args.push('--exclude-first-parent-only', `^${stop}`)
+    args.push(rev, '--', ...paths.map(p => p.replace(/\/+$/, '')))
+    try {
+      return parseLog((await this.run(args)).stdout, true).filter(e => e.changes!.length > 0)
+    } catch (err) {
+      if (isGitError(err, 'not-found') || (isGitError(err) && /does not have any commits/.test(err.stderr))) return []
+      throw err
+    }
+  }
+
+  /**
+   * GH340 (design §4) — dates de création / modification de chaque fichier sous `prefixes`, en un seul
+   * `git log` sur tous les commits atteignables depuis `rev` : création = plus ancien commit qui touche
+   * le fichier, modification = plus récent, par **date de commit** ; auteur = auteur du commit. Les
+   * fusions ne comptent que pour un fichier qu'aucun autre commit n'a touché (résolution de conflit).
+   * À date égale, le commit le plus loin de `rev` crée, le plus proche modifie. Renommages non suivis.
+   */
+  async fileHistories(rev: string, prefixes: string[]): Promise<Map<string, PathDates>> {
+    const direct = new Map<string, PathDates>()
+    const viaMerge = new Map<string, PathDates>()
+    // Enfants avant parents : à date égale, le commit vu plus tard est le plus ancien.
+    for (const c of await this.pathCommits(rev, prefixes)) {
+      const into = c.parents.length > 1 ? viaMerge : direct
+      const at = c.committer.timestamp
+      const by = c.author.name
+      for (const { path: file } of c.changes!) {
+        const cur = into.get(file)
+        if (!cur) { into.set(file, { created: at, createdBy: by, updated: at, updatedBy: by }); continue }
+        if (at <= cur.created) { cur.created = at; cur.createdBy = by }
+        if (at > cur.updated) { cur.updated = at; cur.updatedBy = by }
+      }
+    }
+    for (const [file, d] of viaMerge) if (!direct.has(file)) direct.set(file, d)
+    return direct
+  }
+
+  /**
+   * Refs selon les motifs, avec le **commit** visé : la cible elle-même, ou celle d'un tag annoté
+   * (déréférencé d'un niveau) ; `null` quand la ref ne vise pas un commit (tag d'un blob ou d'un arbre,
+   * tag de tag). Remplace `git.log({ ref: tag, depth: 1 })` d'isomorphic-git pour lire le commit d'un tag.
+   */
+  async refCommits(patterns: string[] = []): Promise<{ ref: string; oid: string; commit: string | null }[]> {
+    const fmt = '%(refname)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)'
+    const out = await this.text(['for-each-ref', `--format=${fmt}`, ...patterns])
+    return out.split('\n').filter(Boolean).map(line => {
+      const [ref, oid, type, peeled, peeledType] = line.split('\0')
+      const commit = type === 'commit' ? oid : peeledType === 'commit' ? peeled : null
+      return { ref, oid, commit }
+    })
   }
 
   // ─── Écritures locales ───────────────────────────────────────────────────────
@@ -404,14 +637,17 @@ export class GitBackend {
   }
 
   async addRemote(name: string, url: string): Promise<void> {
+    this.remotesCache = null
     await this.w(['remote', 'add', name, url])
   }
 
   async setRemoteUrl(name: string, url: string): Promise<void> {
+    this.remotesCache = null
     await this.w(['remote', 'set-url', name, url])
   }
 
   async setConfig(key: string, value: string): Promise<void> {
+    this.remotesCache = null
     await this.w(['config', key, value])
   }
 

@@ -5,6 +5,7 @@ import * as path from 'path'
 import * as yaml from 'js-yaml'
 import git from 'isomorphic-git'
 import { historyTimestamp } from '@polenta/types'
+import { gitFor } from '../git/git-backend'
 import { safeCheckout } from './safe-checkout.util'
 
 export interface GitAuthor {
@@ -133,10 +134,8 @@ export class GitService {
   /** Commit pointé par le tag `tag` (tag annoté déréférencé), `null` si le tag est introuvable. */
   async resolveTagOid(repoPath: string, tag: string): Promise<string | null> {
     try {
-      let oid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${tag}` })
-      const { type } = await git.readObject({ fs, dir: repoPath, oid, format: 'parsed' })
-      if (type === 'tag') oid = (await git.readTag({ fs, dir: repoPath, oid })).tag.object
-      return oid
+      // `^{}` : un tag annoté est pelé jusqu'à l'objet visé (le commit).
+      return await gitFor(repoPath).resolve(`refs/tags/${tag}^{}`)
     } catch {
       return null
     }
@@ -144,8 +143,8 @@ export class GitService {
 
   async readYamlRef<T>(repoPath: string, ref: string, filePath: string): Promise<T | null> {
     try {
-      const { blob } = await git.readBlob({ fs, dir: repoPath, oid: ref, filepath: filePath })
-      return yaml.load(Buffer.from(blob).toString('utf-8')) as T
+      const text = await gitFor(repoPath).readText(ref, filePath)
+      return text === null ? null : yaml.load(text) as T
     } catch {
       return null
     }
@@ -158,19 +157,10 @@ export class GitService {
    * requirements/tests/links as they existed at a baseline, not the live working tree.
    */
   async listFilesAtRef(repoPath: string, ref: string, prefix: string): Promise<string[]> {
-    const results: string[] = []
-    await git.walk({
-      fs,
-      dir: repoPath,
-      trees: [git.TREE({ ref })],
-      map: async (filepath, [entry]) => {
-        if (filepath === '.' || !filepath.startsWith(prefix)) return
-        if (!entry) return
-        if ((await entry.type()) === 'tree') return
-        results.push(filepath)
-      },
-    })
-    return results
+    const g = gitFor(repoPath)
+    const oid = await g.resolveOrThrow(ref) // ref absente : erreur, pas une liste vide
+    const entries = await g.lsTree(oid, prefix ? { prefix } : {})
+    return entries.filter(e => e.type !== 'tree' && e.path.startsWith(prefix)).map(e => e.path)
   }
 
   /** Ref-aware equivalent of `readYamlDir` — reads every `.yaml` file under `dir` as it existed
@@ -188,19 +178,20 @@ export class GitService {
    * Créé/modifié le/par d'un fichier d'après son historique git (repli des campagnes ; les
    * exigences, tests et issues portent leurs dates dans le YAML, GH340) — commit le plus ancien touchant ce chemin
    * = création, le plus récent = dernière modification. `null` si le fichier n'a jamais
-   * été commité (ex. juste créé, en attente de premier commit) : `force: true` évite que
-   * `git.log` lève dans ce cas plutôt que de renvoyer un tableau vide.
+   * été commité (ex. juste créé, en attente de premier commit) ou si le dépôt n'a pas de commit.
+   * Un seul `git log -- <fichier>` (plus récent d'abord), date d'auteur.
    */
   async fileHistory(repoPath: string, filePath: string): Promise<FileHistory | null> {
-    const commits = await git.log({ fs, dir: repoPath, filepath: filePath, ref: 'HEAD', force: true }).catch(() => [])
+    // Chemin littéral : `GIT_LITERAL_PATHSPECS=1` dans l'environnement de Polenta (git-config.ts).
+    const commits = await gitFor(repoPath).log('HEAD', { paths: [filePath] }).catch(() => [])
     if (commits.length === 0) return null
     const newest = commits[0]
     const oldest = commits[commits.length - 1]
     return {
-      updatedAt: new Date(newest.commit.author.timestamp * 1000).toISOString(),
-      updatedBy: newest.commit.author.name,
-      createdAt: new Date(oldest.commit.author.timestamp * 1000).toISOString(),
-      createdBy: oldest.commit.author.name,
+      updatedAt: new Date(newest.author.timestamp * 1000).toISOString(),
+      updatedBy: newest.author.name,
+      createdAt: new Date(oldest.author.timestamp * 1000).toISOString(),
+      createdBy: oldest.author.name,
     }
   }
 
@@ -215,38 +206,14 @@ export class GitService {
   async commitChanges(
     repoPath: string, prefixes: string[], ref = 'HEAD',
   ): Promise<Array<{ oid: string; at: string; by: string; files: string[] }>> {
-    let oid: string | undefined
-    try {
-      oid = await git.resolveRef({ fs, dir: repoPath, ref })
-    } catch {
-      return [] // repo sans commit
-    }
-    const chain: Array<{ oid: string; commit: { parent: string[]; author: { name: string }; committer: { timestamp: number } } }> = []
-    while (oid) {
-      const { commit } = await git.readCommit({ fs, dir: repoPath, oid })
-      chain.push({ oid, commit })
-      oid = commit.parent[0]
-    }
-    const out: Array<{ oid: string; at: string; by: string; files: string[] }> = []
-    for (const commit of chain.reverse()) {
-      const parentOid = commit.commit.parent[0]
-      const files: string[] = []
-      for (const prefix of prefixes) {
-        const [oidA, oidB] = await Promise.all([
-          this.readSubtreeOid(repoPath, commit.oid, prefix),
-          parentOid ? this.readSubtreeOid(repoPath, parentOid, prefix) : Promise.resolve(null),
-        ])
-        await this.diffSubtrees(repoPath, prefix, oidA, oidB, files)
-      }
-      if (files.length === 0) continue
-      out.push({
-        oid: commit.oid,
-        at: new Date(commit.commit.committer.timestamp * 1000).toISOString(),
-        by: commit.commit.author.name,
-        files,
-      })
-    }
-    return out
+    // Un seul `git log --first-parent --name-status` (repo sans commit ou ref absente : []).
+    const commits = await gitFor(repoPath).pathCommits(ref, prefixes, { firstParent: true })
+    return commits.reverse().map(c => ({
+      oid: c.oid,
+      at: new Date(c.committer.timestamp * 1000).toISOString(),
+      by: c.author.name,
+      files: c.changes!.map(ch => ch.path),
+    }))
   }
 
   /**
@@ -263,54 +230,12 @@ export class GitService {
    *   l'auteur du commit. À égalité de date, le commit le plus loin de `ref` crée, le plus proche modifie ;
    * - dépôt superficiel (shallow) : un parent absent arrête cette branche du parcours, sans erreur.
    * Les déplacements et renommages ne sont pas suivis (création = le commit qui crée le chemin).
-   * Fait une fois par dépôt ; à remplacer par `git log --name-only` (#337).
+   * Un seul `git log --name-status` (`GitBackend.fileHistories`, #337) ; repo sans commit : vide.
    */
   async auditDatesFromHistory(repoPath: string, prefixes: string[], ref = 'HEAD'): Promise<Map<string, FileHistory>> {
-    type Dates = { created: number; createdBy: string; updated: number; updatedBy: string }
-    const direct = new Map<string, Dates>()
-    const viaMerge = new Map<string, Dates>()
-    const record = (into: Map<string, Dates>, files: string[], at: number, by: string) => {
-      for (const file of files) {
-        const cur = into.get(file)
-        if (!cur) { into.set(file, { created: at, createdBy: by, updated: at, updatedBy: by }); continue }
-        // Parcours depuis `ref` : à date égale, le commit vu plus tard est le plus ancien.
-        if (at <= cur.created) { cur.created = at; cur.createdBy = by }
-        if (at > cur.updated) { cur.updated = at; cur.updatedBy = by }
-      }
-    }
-    let head: string
-    try {
-      head = await git.resolveRef({ fs, dir: repoPath, ref })
-    } catch {
-      return new Map() // repo sans commit
-    }
-    const subtrees = new Map<string, Promise<string | null>>()
-    const subtree = (commitOid: string, prefix: string) => {
-      const key = `${commitOid}:${prefix}`
-      if (!subtrees.has(key)) subtrees.set(key, this.readSubtreeOid(repoPath, commitOid, prefix))
-      return subtrees.get(key)!
-    }
-    const seen = new Set<string>([head])
-    const queue = [head]
-    while (queue.length > 0) {
-      const oid = queue.pop()!
-      const read = await git.readCommit({ fs, dir: repoPath, oid }).catch(() => null)
-      if (!read) continue // dépôt superficiel : parent absent
-      const { commit } = read
-      for (const p of commit.parent) if (!seen.has(p)) { seen.add(p); queue.push(p) }
-      const files: string[] = []
-      for (const prefix of prefixes) {
-        const [oidA, oidB] = await Promise.all([
-          subtree(oid, prefix),
-          commit.parent[0] ? subtree(commit.parent[0], prefix) : Promise.resolve(null),
-        ])
-        await this.diffSubtrees(repoPath, prefix, oidA, oidB, files)
-      }
-      record(commit.parent.length > 1 ? viaMerge : direct, files, commit.committer.timestamp, commit.author.name)
-    }
-    for (const [file, d] of viaMerge) if (!direct.has(file)) direct.set(file, d)
+    const dates = await gitFor(repoPath).fileHistories(ref, prefixes)
     const at = (s: number) => historyTimestamp(new Date(s * 1000))
-    return new Map([...direct].map(([file, d]) => [file, {
+    return new Map([...dates].map(([file, d]) => [file, {
       createdAt: at(d.created), createdBy: d.createdBy, updatedAt: at(d.updated), updatedBy: d.updatedBy,
     }]))
   }
@@ -320,25 +245,16 @@ export class GitService {
    * autre erreur (objet manquant, pack corrompu) est levée : elle ne doit pas passer pour une
    * suppression.
    */
-  /** Le commit est-il présent dans le repo (`git.walk` ne signale pas un commit absent) ? */
+  /** Le commit est-il présent dans le repo ? Un objet présent qui n'est pas un commit lève. */
   async hasCommit(repoPath: string, commitOid: string): Promise<boolean> {
-    try {
-      await git.readCommit({ fs, dir: repoPath, oid: commitOid })
-      return true
-    } catch (err) {
-      if ((err as { code?: string })?.code === 'NotFoundError') return false
-      throw err
-    }
+    const info = await gitFor(repoPath).objectInfo(commitOid)
+    if (!info) return false
+    if (info.type !== 'commit') throw new Error(`${commitOid} n'est pas un commit (${info.type})`)
+    return true
   }
 
   async readTextAt(repoPath: string, commitOid: string, filePath: string): Promise<string | null> {
-    try {
-      const { blob } = await git.readBlob({ fs, dir: repoPath, oid: commitOid, filepath: filePath })
-      return Buffer.from(blob).toString('utf-8')
-    } catch (err) {
-      if ((err as { code?: string })?.code === 'NotFoundError') return null
-      throw err
-    }
+    return gitFor(repoPath).readText(commitOid, filePath)
   }
 
   /**
@@ -350,118 +266,36 @@ export class GitService {
   async fileCommits(
     repoPath: string, filePath: string, opts: { ref?: string; stopAt?: string | null } = {},
   ): Promise<Array<{ oid: string; at: string; by: string }>> {
-    let oid: string | undefined
-    try {
-      oid = await git.resolveRef({ fs, dir: repoPath, ref: opts.ref ?? 'HEAD' })
-    } catch {
-      return [] // repo sans commit
-    }
-    const out: Array<{ oid: string; at: string; by: string }> = []
-    let blob = await this.blobOidAt(repoPath, oid, filePath)
-    while (oid && oid !== opts.stopAt) {
-      const { commit } = await git.readCommit({ fs, dir: repoPath, oid })
-      const parent: string | undefined = commit.parent[0]
-      const parentBlob = parent ? await this.blobOidAt(repoPath, parent, filePath) : null
-      if (blob !== parentBlob) {
-        out.push({ oid, at: new Date(commit.committer.timestamp * 1000).toISOString(), by: commit.author.name })
-      }
-      oid = parent
-      blob = parentBlob
-    }
-    return out
-  }
-
-  /** oid du blob `filePath` dans `commitOid`, `null` s'il n'y existe pas. */
-  private async blobOidAt(repoPath: string, commitOid: string, filePath: string): Promise<string | null> {
-    const slash = filePath.lastIndexOf('/')
-    const dir = slash < 0 ? '' : filePath.slice(0, slash)
-    const name = filePath.slice(slash + 1)
-    try {
-      const { tree } = await git.readTree({ fs, dir: repoPath, oid: commitOid, ...(dir && { filepath: dir }) })
-      return tree.find(e => e.path === name && e.type === 'blob')?.oid ?? null
-    } catch {
-      return null
-    }
-  }
-
-  /** oid of the tree at `path` inside `commitOid`, or `null` if `path` doesn't exist there. */
-  private async readSubtreeOid(repoPath: string, commitOid: string, path: string): Promise<string | null> {
-    try {
-      const { oid } = await git.readTree({ fs, dir: repoPath, oid: commitOid, filepath: path })
-      return oid
-    } catch {
-      return null
-    }
-  }
-
-  /**
-   * Recursively collects every file path under `pathPrefix` whose blob oid differs between tree
-   * `oidA` and tree `oidB` (either may be `null` — path added/removed entirely). Short-circuits
-   * on every subtree whose oid already matches on both sides — the same pruning that makes plain
-   * `git diff` cheap even on large trees, applied manually since isomorphic-git's `walk()` has no
-   * built-in path scoping (it always visits the whole tree, oid-matching or not — confirmed via
-   * a throwaway benchmark against `git.walk` while designing this: sped this up a further ~2×
-   * over walking the whole repo tree once per commit and filtering by prefix afterward).
-   */
-  private async diffSubtrees(
-    repoPath: string,
-    pathPrefix: string,
-    oidA: string | null,
-    oidB: string | null,
-    changed: string[],
-  ): Promise<void> {
-    if (oidA === oidB) return
-
-    const [treeA, treeB] = await Promise.all([
-      oidA ? git.readTree({ fs, dir: repoPath, oid: oidA }) : null,
-      oidB ? git.readTree({ fs, dir: repoPath, oid: oidB }) : null,
-    ])
-    const entriesA = new Map((treeA?.tree ?? []).map((e) => [e.path, e]))
-    const entriesB = new Map((treeB?.tree ?? []).map((e) => [e.path, e]))
-
-    for (const name of new Set([...entriesA.keys(), ...entriesB.keys()])) {
-      const a = entriesA.get(name)
-      const b = entriesB.get(name)
-      if (a?.oid === b?.oid) continue
-      const childPath = `${pathPrefix}/${name}`
-      if (a?.type === 'tree' || b?.type === 'tree') {
-        await this.diffSubtrees(
-          repoPath,
-          childPath,
-          a?.type === 'tree' ? a.oid : null,
-          b?.type === 'tree' ? b.oid : null,
-          changed,
-        )
-      } else {
-        changed.push(childPath)
-      }
-    }
+    // Un seul `git log --first-parent -- <fichier>` (repo sans commit ou ref absente : []).
+    const commits = await gitFor(repoPath).pathCommits(opts.ref ?? 'HEAD', [filePath], {
+      firstParent: true, ...(opts.stopAt ? { stopAt: opts.stopAt } : {}),
+    })
+    return commits.map(c => ({ oid: c.oid, at: new Date(c.committer.timestamp * 1000).toISOString(), by: c.author.name }))
   }
 
   // ─── Branch operations ──────────────────────────────────────────────────────
 
   async headSha(repoPath: string): Promise<string> {
-    return git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+    return gitFor(repoPath).resolveOrThrow('HEAD')
   }
 
   /** GH34 — tags (triés) pointant sur le commit HEAD, annotés déréférencés ; `[]` si aucun. */
   async tagsAtHead(repoPath: string): Promise<string[]> {
-    const head = await this.headSha(repoPath)
-    const tags = await git.listTags({ fs, dir: repoPath })
-    const matching: string[] = []
-    for (const tag of tags) {
-      if ((await this.resolveTagOid(repoPath, tag)) === head) matching.push(tag)
-    }
-    return matching.sort()
+    const g = gitFor(repoPath)
+    const head = await g.resolveOrThrow('HEAD')
+    const tags = await g.refs(['refs/tags'])
+    return tags
+      .filter(t => (t.peeled ?? t.oid) === head)
+      .map(t => t.ref.slice('refs/tags/'.length))
+      .sort()
   }
 
   async currentBranch(repoPath: string): Promise<string> {
-    const branch = await git.currentBranch({ fs, dir: repoPath, fullname: false })
-    return branch ?? 'HEAD'
+    return (await gitFor(repoPath).currentBranch()) ?? 'HEAD'
   }
 
   async listBranches(repoPath: string): Promise<string[]> {
-    return git.listBranches({ fs, dir: repoPath })
+    return gitFor(repoPath).refNames('refs/heads')
   }
 
   async createBranch(repoPath: string, branchName: string): Promise<void> {
@@ -481,38 +315,11 @@ export class GitService {
   }
 
   async mergeBase(repoPath: string, a: string, b: string): Promise<string> {
-    const shaA = await git.resolveRef({ fs, dir: repoPath, ref: a })
-    const shaB = await git.resolveRef({ fs, dir: repoPath, ref: b })
-
-    // Walk the commit graph to find common ancestor
-    const ancestorsA = new Set<string>()
-    const queue: string[] = [shaA]
-
-    while (queue.length > 0) {
-      const sha = queue.shift()!
-      if (ancestorsA.has(sha)) continue
-      ancestorsA.add(sha)
-      const commit = await git.readCommit({ fs, dir: repoPath, oid: sha })
-      for (const parent of commit.commit.parent) {
-        queue.push(parent)
-      }
-    }
-
-    // BFS from B to find first ancestor also in A
-    const queueB: string[] = [shaB]
-    const visitedB = new Set<string>()
-    while (queueB.length > 0) {
-      const sha = queueB.shift()!
-      if (visitedB.has(sha)) continue
-      visitedB.add(sha)
-      if (ancestorsA.has(sha)) return sha
-      const commit = await git.readCommit({ fs, dir: repoPath, oid: sha })
-      for (const parent of commit.commit.parent) {
-        queueB.push(parent)
-      }
-    }
-
-    throw new Error(`No common ancestor found between ${a} and ${b}`)
+    const g = gitFor(repoPath)
+    const [shaA, shaB] = await Promise.all([g.resolveOrThrow(a), g.resolveOrThrow(b)])
+    const [base] = await g.mergeBases(shaA, shaB)
+    if (!base) throw new Error(`No common ancestor found between ${a} and ${b}`)
+    return base
   }
 }
 

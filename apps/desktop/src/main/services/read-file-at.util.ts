@@ -1,7 +1,7 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
-import git from 'isomorphic-git'
+
+import { gitFor } from '../git/git-backend'
 
 const SHA_RE = /^[0-9a-f]{40}$/i
 
@@ -9,7 +9,7 @@ const SHA_RE = /^[0-9a-f]{40}$/i
 export async function resolveCommitSha(repoPath: string, ref: string): Promise<string | null> {
   if (SHA_RE.test(ref)) return ref.toLowerCase()
   try {
-    return await git.resolveRef({ fs, dir: repoPath, ref })
+    return await gitFor(repoPath).resolve(ref)
   } catch {
     return null
   }
@@ -36,8 +36,8 @@ export async function readFileAt(repoPath: string, ref: string | null, filepath:
   const treePath = path.posix.normalize(filepath.replace(/\\/g, '/')).replace(/^(\.\/|\/)+/, '')
   if (!oid || treePath === '.' || treePath === '..' || treePath.startsWith('../')) return null
   try {
-    const { blob } = await git.readBlob({ fs, dir: repoPath, oid, filepath: treePath })
-    return blob
+    // `<oid>:<chemin>` : git pèle commit ou tag annoté jusqu'à l'arbre ; `null` si absent ou pas un blob.
+    return await gitFor(repoPath).readBlob(`${oid}:${treePath}`)
   } catch {
     return null
   }

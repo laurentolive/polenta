@@ -4,6 +4,7 @@ import * as path from 'path'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { gitFor, type GitBackend } from './git-backend'
+import { runGit } from './git-runner'
 import { closeAll } from './process-registry'
 
 /** GH337 — API GitBackend (scénarios L, E, F de specs/GH337-tests.md). */
@@ -115,6 +116,123 @@ describe('lectures', () => {
     expect(by['refs/tags/v1'].peeled).toBe(c1)
     expect(await g.resolveCommit('v1')).toBe(c1)
     expect((await g.readTag(by['refs/tags/v1'].oid))?.message).toBe('release\n')
+  })
+
+  it('L6b refCommits : commit d\'une branche, d\'un tag léger ou annoté ; null pour un tag de blob', async () => {
+    const c1 = await commit({ 'f': '1' }, 'm')
+    await g.tag('light')
+    await g.annotatedTag('v1', 'HEAD', 'release', A)
+    await g.tag('blob', (await g.resolve('HEAD:f'))!)
+    const by = Object.fromEntries((await g.refCommits(['refs/heads', 'refs/tags'])).map(r => [r.ref, r]))
+    expect(by['refs/heads/main'].commit).toBe(c1)
+    expect(by['refs/tags/light'].commit).toBe(c1)
+    expect(by['refs/tags/v1'].commit).toBe(c1)
+    expect(by['refs/tags/v1'].oid).not.toBe(c1)
+    expect(by['refs/tags/blob'].commit).toBeNull()
+  })
+
+  it('L7 currentBranch : nom complet de la branche même si un tag porte le même nom', async () => {
+    await commit({ 'f': '1' }, 'm')
+    await g.tag('main')
+    expect(await g.currentBranch()).toBe('main')
+    await g.checkout('HEAD', { detach: true })
+    expect(await g.currentBranch()).toBeNull()
+  })
+
+  it('L7b currentBranch hors dépôt : lève (pas « détaché », GH206 S8 lecture seule)', async () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'gh337-plain-'))
+    try {
+      await expect(gitFor(plain).currentBranch()).rejects.toThrow()
+    } finally {
+      fs.rmSync(plain, { recursive: true, force: true })
+    }
+  })
+
+  it('L9 pathCommits / fileHistories : fusions, branche latérale, fichier touché par la seule fusion', async () => {
+    const c0 = await commit({ 'r/a.yaml': '1', 'other': '1' }, 'root', A)
+    await g.createBranch('side')
+    await g.checkout('side')
+    const s1 = await commit({ 'r/b.yaml': '1' }, 'side', B)
+    await g.checkout('main')
+    const m1 = await commit({ 'other': '2' }, 'hors préfixe', A)
+    // Fusion dont l'arbre ajoute r/c.yaml (résolution) : seul ce commit de fusion touche r/c.yaml.
+    write('r/c.yaml', '1')
+    await g.add(['r/c.yaml'])
+    const mc = await g.commitTree(await g.writeTree(), [m1, s1], 'merge', { ...B, timestamp: (t += 60) })
+    await g.resetHard(mc)
+
+    const all = await g.pathCommits('HEAD', ['r/'])
+    expect(all.map(c => c.oid)).toEqual([mc, s1, c0])
+    expect(all[0].changes).toEqual([{ status: 'A', path: 'r/c.yaml' }])
+    expect((await g.pathCommits('HEAD', ['r'], { firstParent: true })).map(c => c.oid)).toEqual([mc, c0])
+    // stopAt sur un commit qui ne touche pas r/ : lui et ses premiers parents sont exclus.
+    expect((await g.pathCommits('HEAD', ['r'], { firstParent: true, stopAt: m1 })).map(c => c.oid)).toEqual([mc])
+    expect((await g.pathCommits('HEAD', ['r'], { stopAt: 'absente' })).length).toBe(3)
+    expect(await g.pathCommits('nope', ['r'])).toEqual([])
+    expect(await g.pathCommits('HEAD', [])).toEqual([])
+
+    const h = await g.fileHistories('HEAD', ['r'])
+    const ts = async (oid: string) => (await g.readCommit(oid))!.committer.timestamp
+    expect(Object.fromEntries(h)).toEqual({
+      'r/a.yaml': { created: await ts(c0), createdBy: 'Alice', updated: await ts(c0), updatedBy: 'Alice' },
+      'r/b.yaml': { created: await ts(s1), createdBy: 'Bob', updated: await ts(s1), updatedBy: 'Bob' },
+      'r/c.yaml': { created: await ts(mc), createdBy: 'Bob', updated: await ts(mc), updatedBy: 'Bob' },
+    })
+  })
+
+  it('L11 lsTree par cat-file : identique à ls-tree pour toutes les options', async () => {
+    await commit({
+      'a.txt': '1', 'requirements/SYS-1.yaml': '1', 'requirements/sub/SYS-2.yaml': '2', 'requirements-x/y.yaml': '3',
+      'tests/T-1.yaml': '4', 'components/c1/x': '5', 'é dir/f ü.txt': '6',
+    }, 'm')
+    const prefixes = [undefined, 'requirements', 'requirements/', 'requirements/sub', 'components', 'a.txt', 'é dir', 'absent', 'requirements/absent']
+    for (const prefix of prefixes) {
+      for (const recursive of [true, false]) {
+        for (const trees of [false, true]) {
+          const opts = { prefix, recursive, trees }
+          expect(await g.lsTree('HEAD', opts), JSON.stringify(opts)).toEqual(await g.lsTreeProcess('HEAD', opts))
+        }
+      }
+    }
+    expect(await g.lsTree('absent-ref')).toEqual([])
+  })
+
+  it('L12 remotes : cache suivi des changements de .git/config (Polenta ou externe)', async () => {
+    expect(await g.remotes()).toEqual([])
+    await g.addRemote('origin', 'https://a.example/x.git')
+    expect(await g.remotes()).toEqual([{ name: 'origin', url: 'https://a.example/x.git' }])
+    // Même longueur d'URL, écrite hors de Polenta : la date de .git/config change.
+    await runGit(dir, ['remote', 'set-url', 'origin', 'https://b.example/x.git'], { write: true })
+    expect(await g.remotes()).toEqual([{ name: 'origin', url: 'https://b.example/x.git' }])
+    await g.setRemoteUrl('origin', 'https://c.example/x.git')
+    expect(await g.remotes()).toEqual([{ name: 'origin', url: 'https://c.example/x.git' }])
+  })
+
+  it('L13 checkIgnore : noms littéraux (crochets, accents), malgré GIT_LITERAL_PATHSPECS', async () => {
+    await commit({ '.gitignore': '*.pref\ncache/\n' }, 'm')
+    expect(await g.checkIgnore(['a[1].pref', 'é.txt', 'cache/x', 'README.md']))
+      .toEqual(new Set(['a[1].pref', 'cache/x']))
+  })
+
+  it('L10 refNames : branches imbriquées, tags et branches distantes, préfixe retiré, sans débordement de préfixe', async () => {
+    const c1 = await commit({ 'f': '1' }, 'm')
+    await g.createBranch('feature/x')
+    await g.createBranch('int-a')
+    await g.tag('v1')
+    await g.updateRefs([
+      { ref: 'refs/remotes/origin/int-b', newOid: c1 },
+      { ref: 'refs/remotes/origin2/int-c', newOid: c1 },
+    ])
+    expect(await g.refNames('refs/heads')).toEqual(['feature/x', 'int-a', 'main'])
+    expect(await g.refNames('refs/tags/')).toEqual(['v1'])
+    expect(await g.refNames('refs/remotes/origin')).toEqual(['int-b'])
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'gh337-norepo-'))
+    try {
+      await expect(gitFor(outside).refNames('refs/tags')).rejects.toThrow()
+    } finally {
+      await gitFor(outside).close()
+      fs.rmSync(outside, { recursive: true, force: true })
+    }
   })
 })
 

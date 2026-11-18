@@ -3,6 +3,7 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import git from 'isomorphic-git'
 
+import { gitFor } from '../git/git-backend'
 import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
 import type { WorkspaceService } from './workspace.service'
@@ -49,7 +50,8 @@ export class RepoConformityService {
     }
     const ignore = lines(await readText(repoPath, '.gitignore'))
     if (GITIGNORE_LINES.some(l => !ignore.includes(l))) items.push({ id: 'gitignore', files: ['.gitignore'] })
-    const tracked = (await git.listFiles({ fs, dir: repoPath, ref: 'HEAD' }).catch(() => [] as string[]))
+    const tracked = (await gitFor(repoPath).lsTree('HEAD').catch(() => []))
+      .map(e => e.path)
       .filter(isLocalStateFile)
     if (tracked.length > 0) items.push({ id: 'tracked-local', files: tracked })
     const undated = await this.filesWithoutDates(repoPath).catch((err: unknown) => {
@@ -85,9 +87,20 @@ export class RepoConformityService {
     // Un fichier local commité par erreur (et modifié) est justement ce que la mise en conformité
     // corrige : il ne compte pas comme modification à publier d'abord.
     const { staged, unstaged } = await this.sync.status(repoPath)
-    if ([...staged, ...unstaged].some(f => !isLocalStateFile(f.path))) throw new Error('conformity-dirty')
+    const ids = new Set(items.map(i => i.id))
+    // GH337 — clone sans .gitattributes, en CRLF sur disque et LF dans git (ancien autocrlf=true) :
+    // git natif les voit modifiés tant que .gitattributes manque. Ce sont justement les fichiers que
+    // cette mise en conformité normalise (spec GH337 §4.3) : ils ne la bloquent pas.
+    const eolOnly = ids.has('gitattributes')
+      ? await eolOnlyChanges(repoPath, unstaged.filter(f => f.marker === 'M').map(f => f.path))
+      : new Set<string>()
+    const blocking = [
+      ...staged.filter(f => !isLocalStateFile(f.path)),
+      ...unstaged.filter(f => !isLocalStateFile(f.path) && !eolOnly.has(f.path)),
+    ]
+    if (blocking.length > 0) throw new Error('conformity-dirty')
     const integration = await this.git.getIntegrationBranch(repoPath)
-    const branch = await git.currentBranch({ fs, dir: repoPath })
+    const branch = await gitFor(repoPath).currentBranch()
     if (branch !== integration) throw new Error(`conformity-off-integration:${integration}`)
 
     // Intégration à jour avec origin avant d'y commiter (règles de Publier, GH39).
@@ -99,7 +112,6 @@ export class RepoConformityService {
       if (!pulled.success) throw new Error('conformity-diverged')
     }
 
-    const ids = new Set(items.map(i => i.id))
     if (ids.has('gitattributes')) {
       // En tête : les règles plus précises écrites après (ex. `-text` d'un fichier vendoré) l'emportent.
       const existing = await readText(repoPath, '.gitattributes')
@@ -212,18 +224,32 @@ function lines(text: string | null): string[] {
 }
 
 /** Fichiers suivis qui ne diffèrent de HEAD que par CRLF : réécrits tels que dans git (LF). */
+/** Fichier texte en CRLF sur disque dont le contenu en LF est exactement le blob (LF) de git. */
+function isCrlfOfLfBlob(onDisk: Buffer | null, inGit: Buffer | null): boolean {
+  if (!onDisk || !inGit || !onDisk.includes('\r\n') || onDisk.subarray(0, 8000).includes(0)) return false
+  if (inGit.includes('\r\n')) return false
+  return Buffer.from(onDisk.toString('latin1').replace(/\r\n/g, '\n'), 'latin1').equals(inGit)
+}
+
+/** GH337 — parmi `paths`, ceux qui ne diffèrent de HEAD que par les fins de ligne (CRLF sur disque). */
+async function eolOnlyChanges(repoPath: string, paths: string[]): Promise<Set<string>> {
+  const g = gitFor(repoPath)
+  const out = new Set<string>()
+  for (const p of paths) {
+    const onDisk = await fsP.readFile(path.join(repoPath, p)).catch(() => null)
+    if (isCrlfOfLfBlob(onDisk, onDisk ? await g.readBlob(`HEAD:${p}`) : null)) out.add(p)
+  }
+  return out
+}
+
 async function normalizeEol(repoPath: string): Promise<void> {
-  const headOid = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
-  const cache = {}
-  for (const filepath of await git.listFiles({ fs, dir: repoPath, ref: 'HEAD' })) {
-    const abs = path.join(repoPath, filepath)
+  const g = gitFor(repoPath)
+  await g.resolveOrThrow('HEAD')
+  for (const entry of await g.lsTree('HEAD')) {
+    const abs = path.join(repoPath, entry.path)
     const onDisk = await fsP.readFile(abs).catch(() => null)
-    if (!onDisk || !onDisk.includes('\r\n') || onDisk.subarray(0, 8000).includes(0)) continue
-    const { blob } = await git.readBlob({ fs, dir: repoPath, oid: headOid, filepath, cache })
-    const inGit = Buffer.from(blob)
-    if (inGit.includes('\r\n')) continue
-    if (Buffer.from(onDisk.toString('latin1').replace(/\r\n/g, '\n'), 'latin1').equals(inGit)) {
-      await fsP.writeFile(abs, inGit)
-    }
+    if (!onDisk || !onDisk.includes('\r\n')) continue
+    const inGit = await g.readBlob(entry.oid)
+    if (isCrlfOfLfBlob(onDisk, inGit)) await fsP.writeFile(abs, inGit!)
   }
 }

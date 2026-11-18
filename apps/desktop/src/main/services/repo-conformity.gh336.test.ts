@@ -120,7 +120,8 @@ describe('GH336 — apply', () => {
 
   it('fichiers en CRLF sur le disque (LF dans git) : repassés en LF, jamais vus modifiés', async () => {
     await write('a.yaml', 'a: 1\r\nb: 2\r\n')
-    expect(await clean()).toBe(true)
+    // GH337 — sans .gitattributes, git natif (comme git en ligne de commande) voit a.yaml modifié :
+    // la mise en conformité ne doit pas s'y bloquer (conformity-dirty), c'est elle qui le normalise.
     await service.apply(repo, false)
     expect(await read('a.yaml')).toBe('a: 1\nb: 2\n')
     expect(await clean()).toBe(true)

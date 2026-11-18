@@ -1,11 +1,9 @@
-import * as fs from 'fs'
 import * as fsPromises from 'fs/promises'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import type { ReadmeState, ReadmeSyncOutcome } from '@polenta/types'
 
+import { gitFor } from '../../git/git-backend'
 import type { GitService } from '../git.service'
-import { eolAwareStatusMatrix } from '../eol-status.util'
 import type { SyncService } from '../sync.service'
 
 const README = 'README.md'
@@ -31,13 +29,14 @@ export class RepoSettingsService {
     const text = description.trim()
     if (!text) throw new Error('La description est obligatoire.')
     const integration = await this.gitService.getIntegrationBranch(repoPath)
-    const current = await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined)
+    const g = gitFor(repoPath)
+    const current = (await g.currentBranch().catch(() => null)) ?? undefined
     if (current !== integration) return { status: 'not-on-integration', branch: integration }
-    // GH326 — pas `git.status`, aveugle à une réécriture à taille égale dans la seconde de l'indexation.
-    // Un README ignoré reste « en attente », comme le renvoyait `git.status` ('ignored').
-    if (await git.isIgnored({ fs, dir: repoPath, filepath: README })) return { status: 'pending-changes' }
-    const row = (await eolAwareStatusMatrix(repoPath, [README])).find(([filepath]) => filepath === README)
-    if (row && !(row[1] === 1 && row[2] === 1 && row[3] === 1)) return { status: 'pending-changes' }
+    // Un README ignoré reste « en attente » (GH326).
+    if ((await g.checkIgnore([README])).has(README)) return { status: 'pending-changes' }
+    // GH337 — `status()` est la seule définition d'une modification locale (GH336 C) : indexé,
+    // modifié, supprimé ou non suivi → en attente ; une différence de fins de ligne seule n'en est pas une.
+    if ((await g.status({ prefixes: [README] })).some(e => e.path === README)) return { status: 'pending-changes' }
 
     const head = await this.sync.readFileAtHead(repoPath, README)
     let next: string

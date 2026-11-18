@@ -5,10 +5,9 @@ import { registerPrefHandlers } from './pref.handlers'
 import type { HandlerRegistry } from './registry'
 import type { PlatformHost } from '../host/platform-host'
 import { IMAGE_MIME_BY_EXT, IMAGE_EXT_BY_MIME, findAvailableFileName } from './file-ops'
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { gitFor } from '../git/git-backend'
 import type { AuthService } from '../services/auth.service'
 import type { GitService } from '../services/git.service'
 import type { SyncService } from '../services/sync.service'
@@ -356,12 +355,14 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('sync:is-merged', (_e, repoPath: string, branch: string, into: string) =>
     c.sync.isMergedInto(repoPath, branch, into))
   r.handle('sync:log', async (_e, repoPath: string, limit = 20) => {
-    const commits = await git.log({ fs, dir: repoPath, depth: limit })
-    return commits.map((c: { oid: string; commit: { message: string; author: { name: string; timestamp: number } } }) => ({
+    const g = gitFor(repoPath)
+    await g.resolveOrThrow('HEAD') // dépôt sans commit : erreur, comme `git.log` d'isomorphic-git
+    const commits = await g.log('HEAD', { limit })
+    return commits.map(c => ({
       sha: c.oid,
-      message: c.commit.message.split('\n')[0],
-      author: c.commit.author.name,
-      date: new Date(c.commit.author.timestamp * 1000).toISOString(),
+      message: c.message.split('\n')[0],
+      author: c.author.name,
+      date: new Date(c.author.timestamp * 1000).toISOString(),
     }))
   })
   r.handle('sync:checkout-commit', async (_e, repoPath: string, sha: string) => {

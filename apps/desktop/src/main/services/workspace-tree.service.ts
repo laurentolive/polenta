@@ -16,6 +16,8 @@ import * as path from 'path'
 import git from 'isomorphic-git'
 import * as yaml from 'js-yaml'
 
+import { gitFor } from '../git/git-backend'
+
 import type { SyncService } from './sync.service'
 import type { PolentaRepoService } from './polenta-repo.service'
 import type { RepoWatcherService } from './repo-watcher.service'
@@ -652,16 +654,20 @@ export class WorkspaceTreeService {
    * compares it to HEAD — never "trusts" a branch/tag pin without checking, so a
    * previously failed checkout (T70 UC-2) is never silently treated as settled.
    */
-  private async peelToCommit(repoPath: string, oid: string): Promise<string> {
-    return (await git.readCommit({ fs, dir: repoPath, oid })).oid
+  /** Commit visé par `rev` (oid, ref, nom court ; tag annoté pelé). Lève si absent ou pas un commit. */
+  private async peelToCommit(repoPath: string, rev: string): Promise<string> {
+    const oid = await gitFor(repoPath).resolveCommit(rev)
+    if (!oid) throw new Error(`not a commit: ${rev}`)
+    return oid
   }
 
   /** GH314 — a HEAD detached on an annotated tag object (pin checked out before the fix) is moved
    * onto that tag's commit, the same tree: no file is rewritten. Best effort. */
   private async peelDetachedHead(repoPath: string): Promise<void> {
     try {
-      if (await git.currentBranch({ fs, dir: repoPath })) return
-      const head = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+      const g = gitFor(repoPath)
+      if (await g.currentBranch()) return
+      const head = await g.resolveOrThrow('HEAD')
       const commit = await this.peelToCommit(repoPath, head)
       if (commit !== head) await git.writeRef({ fs, dir: repoPath, ref: 'HEAD', value: commit, force: true })
     } catch {
@@ -672,9 +678,11 @@ export class WorkspaceTreeService {
   /** GH314 — ref to hand to `git.checkout` for `pin`: the commit of a tag (annotated or not) when
    * no local branch carries that name, else `pin` itself (branch, SHA, remote branch). */
   private async pinCheckoutRef(repoPath: string, pin: string): Promise<string> {
-    if (await git.resolveRef({ fs, dir: repoPath, ref: `refs/heads/${pin}` }).then(() => true, () => false)) return pin
     try {
-      return await this.peelToCommit(repoPath, await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${pin}` }))
+      const g = gitFor(repoPath)
+      if (await g.resolve(`refs/heads/${pin}`)) return pin
+      if (!(await g.resolve(`refs/tags/${pin}`))) return pin
+      return await this.peelToCommit(repoPath, `refs/tags/${pin}`)
     } catch {
       return pin
     }
@@ -688,20 +696,20 @@ export class WorkspaceTreeService {
 
       // GH21 — `resolveRef` s'arrête à l'objet d'un tag annoté (baseline), et un checkout de ce tag
       // laisse ce même objet dans HEAD : on compare des commits.
-      const head = await this.peelToCommit(repoPath, await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' }))
+      const head = await this.peelToCommit(repoPath, 'HEAD')
 
       if (/^[0-9a-f]{7,40}$/i.test(pin)) {
         return head.startsWith(pin) || pin.startsWith(head.substring(0, pin.length))
       }
 
       try {
-        const pinnedSha = await this.peelToCommit(repoPath, await git.resolveRef({ fs, dir: repoPath, ref: pin }))
+        const pinnedSha = await this.peelToCommit(repoPath, pin)
         if (head === pinnedSha) return true
         // GH173: pending changes of the pinned branch moved onto `dev-auto`, which the auto-pull
         // then fast-forwarded by reference — still that branch, a checkout would take the edits away.
-        const current = await git.currentBranch({ fs, dir: repoPath })
+        const current = await gitFor(repoPath).currentBranch()
         return !!current && isAutoBranch(current)
-          && await git.isDescendent({ fs, dir: repoPath, oid: pinnedSha, ancestor: head, depth: -1 }).catch(() => false)
+          && await gitFor(repoPath).isAncestor(head, pinnedSha).catch(() => false)
       } catch {
         // Branch/tag pin not resolvable locally — needs a (re)checkout.
         return false
@@ -728,7 +736,7 @@ export class WorkspaceTreeService {
   /** Get the HEAD commit SHA of a repo. Returns '' on error. */
   private async getHeadSha(repoPath: string): Promise<string> {
     try {
-      return await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+      return (await gitFor(repoPath).resolve('HEAD')) ?? ''
     } catch {
       return ''
     }
@@ -737,8 +745,8 @@ export class WorkspaceTreeService {
   /** Get the remote origin URL of a repo. Returns '' if not a git repo or no remote. */
   private async getRepoRemoteUrl(repoPath: string): Promise<string> {
     try {
-      const remotes = await git.listRemotes({ fs, dir: repoPath })
-      return remotes.find((r: { remote: string; url: string }) => r.remote === 'origin')?.url ?? ''
+      const remotes = await gitFor(repoPath).remotes()
+      return remotes.find(r => r.name === 'origin')?.url ?? ''
     } catch {
       return ''
     }

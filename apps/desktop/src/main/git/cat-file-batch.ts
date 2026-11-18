@@ -1,9 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
 
 import { gitInstall } from './git-binary'
 import { gitEnv } from './git-config'
 import { GitError } from './git-errors'
-import { gitText, repoKey } from './git-runner'
+import { countGitSpawn, gitText, repoKey } from './git-runner'
 import { killTree, onRepoClose, track } from './process-registry'
 
 /**
@@ -25,6 +28,25 @@ interface Request {
 }
 
 const IDLE_MS = 60_000
+
+/**
+ * Dossier git de `repo` : `.git` (dossier, ou fichier `gitdir:` d'un worktree), ou `repo` lui-même
+ * pour un dépôt nu. `null` si `repo` n'est pas la racine d'un dépôt (git cherchera alors vers le haut
+ * depuis `repo`).
+ */
+export function resolveGitDir(repo: string): string | null {
+  const dotGit = path.join(repo, '.git')
+  try {
+    const st = fs.statSync(dotGit)
+    if (st.isDirectory()) return dotGit
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(dotGit, 'utf8'))
+    return m ? path.resolve(repo, m[1]) : null
+  } catch { /* pas de .git */ }
+  try {
+    if (fs.statSync(path.join(repo, 'objects')).isDirectory() && fs.existsSync(path.join(repo, 'HEAD'))) return repo
+  } catch { /* pas un dépôt nu */ }
+  return null
+}
 
 /** Fin de stdin : cat-file s'arrête de lui-même ; arrêt forcé s'il traîne. */
 function stopGracefully(child: ChildProcessWithoutNullStreams): void {
@@ -73,8 +95,13 @@ class CatFileBatch {
 
   private ensureChild(): ChildProcessWithoutNullStreams {
     if (this.child) return this.child
-    const child = spawn(gitInstall().gitExe, ['cat-file', '--batch-command'], {
-      cwd: this.repo, env: gitEnv({ readOnly: true }), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
+    // Hors du dossier du dépôt : sous Windows, le dossier courant d'un processus vivant ne peut pas
+    // être supprimé (EBUSY/EPERM au retrait d'un dépôt, pendant les 60 s d'inactivité). Les packs
+    // ouverts, eux, n'empêchent pas la suppression (Git for Windows ouvre en partage de suppression).
+    const gitDir = resolveGitDir(this.repo)
+    countGitSpawn('cat-file(persistant)')
+    const child = spawn(gitInstall().gitExe, [...(gitDir ? [`--git-dir=${gitDir}`] : []), 'cat-file', '--batch-command'], {
+      cwd: gitDir ? os.tmpdir() : this.repo, env: gitEnv({ readOnly: true }), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
     })
     track(child, this.repo, true)
     let stderr = ''

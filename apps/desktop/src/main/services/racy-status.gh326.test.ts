@@ -65,8 +65,12 @@ afterEach(async () => {
   await fsP.rm(repo, { recursive: true, force: true })
 })
 
+// GH337 — préparation en processus (isomorphic-git, quelques ms) : `sync.stageAll` lance désormais
+// plusieurs processus git et, suite complète en cours, ne tient plus dans la seconde à rejouer. Ce qui
+// est vérifié ensuite (statut, stage, commit par SyncService) ne change pas.
+const indexFile = () => git.add({ fs, dir: repo, filepath: FILE })
 const commitBefore = async () => {
-  await sync.stageAll(repo)
+  await indexFile()
   await git.commit({ fs, dir: repo, message: 'avant', author: AUTHOR })
 }
 
@@ -88,7 +92,7 @@ describe('GH326 — réécriture à taille égale dans la seconde du commit', ()
     await write(FILE, 'targetId: SYS-0001\n')
     await sync.stageAll(repo)
     await git.commit({ fs, dir: repo, message: 'v1', author: AUTHOR })
-    await rewriteWithinSecond(() => sync.stageAll(repo), [1, 2, 2])
+    await rewriteWithinSecond(indexFile, [1, 2, 2])
 
     expect((await row(FILE))!.slice(1)).toEqual([1, 2, 3])
     const status = await sync.status(repo)

@@ -6,6 +6,7 @@ import git from 'isomorphic-git'
 import { encodeIntegrationGuard, isValidIntegrationSuffix } from '@polenta/types'
 import type { DesignateOutcome, IntegrationCreateFrom, IntegrationGuardCode, IntegrationState, IntegrationStatus } from '@polenta/types'
 
+import { gitFor } from '../git/git-backend'
 import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
 import type { ForgeService } from './forge/forge.service'
@@ -41,15 +42,16 @@ export class IntegrationBranchService {
   ) {}
 
   async state(repoPath: string): Promise<IntegrationState> {
-    const currentBranch = (await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined)) ?? ''
+    const currentBranch = (await branchOf(repoPath)) ?? ''
     const configured = await this.git.getIntegrationBranch(repoPath)
     let status: IntegrationStatus = 'ok'
     if (!currentBranch) status = 'detached'
     else if (currentBranch.startsWith(INT_PREFIX) && currentBranch !== configured) status = 'incoherent'
     else if (!configured.startsWith(INT_PREFIX)) status = 'nonConvention'
     // GH314 — a folder positioned on an annotated tag before the fix has the tag object in HEAD.
-    const headOid = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
-      .then(oid => git.readCommit({ fs, dir: repoPath, oid }).then(c => c.oid, () => oid), () => '')
+    const g = gitFor(repoPath)
+    const headOid = await g.resolve('HEAD')
+      .then(async oid => oid ? ((await g.resolveCommit(oid).catch(() => null)) ?? oid) : '', () => '')
     return { currentBranch, headOid, configured, status, candidates: await this.candidates(repoPath) }
   }
 
@@ -57,7 +59,7 @@ export class IntegrationBranchService {
     if (!branch.startsWith(INT_PREFIX) || !isValidIntegrationSuffix(branch.slice(INT_PREFIX.length))) {
       throw new Error(`« ${branch} » n'est pas un nom de branche d'intégration valide (int-<nom>).`)
     }
-    const current = await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined)
+    const current = await branchOf(repoPath)
     // Branche absente en local : isomorphic-git crée la branche de suivi depuis origin/<branch>.
     if (current !== branch) await this.sync.checkoutBranch(repoPath, branch)
 
@@ -88,8 +90,8 @@ export class IntegrationBranchService {
       await fsP.writeFile(wdPath, next, 'utf-8')
     }
 
-    const remotes = await git.listRemotes({ fs, dir: repoPath }).catch(() => [])
-    if (!remotes.some(r => r.remote === 'origin')) return outcome
+    const remotes = await gitFor(repoPath).remotes().catch(() => [])
+    if (!remotes.some(r => r.name === 'origin')) return outcome
     try {
       await this.sync.pushBranch(repoPath, branch)
       outcome.push = 'ok'
@@ -110,14 +112,17 @@ export class IntegrationBranchService {
       throw new Error(`La branche ${branch} existe déjà (en local ou sur le serveur).`)
     }
     // Detached HEAD (composant épinglé) : la position de retour est le commit.
-    const previous = (await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined))
-      || (await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' }).catch(() => undefined))
+    const previous = (await branchOf(repoPath))
+      || ((await gitFor(repoPath).resolve('HEAD').catch(() => null)) ?? undefined)
     let sha: string | null = null
     if (from && 'tag' in from) {
       sha = await this.sync.resolveTag(repoPath, from.tag)
       if (!sha) throw new Error(`Baseline « ${from.tag} » introuvable.`)
     } else if (from) {
-      sha = await git.readCommit({ fs, dir: repoPath, oid: from.commit }).then(c => c.oid, () => null)
+      // Un oid (pas un nom de branche ou de tag), pelé jusqu'au commit comme le faisait readCommit.
+      sha = /^[0-9a-f]{4,40}$/i.test(from.commit)
+        ? await gitFor(repoPath).resolveCommit(from.commit).catch(() => null)
+        : null
       if (!sha) throw new Error(`Commit « ${from.commit} » introuvable.`)
     }
     try {
@@ -149,11 +154,11 @@ export class IntegrationBranchService {
       // HEAD illisible : on poursuit le retour arrière.
     }
     try {
-      if (previous && (await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined)) === branch) {
+      if (previous && (await branchOf(repoPath)) === branch) {
         // Sans tag, la branche a été créée sans toucher au WD (T87) : retour sans réécrire les fichiers.
         await safeCheckout({ dir: repoPath, ref: previous, noCheckout: !rewroteWd })
       }
-      if ((await git.listBranches({ fs, dir: repoPath })).includes(branch)) await git.deleteBranch({ fs, dir: repoPath, ref: branch })
+      if ((await gitFor(repoPath).refNames('refs/heads')).includes(branch)) await git.deleteBranch({ fs, dir: repoPath, ref: branch })
     } catch {
       // Best-effort : l'erreur d'origine reste celle remontée à l'utilisateur.
     }
@@ -181,8 +186,9 @@ export class IntegrationBranchService {
   }
 
   private async branchLists(repoPath: string): Promise<[string[], string[]]> {
-    const locals = await git.listBranches({ fs, dir: repoPath }).catch(() => [] as string[])
-    const remotes = await git.listBranches({ fs, dir: repoPath, remote: 'origin' }).catch(() => [] as string[])
+    const g = gitFor(repoPath)
+    const locals = await g.refNames('refs/heads').catch(() => [] as string[])
+    const remotes = await g.refNames('refs/remotes/origin').catch(() => [] as string[])
     return [locals, remotes.filter(b => b !== 'HEAD')]
   }
 
@@ -198,6 +204,11 @@ export class IntegrationBranchService {
   }
 }
 
+
+/** Branche courante, `undefined` en tête détachée ou hors dépôt (sémantique de `currentBranch` d'isomorphic-git + `.catch`). */
+async function branchOf(repoPath: string): Promise<string | undefined> {
+  return (await gitFor(repoPath).currentBranch().catch(() => null)) ?? undefined
+}
 
 /** `{}` si absent ou vide ; lève une erreur si le YAML est illisible ou n'est pas un objet. */
 function parseConfigStrict(raw: string | null, where: string): Record<string, unknown> {

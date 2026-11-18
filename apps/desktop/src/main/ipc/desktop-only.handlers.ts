@@ -302,6 +302,4 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   handle('terminal:cd', (_e, id: string, repoPath: string) => terminal.cd(id, repoPath))
   handle('terminal:resize', (_e, id: string, cols: number, rows: number) => terminal.resize(id, cols, rows))
   handle('terminal:kill', (_e, id: string) => terminal.kill(id))
-  // URL fixe : pas un ouvreur d'URL générique exposé au renderer.
-  handle('terminal:open-git-download', () => shell.openExternal('https://git-scm.com/downloads'))
 }

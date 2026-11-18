@@ -2,7 +2,6 @@ import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { createHash } from 'crypto'
-import git, { TREE, type WalkerEntry } from 'isomorphic-git'
 import {
   canonicalOutput, detectKind, entriesOf, isBinaryContent, mergeFile, nextFreeId, parseDrawio, parseObject, parseOutput,
   prefixOf, renumberPath, renumberText, shortRef, type MarkerLabels,
@@ -19,7 +18,7 @@ import type { SyncService } from './sync.service'
 import { findObjectTypeDef, type ResolvedObjectType } from './schema-lookup.util'
 import { TOMBSTONES_DIR } from './id-counter.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
-import { singleMergeBase } from './recursive-merge.util'
+import { gitFor, type GitBackend, type TreeEntry } from '../git/git-backend'
 
 /**
  * GH37 — résolution des conflits de merge dans l'outil (specs/GH37-design.md §2.2, §4, §5).
@@ -43,11 +42,19 @@ interface DraftFile {
   files: Record<string, MergeFileDraft>
 }
 
+/** Entrée d'un arbre pour le parcours à trois côtés (même forme d'accès que l'ancien walker). */
+interface WalkNode {
+  oid(): Promise<string>
+  type(): Promise<TreeEntry['type']>
+  mode(): Promise<number>
+  content(): Promise<Uint8Array | null>
+}
+
 /** One path of the 3-way walk: the tree entries of each side (absent = undefined). */
 interface Triple {
-  left?: WalkerEntry
-  base?: WalkerEntry
-  right?: WalkerEntry
+  left?: WalkNode
+  base?: WalkNode
+  right?: WalkNode
 }
 
 /** One entry of the result tree, at any depth (a whole subtree can be taken as is). */
@@ -64,11 +71,43 @@ const IMAGE_TYPES: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
 }
 
-async function oidOf(e: WalkerEntry | undefined): Promise<string | undefined> {
+async function oidOf(e: WalkNode | undefined): Promise<string | undefined> {
   return e ? e.oid() : undefined
 }
 
-async function textOf(e: WalkerEntry | undefined): Promise<{ text: string | null; binary: boolean }> {
+/**
+ * GH337 — parcours à trois côtés sans isomorphic-git (`git.walk`) : les arbres sont lus une fois
+ * chacun (`lsTree` récursif, dossiers compris), puis parcourus dans l'ordre des chemins. `map` reçoit
+ * le chemin et l'entrée de chaque côté (absente = `undefined`) ; renvoyer `true` pour un dossier le
+ * fait descendre, sinon son contenu est ignoré (même contrat que `git.walk`).
+ */
+async function walkTrees(
+  g: GitBackend,
+  revs: string[],
+  map: (filepath: string, entries: (WalkNode | undefined)[]) => Promise<boolean | null | void>,
+): Promise<void> {
+  const maps = await Promise.all(revs.map(async rev => {
+    const m = new Map<string, TreeEntry>()
+    for (const e of await g.lsTree(rev, { recursive: true, trees: true })) m.set(e.path, e)
+    return m
+  }))
+  const nodeOf = (e: TreeEntry | undefined): WalkNode | undefined => e && {
+    oid: async () => e.oid,
+    type: async () => e.type,
+    mode: async () => parseInt(e.mode, 8),
+    content: async () => g.readBlob(e.oid),
+  }
+  const paths = [...new Set(maps.flatMap(m => [...m.keys()]))].sort()
+  const pruned: string[] = []
+  for (const p of paths) {
+    if (pruned.some(dir => p.startsWith(`${dir}/`))) continue
+    const entries = maps.map(m => nodeOf(m.get(p)))
+    if ((await map(p, entries)) === true) continue
+    if (maps.some(m => m.get(p)?.type === 'tree')) pruned.push(p)
+  }
+}
+
+async function textOf(e: WalkNode | undefined): Promise<{ text: string | null; binary: boolean }> {
   if (!e) return { text: null, binary: false }
   // A submodule pin (gitlink) points to a commit of another repo: no content to read here — it is
   // resolved by choosing a side, like a binary.
@@ -98,11 +137,11 @@ export class MergeResolutionService {
   // ─── Session ──────────────────────────────────────────────────────────────────
 
   async open(repoPath: string, leftRef: string, rightRef: string, origin: MergeOrigin): Promise<MergeSessionInfo> {
-    const leftOid = await git.resolveRef({ fs, dir: repoPath, ref: leftRef })
-    const rightOid = await git.resolveRef({ fs, dir: repoPath, ref: rightRef })
+    const g = gitFor(repoPath)
+    const leftOid = await g.resolveOrThrow(leftRef)
+    const rightOid = await g.resolveOrThrow(rightRef)
     // GH332: histoire croisée (plusieurs ancêtres communs) → base virtuelle, comme la fusion.
-    const author = await this.auth.getAuthor(repoPath)
-    const baseOid = await singleMergeBase(repoPath, leftOid, rightOid, { name: author.name, email: author.email })
+    const baseOid = await g.displayBase(leftOid, rightOid)
     if (!baseOid) throw new Error('Cannot resolve this merge: no common ancestor')
 
     const id = createHash('sha1').update(`${path.resolve(repoPath)}\0${leftOid}\0${rightOid}`).digest('hex')
@@ -236,9 +275,10 @@ export class MergeResolutionService {
     if (!prefix) throw new Error(`${oldId} has no numeric suffix`)
 
     const { repoPath } = session
+    const g = gitFor(repoPath)
     const known = new Set<string>()
     for (const ref of [session.baseOid, session.leftOid, session.rightOid]) {
-      for (const f of await git.listFiles({ fs, dir: repoPath, ref })) known.add(f)
+      for (const f of await g.lsTree(ref, { recursive: true })) if (f.type === 'blob') known.add(f.path)
     }
     const newId = nextFreeId(prefix, known, session.renumbers.map(r => r.newId))
 
@@ -299,13 +339,10 @@ export class MergeResolutionService {
   ): Promise<{ treeOid: string; impacted: string[] }> {
     const entries: ResultEntry[] = []
     const impacted: string[] = []
-    await git.walk({
-      fs,
-      dir: repoPath,
-      trees: [TREE({ ref: leftRoot }), TREE({ ref: baseOid })],
-      map: async (filepath, walkEntries) => {
-        const [left, base] = (walkEntries ?? []).map(e => e ?? undefined)
-        if (filepath === '.') return true
+    const g = gitFor(repoPath)
+    await walkTrees(g, [leftRoot, baseOid],
+      async (filepath, walkEntries) => {
+        const [left, base] = walkEntries
         if (!left) return null
         const [lo, bo] = await Promise.all([oidOf(left), oidOf(base)])
         const type = await left.type()
@@ -331,8 +368,7 @@ export class MergeResolutionService {
         if (oid !== lo || newPath !== filepath) impacted.push(newPath)
         entries.push({ path: newPath, oid, mode: modeString(await left.mode()), type: 'blob' })
         return null
-      },
-    })
+      })
     return { treeOid: await this.writeTrees(repoPath, entries), impacted: impacted.sort() }
   }
 
@@ -349,7 +385,8 @@ export class MergeResolutionService {
     // 2. Branche cible checkoutée → le WD doit être propre (il sera réaligné par un checkout).
     //    Publier aussi : la suite (renderer) quitte la branche de travail pour l'intégration, ce
     //    qu'empêcherait une modification non commitée — refusé ici, avant tout commit.
-    const current = await git.currentBranch({ fs, dir: repoPath })
+    const g = gitFor(repoPath)
+    const current = await g.currentBranch()
     const targetCheckedOut = current === session.targetRef
     if (targetCheckedOut || session.origin.kind === 'publish') {
       const status = await this.sync.status(repoPath)
@@ -381,18 +418,11 @@ export class MergeResolutionService {
     const message = session.origin.kind === 'pull'
       ? `Merge remote-tracking branch '${shortRef(session.origin.remoteRef)}' into ${session.targetRef}`
       : `Merge branch '${otherRef}' into ${session.targetRef}`
-    const sha = await git.commit({
-      fs,
-      dir: repoPath,
-      message,
-      author: { name: author.name, email: author.email },
-      tree,
-      parent: [targetOid, otherOid],
-      ref: `refs/heads/${session.targetRef}`,
-    })
+    const sha = await g.commitTree(tree, [targetOid, otherOid], message, { name: author.name, email: author.email })
+    await g.updateRefs([{ ref: `refs/heads/${session.targetRef}`, newOid: sha, oldOid: targetOid }])
 
     // 6. Réaligne WD et index si la cible est la branche courante (vérifié propre en 2).
-    if (targetCheckedOut) await git.checkout({ fs, dir: repoPath, ref: session.targetRef, force: true })
+    if (targetCheckedOut) await g.checkout(session.targetRef, { force: true })
 
     // 7. Brouillon supprimé.
     await this.abandon(id)
@@ -406,10 +436,8 @@ export class MergeResolutionService {
   }
 
   private async isCurrent(session: MergeSessionInfo): Promise<boolean> {
-    const [l, r] = await Promise.all([
-      git.resolveRef({ fs, dir: session.repoPath, ref: session.leftRef }).catch(() => null),
-      git.resolveRef({ fs, dir: session.repoPath, ref: session.rightRef }).catch(() => null),
-    ])
+    const g = gitFor(session.repoPath)
+    const [l, r] = await Promise.all([g.resolve(session.leftRef), g.resolve(session.rightRef)])
     return l === session.leftOid && r === session.rightOid
   }
 
@@ -438,18 +466,14 @@ export class MergeResolutionService {
     repoPath: string, leftRoot: string, baseOid: string, rightOid: string,
     onBlob: (filepath: string, t: Triple) => Promise<void>,
     opts: {
-      onTaken?: (entry: ResultEntry, taken: WalkerEntry) => Promise<void> | void
+      onTaken?: (entry: ResultEntry, taken: WalkNode) => Promise<void> | void
       mustDescend?: (filepath: string) => boolean
     } = {},
   ): Promise<void> {
     const { onTaken, mustDescend } = opts
-    await git.walk({
-      fs,
-      dir: repoPath,
-      trees: [TREE({ ref: leftRoot }), TREE({ ref: baseOid }), TREE({ ref: rightOid })],
-      map: async (filepath, entries) => {
-        const [left, base, right] = (entries ?? []).map(e => e ?? undefined)
-        if (filepath === '.') return true
+    await walkTrees(gitFor(repoPath), [leftRoot, baseOid, rightOid],
+      async (filepath, entries) => {
+        const [left, base, right] = entries
         const [lo, bo, ro] = await Promise.all([oidOf(left), oidOf(base), oidOf(right)])
         // Same on both sides, or changed on one side only: taken as is (whole subtree if a tree).
         const taken = lo === ro ? left : lo === bo ? right : ro === bo ? left : null
@@ -471,8 +495,7 @@ export class MergeResolutionService {
         if (types.includes('tree')) throw new Error(`Cannot resolve this merge: ${filepath} is a file on one side and a folder on the other`)
         await onBlob(filepath, { left, base, right })
         return null
-      },
-    })
+      })
   }
 
   /** Conflict entry for a path changed on both sides, or `null` when it merges cleanly. */
@@ -575,7 +598,7 @@ export class MergeResolutionService {
   }
 
   private async writeBlob(repoPath: string, text: string): Promise<string> {
-    return git.writeBlob({ fs, dir: repoPath, blob: Buffer.from(text, 'utf8') })
+    return gitFor(repoPath).writeBlob(Buffer.from(text, 'utf8'))
   }
 
   /** Writes the nested trees of `entries` (any depth) bottom-up; empty folders vanish, the root stays. */
@@ -598,14 +621,14 @@ export class MergeResolutionService {
         if (oid) items.push({ mode: TREE_MODE, path: name, oid, type: 'tree' })
       }
       if (items.length === 0 && !isRoot) return null
-      return git.writeTree({ fs, dir: repoPath, tree: items })
+      return gitFor(repoPath).mktree(items)
     }
     return (await write(root, true))!
   }
 
   private async readBytes(repoPath: string, rootOid: string, filepath: string): Promise<Uint8Array | null> {
     try {
-      return (await git.readBlob({ fs, dir: repoPath, oid: rootOid, filepath })).blob
+      return await gitFor(repoPath).readBlob(`${rootOid}:${filepath}`)
     } catch {
       return null
     }

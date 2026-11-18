@@ -1,9 +1,10 @@
 import * as path from 'path'
 
 /**
- * GH238 — shell du terminal de la vue Version : Git Bash de l'installation Git for Windows du
- * poste (rien d'embarqué), `$SHELL` ailleurs. Logique pure, le disque et l'environnement sont
- * injectés pour être testés par vitest.
+ * GH238 / GH337 — shell du terminal de la vue Version. Sous Windows, c'est le Git Bash embarqué
+ * (`<gitDir>/bin/bash.exe`, design §7) : pas de shell du PC, dont la configuration et la version de
+ * git varieraient d'un poste à l'autre. Hors Windows, `$SHELL`. Logique pure, le disque et
+ * l'environnement sont injectés pour être testés par vitest.
  */
 
 export interface ShellSpec {
@@ -15,55 +16,31 @@ export interface ShellSpec {
 export interface ShellProbe {
   platform: NodeJS.Platform
   env: Record<string, string | undefined>
+  /** Git Bash de l'installation embarquée (`gitInstall().bashExe`), `null` si absent. */
+  embeddedBash: string | null
   exists(p: string): boolean
 }
 
-/** Variable d'environnement sans tenir compte de la casse (Windows : `Path`, `ProgramFiles`…). */
-function envVar(env: Record<string, string | undefined>, name: string): string | undefined {
-  const key = Object.keys(env).find(k => k.toUpperCase() === name.toUpperCase())
-  return key ? env[key] : undefined
-}
-
-/** Racines Git for Windows candidates : dossiers du PATH contenant `git.exe` (`cmd`, `bin` ou
- *  `mingw64\bin`), puis emplacements standards — toujours consultés, car le PATH du processus ne
- *  voit pas une installation faite pendant que Polenta tourne. */
-function gitRoots(p: ShellProbe): string[] {
-  const w = path.win32
-  const roots: string[] = []
-  for (const dir of (envVar(p.env, 'PATH') ?? '').split(';').filter(Boolean)) {
-    if (!p.exists(w.join(dir, 'git.exe'))) continue
-    const base = w.basename(dir).toLowerCase()
-    const parent = w.dirname(dir)
-    if (base === 'bin' && w.basename(parent).toLowerCase() === 'mingw64') roots.push(w.dirname(parent))
-    else if (base === 'cmd' || base === 'bin') roots.push(parent)
-  }
-  for (const v of ['ProgramFiles', 'ProgramW6432']) {
-    const dir = envVar(p.env, v)
-    if (dir) roots.push(w.join(dir, 'Git'))
-  }
-  const local = envVar(p.env, 'LOCALAPPDATA')
-  if (local) roots.push(w.join(local, 'Programs', 'Git'))
-  return roots
-}
-
-/** Shell à lancer, ou `null` si Git Bash est introuvable (Windows seulement). */
-export function resolveShell(p: ShellProbe): ShellSpec | null {
+/** Shell à lancer. Lève une erreur sous Windows si l'installation embarquée n'a pas de Git Bash :
+ *  il n'y a pas de repli sur les shells du poste. */
+export function resolveShell(p: ShellProbe): ShellSpec {
   if (p.platform === 'win32') {
-    for (const root of gitRoots(p)) {
-      const bash = path.win32.join(root, 'bin', 'bash.exe')
-      if (p.exists(bash)) return { name: 'Git Bash', file: bash, args: ['--login', '-i'] }
+    if (!p.embeddedBash || !p.exists(p.embeddedBash)) {
+      throw new Error('Git Bash embarqué introuvable (resources/git). En développement : lancer `pnpm git:fetch` dans apps/desktop.')
     }
-    return null
+    return { name: 'Git Bash', file: p.embeddedBash, args: ['--login', '-i'] }
   }
   const shell = p.env['SHELL'] || '/bin/bash'
   return { name: path.posix.basename(shell), file: shell, args: ['-l'] }
 }
 
-/** Environnement du shell : celui de l'utilisateur, sans les variables d'Electron / de Polenta
- *  (`ELECTRON_RUN_AS_NODE` ferait d'un `electron` lancé depuis le terminal un simple Node). */
-export function shellEnv(env: Record<string, string | undefined>, platform: NodeJS.Platform): Record<string, string> {
+/** Environnement du shell : `base` doit venir de `gitEnv({ terminal: true })` (PATH avec le git
+ *  embarqué en tête, config isolée, locale et invites de l'utilisateur, `HOME` inchangé). On retire
+ *  ce qui vient d'Electron / de Polenta : `ELECTRON_RUN_AS_NODE` ferait d'un `electron` lancé depuis
+ *  le terminal un simple Node. */
+export function shellEnv(base: Record<string, string | undefined>, platform: NodeJS.Platform): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(env)) {
+  for (const [k, v] of Object.entries(base)) {
     if (v === undefined || /^(ELECTRON_|POLENTA_)/i.test(k)) continue
     out[k] = v
   }

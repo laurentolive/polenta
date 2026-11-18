@@ -47,6 +47,21 @@ describe('B — résolution du binaire', () => {
     expect(() => resolveGitInstall({ ...base, platform: 'win32', exists: () => false })).toThrow(/git:fetch/)
   })
 
+  it('B2 Windows, PATH expurgé mais git du poste présent : GitUnavailableError avec `pnpm git:fetch`', () => {
+    // Un Git for Windows installé sur le poste (cmd\git.exe dans le PATH) ne doit jamais être utilisé.
+    const posteGit = 'C:\\Program Files\\Git\\cmd\\git.exe'
+    const deps = {
+      ...base,
+      platform: 'win32' as const,
+      env: { PATH: 'C:\\Program Files\\Git\\cmd' },
+      exists: (p: string) => p.toLowerCase() === posteGit.toLowerCase(),
+    }
+    let error: unknown = null
+    try { resolveGitInstall(deps) } catch (err) { error = err }
+    expect(error).toBeInstanceOf(GitUnavailableError)
+    expect((error as Error).message).toContain('pnpm git:fetch')
+  })
+
   it('B2 hors Windows : repli sur le git du PATH', () => {
     const i = resolveGitInstall({ ...base, platform: 'linux', exists: () => false })
     expect(i.gitExe).toBe('git')

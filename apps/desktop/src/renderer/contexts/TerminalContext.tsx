@@ -17,14 +17,13 @@ import { isTerminalToggleShortcut, isVersionRoute, QuietRefresh } from '../compo
  * contenu affiché.
  */
 
-export type TerminalStatus = 'idle' | 'detecting' | 'not-found' | 'installing' | 'running' | 'exited'
+export type TerminalStatus = 'idle' | 'detecting' | 'running' | 'exited'
 
 interface TerminalContextValue {
   open: boolean
   /** Ouvert et sur une vue Version. */
   visible: boolean
   status: TerminalStatus
-  winget: boolean
   shellName: string
   /** Repo du shell : celui d'ouverture de la session, ou du dernier « Aller au repo sélectionné ». */
   sessionRepo: string
@@ -38,8 +37,6 @@ interface TerminalContextValue {
   clear: () => void
   kill: () => void
   cdToSelected: () => void
-  install: () => void
-  recheck: () => void
   copySelection: () => void
   paste: () => void
 }
@@ -82,7 +79,6 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
 
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<TerminalStatus>('idle')
-  const [winget, setWinget] = useState(false)
   const [shellName, setShellName] = useState('')
   const [sessionRepo, setSessionRepo] = useState('')
   const [height, setHeightState] = useState(lastHeight)
@@ -121,14 +117,12 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
   const startSession = useCallback(async (kind: TerminalKind, repo: string) => {
     const term = termRef.current
     if (!term) return
-    setStatus(kind === 'shell' ? 'running' : 'installing')
+    setStatus('running')
     try {
       const { id, name } = await api.terminal.start(kind, repo, term.cols, term.rows)
       sessionRef.current = { id, kind }
-      if (kind === 'shell') {
-        setShellName(name)
-        setSessionRepo(repo)
-      }
+      setShellName(name)
+      setSessionRepo(repo)
       term.focus()
     } catch (err) {
       term.write(`\r\n${err instanceof Error ? err.message : String(err)}\r\n`)
@@ -136,27 +130,19 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  /** Détecte le shell : trouvé → démarré ; absent → état « introuvable » ; échec de l'appel →
-   *  message dans le terminal (jamais bloqué sur « Chargement… »). */
+  /** Détection du shell (Git Bash embarqué) puis démarrage ; échec → message dans le terminal
+   *  (jamais bloqué sur « Chargement… »). */
   const detectAndStart = useCallback(async () => {
     setStatus('detecting')
     try {
-      const result = await api.terminal.detect()
-      if (result.status === 'found') {
-        termRef.current?.reset()
-        await startSession('shell', selectedRef.current)
-        return
-      }
-      setWinget(result.winget)
-      setStatus('not-found')
-      return result
+      await api.terminal.detect()
+      termRef.current?.reset()
+      await startSession('shell', selectedRef.current)
     } catch (err) {
       termRef.current?.write(`\r\n${err instanceof Error ? err.message : String(err)}\r\n`)
       setStatus('exited')
     }
   }, [startSession])
-  // Installation de Git interrompue par « Tuer » : pas de page de téléchargement ouverte d'office.
-  const installKilledRef = useRef(false)
 
   // Première ouverture : xterm attaché une fois le panneau visible (mesure de la taille), puis
   // détection du shell et démarrage.
@@ -232,14 +218,6 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
       const session = sessionRef.current
       if (!session || id !== session.id) return
       sessionRef.current = null
-      if (session.kind === 'install-git') {
-        const killed = installKilledRef.current
-        installKilledRef.current = false
-        void detectAndStart().then(notFound => {
-          if (notFound && code !== 0 && !killed) void api.terminal.openGitDownload()
-        })
-        return
-      }
       termRef.current?.write(`\r\n\x1b[2m${t('terminal.exited', { code: String(code) })}\x1b[0m\r\n`)
       setStatus('exited')
       refresh()
@@ -310,7 +288,6 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
     open,
     visible: open && onVersionRoute,
     status,
-    winget,
     shellName,
     sessionRepo,
     selectedRepoPath,
@@ -323,7 +300,6 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
     kill: () => {
       const session = sessionRef.current
       if (!session) return
-      if (session.kind === 'install-git') installKilledRef.current = true
       void api.terminal.kill(session.id)
     },
     cdToSelected: () => {
@@ -333,14 +309,6 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
       setSessionRepo(selectedRepoPath)
       termRef.current?.focus()
     },
-    install: () => {
-      if (!winget) {
-        void api.terminal.openGitDownload()
-        return
-      }
-      void startSession('install-git', '')
-    },
-    recheck: () => { void detectAndStart() },
     copySelection: () => {
       const term = termRef.current
       if (term?.hasSelection()) void navigator.clipboard.writeText(term.getSelection())

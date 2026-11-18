@@ -1,12 +1,7 @@
 import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-// GH337 — isomorphic-git ne sert plus qu'au réseau et aux fusions (sprint 3).
-import git from 'isomorphic-git'
 
-import http from './git-http'
 import { isNetworkUnreachable } from './net-proxy'
 import { ForgeAccessError, httpStatusOf, isNonGitResponse, isPushDeclined, revokedError, writeDeniedError } from './forge/forge-access'
 
@@ -17,11 +12,9 @@ import type { GitAuthor } from './git.service'
 import { safeCheckout } from './safe-checkout.util'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
 import { assertNotVersionTag } from './version-tags.util'
-import { mergeRecursive } from './recursive-merge.util'
-import { gitFor, type CommitInfo, type GitBackend, type NameStatus, type StatusEntry, type TreeEntry } from '../git/git-backend'
-import { GitError } from '../git/git-errors'
-
-const execFileAsync = promisify(execFile)
+import { gitClone, gitFor, gitLsRemoteHeads, type CommitInfo, type GitBackend, type NameStatus, type StatusEntry, type TreeEntry } from '../git/git-backend'
+import type { CredentialResolver } from '../git/askpass'
+import { GitError, MergeConflictError } from '../git/git-errors'
 
 /** GH337 — commit visé par `rev` (tag annoté déréférencé, comme `git.readCommit`), erreur s'il n'existe pas. */
 async function readCommitOrThrow(g: GitBackend, rev: string): Promise<CommitInfo> {
@@ -126,13 +119,19 @@ export const RESYNC_BRANCH_PREFIX = 'dev-resync'
 const DIVERGENCE_LOG_DEPTH = 500
 
 /**
- * isomorphic-git's transport layer only implements the http(s) smart protocol — a local
- * filesystem path used as `origin` (e.g. a demo/test bare repo) throws UrlParseError before
- * any network call happens. Route those through the native `git` binary instead, which talks
- * to local paths natively.
+ * GH337 — identifiants d'une opération réseau : lus à chaque invite de git par le serveur askpass
+ * (§6), jamais placés dans son environnement. `null` (remote absente) : aucun identifiant.
  */
-function isHttpRemote(url: string): boolean {
-  return /^https?:\/\//i.test(url)
+function credentialsFor(auth: AuthService, remoteUrl: string | null): CredentialResolver {
+  return async () => (remoteUrl ? auth.getHttpsCredentials(remoteUrl) : null)
+}
+
+/** Progression de `git clone --progress` (« Receiving objects:  45% (…) ») → pourcentage. */
+function progressPercent(onProgress: (p: number) => void): (line: string) => void {
+  return line => {
+    const m = /(\d{1,3})%/.exec(line)
+    if (m) onProgress(Number(m[1]))
+  }
 }
 
 /** GH178 — both sides of a file diff, with the refs actually read (`null` = working tree). */
@@ -166,15 +165,9 @@ async function fileDiffContents(
   }
 }
 
-/**
- * Returns the conflicting file paths if `err` is isomorphic-git's `MergeConflictError`, `null`
- * otherwise. `err.message` does *not* contain the string `'MergeConflictError'` — it reads
- * "Automatic merge failed with one or more merge conflicts in the following files: …" — so a
- * substring check on the message never matches; `instanceof` against the typed error class is
- * both the correct check and gives typed access to `.data.filepaths`.
- */
+/** GH37 — chemins en conflit si `err` est une fusion bloquée par des conflits, `null` sinon. */
 function conflictFiles(err: unknown): string[] | null {
-  return err instanceof git.Errors.MergeConflictError ? err.data.filepaths : null
+  return err instanceof MergeConflictError ? err.paths : null
 }
 
 export class SyncService {
@@ -200,7 +193,8 @@ export class SyncService {
   }
 
   private async classifyAccessError(err: unknown, remoteUrl: string | null, write: boolean): Promise<unknown> {
-    if (!remoteUrl || !isHttpRemote(remoteUrl) || err instanceof ForgeAccessError || isNetworkUnreachable(err)) return err
+    // Un refus HTTP ne concerne que les remotes http(s) (un remote ssh n'a pas de compte de forge).
+    if (!remoteUrl || !/^https?:\/\//i.test(remoteUrl) || err instanceof ForgeAccessError || isNetworkUnreachable(err)) return err
     if (conflictFiles(err)) return err
     const host = extractHost(remoteUrl)
     const status = httpStatusOf(err)
@@ -228,40 +222,25 @@ export class SyncService {
     return (await this.auth.getHttpsCredentials(remoteUrl)) !== null
   }
 
+  /** Clone ; `onProgress` reçoit le pourcentage lu dans la progression de git (stderr). */
   async clone(remoteUrl: string, localPath: string, onProgress?: (p: number) => void): Promise<void> {
-    const credentials = await this.auth.getHttpsCredentials(remoteUrl)
-
-    await this.guarded(remoteUrl, false, () => git.clone({
-      fs,
-      http,
-      dir: localPath,
-      url: remoteUrl,
-      onAuth: () => credentials ?? undefined,
-      onProgress: onProgress
-        ? (evt: { phase: string; loaded: number; total?: number }) => {
-            if (evt.total) {
-              onProgress(Math.round((evt.loaded / evt.total) * 100))
-            }
-          }
-        : undefined,
+    await this.guarded(remoteUrl, false, () => gitClone(remoteUrl, localPath, {
+      credentials: credentialsFor(this.auth, remoteUrl),
+      onProgress: onProgress ? progressPercent(onProgress) : undefined,
     }))
   }
 
   /** GH107 — branches du serveur, sans rien écrire ; `[]` pour un repo vide. */
   async remoteHeads(remoteUrl: string): Promise<string[]> {
-    const credentials = await this.auth.getHttpsCredentials(remoteUrl)
-    const refs = await this.guarded(remoteUrl, false, () => git.listServerRefs({
-      http, url: remoteUrl, prefix: 'refs/heads/', onAuth: () => credentials ?? undefined,
+    return this.guarded(remoteUrl, false, () => gitLsRemoteHeads(remoteUrl, {
+      credentials: credentialsFor(this.auth, remoteUrl),
     }))
-    return refs.map(r => r.ref.slice('refs/heads/'.length))
   }
 
   /** GH107 — clone partiel d'une branche, pour lire ses fichiers (inspection d'un repo existant). */
   async cloneBranchShallow(remoteUrl: string, localPath: string, branch: string): Promise<void> {
-    const credentials = await this.auth.getHttpsCredentials(remoteUrl)
-    await this.guarded(remoteUrl, false, () => git.clone({
-      fs, http, dir: localPath, url: remoteUrl, ref: branch, singleBranch: true, depth: 1, noTags: true,
-      onAuth: () => credentials ?? undefined,
+    await this.guarded(remoteUrl, false, () => gitClone(remoteUrl, localPath, {
+      credentials: credentialsFor(this.auth, remoteUrl), branch, depth: 1, noTags: true,
     }))
   }
 
@@ -276,31 +255,18 @@ export class SyncService {
    * local repo has no `remote` configured yet — normal repos cloned by this app always do,
    * this just avoids failing outright on a repo that was set up some other way.
    *
-   * T154: routes non-http remotes (local path, ssh — same `isHttpRemote` check as push/pull)
-   * through the native `git` binary, for consistency with those two — isomorphic-git's transport
-   * only implements http(s). Also T154: a repo with no `remote` configured and no `urlFallback`
-   * (a purely local project — "Publier" now calls `fetch()` unconditionally before merging, see
-   * `ModificationControl.tsx`) is a no-op, not an error — there is nothing to fetch, and it must
-   * stay that way rather than blocking local-only publishing on a "network unavailable" message.
+   * GH337 — un seul transport, le git natif (http(s), ssh, chemin local) ; `git fetch --tags` (GH268).
+   * Sans remote ni `urlFallback` (projet purement local), c'est un no-op.
    */
   async fetch(repoPath: string, urlFallback: string, remote = 'origin'): Promise<void> {
-    const remoteUrl = (await getRemoteUrl(repoPath, remote)) || urlFallback
+    const configured = await getRemoteUrl(repoPath, remote)
+    const remoteUrl = configured || urlFallback
     if (!remoteUrl) return
-    if (!isHttpRemote(remoteUrl)) {
-      await execFileAsync('git', ['fetch', remote], { cwd: repoPath })
-      return
-    }
-    const credentials = await this.auth.getHttpsCredentials(remoteUrl)
-
-    await this.guarded(remoteUrl, false, () => git.fetch({
-      fs,
-      http,
-      dir: repoPath,
-      url: remoteUrl,
-      remote,
-      // GH268 — comme `git fetch` : sans cela, un tag de version poussé reste invisible en HTTPS. Un tag local déjà présent n'est pas écrasé.
-      tags: true,
-      onAuth: () => credentials ?? undefined,
+    const g = gitFor(repoPath)
+    await this.guarded(remoteUrl, false, () => g.fetch(remote, {
+      credentials: credentialsFor(this.auth, remoteUrl),
+      // Remote non configurée : repli sur l'URL déclarée, branches suivies sous `<remote>/*`.
+      url: configured ? undefined : urlFallback,
     }))
   }
 
@@ -551,20 +517,12 @@ export class SyncService {
   }
 
   async push(repoPath: string, remote = 'origin'): Promise<void> {
+    const g = gitFor(repoPath)
+    const branch = await g.currentBranch()
+    if (!branch) throw new Error('Detached HEAD — cannot push')
     const remoteUrl = await getRemoteUrl(repoPath, remote)
-    if (remoteUrl && !isHttpRemote(remoteUrl)) {
-      await execFileAsync('git', ['push', remote], { cwd: repoPath })
-      await this.pushPendingTags(repoPath, remote)
-      return
-    }
-    const credentials = remoteUrl ? await this.auth.getHttpsCredentials(remoteUrl) : null
-
-    await this.guarded(remoteUrl, true, () => git.push({
-      fs,
-      http,
-      dir: repoPath,
-      remote,
-      onAuth: () => credentials ?? undefined,
+    await this.guarded(remoteUrl, true, () => g.push(remote, [`refs/heads/${branch}:refs/heads/${branch}`], {
+      credentials: credentialsFor(this.auth, remoteUrl),
     }))
     await this.pushPendingTags(repoPath, remote)
   }
@@ -593,16 +551,13 @@ export class SyncService {
 
     const author = await this.auth.getAuthor(repoPath)
     try {
-      const result = await mergeRecursive({
-        dir: repoPath,
-        ours: branch,
-        theirs: remoteRef,
+      const result = await g.mergeBranches(branch, remoteRef, {
         author: { name: author.name, email: author.email },
         message: `Merge remote-tracking branch '${remote}/${branch}' into ${branch}`,
       })
       // La fusion n'a déplacé que la ref : index et disque réalignés sur la nouvelle pointe.
       await g.checkout(branch, { force: true })
-      return { success: true, sha: result.oid ?? localOid }
+      return { success: true, sha: result.oid }
     } catch (err: unknown) {
       const conflicts = conflictFiles(err)
       if (conflicts) return { success: false, conflicts, leftRef: branch, rightRef: remoteRef }
@@ -625,24 +580,15 @@ export class SyncService {
   async pullFastForwardOnly(repoPath: string, remote = 'origin'): Promise<void> {
     const remoteUrl = await getRemoteUrl(repoPath, remote)
     if (!remoteUrl) return
-    if (!isHttpRemote(remoteUrl)) {
-      await execFileAsync('git', ['pull', '--ff-only', remote], { cwd: repoPath })
-      return
-    }
-    const credentials = await this.auth.getHttpsCredentials(remoteUrl)
-    const author = await this.auth.getAuthor(repoPath)
-
-    await this.guarded(remoteUrl, false, () => git.pull({
-      fs,
-      http,
-      dir: repoPath,
-      remote,
-      author: { name: author.name, email: author.email },
-      onAuth: () => credentials ?? undefined,
-      fastForwardOnly: true,
-    }))
-    // GH268 — `git.pull` ne suit pas les tags, contrairement à `git pull`.
+    // Fetch (tags compris, GH268), puis avance rapide de la branche courante seulement.
     await this.fetch(repoPath, remoteUrl, remote)
+    const g = gitFor(repoPath)
+    const branch = await g.currentBranch()
+    if (!branch) throw new Error('Detached HEAD — cannot pull')
+    const remoteRef = `refs/remotes/${remote}/${branch}`
+    if (!(await g.resolve(remoteRef).catch(() => null))) return
+    // `merge --ff-only` : refuse une branche divergente (non-fast-forward), sans rien écrire.
+    await g.mergeFastForward(remoteRef)
   }
 
   /**
@@ -684,10 +630,7 @@ export class SyncService {
   ): Promise<{ ok: true } | { ok: false; conflicts: string[] }> {
     const author = await this.auth.getAuthor(repoPath)
     try {
-      await mergeRecursive({
-        dir: repoPath,
-        ours: branch,
-        theirs: `${remote}/${branch}`,
+      await gitFor(repoPath).mergeBranches(branch, `${remote}/${branch}`, {
         author: { name: author.name, email: author.email },
         dryRun: true,
       })
@@ -740,10 +683,7 @@ export class SyncService {
 
     const author = await this.auth.getAuthor(repoPath)
     try {
-      await mergeRecursive({
-        dir: repoPath,
-        ours: branch,
-        theirs: `${remote}/${branch}`,
+      await gitFor(repoPath).mergeBranches(branch, `${remote}/${branch}`, {
         author: { name: author.name, email: author.email },
         message: `Merge ${remote}/${branch} into ${branch}`,
         fastForwardOnly: state === 'behind',
@@ -855,7 +795,7 @@ export class SyncService {
     // A local git failure here must not cost the tick its fetch and push retry.
     await this.settleAutoBranch(repoPath, integrationBranch, remote)
       .catch(err => console.warn(`[autoSync] ${repoPath}: settleAutoBranch failed:`, err))
-    if (isHttpRemote(remoteUrl) && this.auth.isAccessRevoked(extractHost(remoteUrl))) return revoked()
+    if (/^https?:\/\//i.test(remoteUrl) && this.auth.isAccessRevoked(extractHost(remoteUrl))) return revoked()
     const offline = async (err: unknown): Promise<IntegrationRemoteState> => {
       if (err instanceof ForgeAccessError && err.issue.status === 401) return revoked()
       if (!isNetworkUnreachable(err)) throw err
@@ -876,16 +816,13 @@ export class SyncService {
         // Commit du working directory avant que la fusion n'avance la branche par référence.
         const before = await g.resolveOrThrow(`refs/heads/${current}`)
         const author = await this.auth.getAuthor(repoPath)
-        const fastForwarded = await git
-          .merge({
-            fs,
-            dir: repoPath,
-            ours: current,
-            theirs: `${remote}/${current}`,
+        // Avance rapide seulement : la ref bouge (oid ≠ `before`), déjà fusionné → inchangé.
+        const fastForwarded = await g
+          .mergeBranches(current, `${remote}/${current}`, {
             author: { name: author.name, email: author.email },
             fastForwardOnly: true,
           })
-          .then(r => !r.alreadyMerged, () => false)
+          .then(r => r.oid !== before, () => false)
         if (fastForwarded) await safeCheckout({ dir: repoPath, ref: current, from: before })
       }
     }
@@ -1208,19 +1145,15 @@ export class SyncService {
     const before = await g.resolveOrThrow(intoBranch)
     const author = await this.auth.getAuthor(repoPath)
     try {
-      const result = await mergeRecursive({
-        dir: repoPath,
-        ours: intoBranch,
-        theirs: fromBranch,
+      const result = await g.mergeBranches(intoBranch, fromBranch, {
         author: { name: author.name, email: author.email },
         message: `Merge branch '${fromBranch}' into ${intoBranch}`,
-        fastForwardOnly: false,
       })
-      if (checkedOut && result.oid && result.oid !== before) {
+      if (checkedOut && result.oid !== before) {
         // La fusion n'a déplacé que la ref : index et disque réalignés sur la nouvelle pointe.
         await g.checkout(intoBranch, { force: true })
       }
-      return { success: true, sha: result.oid ?? '' }
+      return { success: true, sha: result.oid }
     } catch (err: unknown) {
       const conflicts = conflictFiles(err)
       // GH37: the refs let the caller open the merge editor (gauche = branche mergée).
@@ -1235,20 +1168,8 @@ export class SyncService {
 
   async deleteRemoteBranch(repoPath: string, name: string, remote = 'origin'): Promise<void> {
     const remoteUrl = await getRemoteUrl(repoPath, remote)
-    if (remoteUrl && !isHttpRemote(remoteUrl)) {
-      await execFileAsync('git', ['push', remote, '--delete', name], { cwd: repoPath })
-      return
-    }
-    const credentials = remoteUrl ? await this.auth.getHttpsCredentials(remoteUrl) : null
-
-    await this.guarded(remoteUrl, true, () => git.push({
-      fs,
-      http,
-      dir: repoPath,
-      remote,
-      remoteRef: name,
-      delete: true,
-      onAuth: () => credentials ?? undefined,
+    await this.guarded(remoteUrl, true, () => gitFor(repoPath).push(remote, [`:refs/heads/${name}`], {
+      credentials: credentialsFor(this.auth, remoteUrl),
     }))
   }
 
@@ -1261,20 +1182,8 @@ export class SyncService {
 
   async pushBranch(repoPath: string, branchName: string, remote = 'origin'): Promise<void> {
     const remoteUrl = await getRemoteUrl(repoPath, remote)
-    if (remoteUrl && !isHttpRemote(remoteUrl)) {
-      await execFileAsync('git', ['push', remote, branchName], { cwd: repoPath })
-      await this.pushPendingTags(repoPath, remote)
-      return
-    }
-    const credentials = remoteUrl ? await this.auth.getHttpsCredentials(remoteUrl) : null
-
-    await this.guarded(remoteUrl, true, () => git.push({
-      fs,
-      http,
-      dir: repoPath,
-      remote,
-      ref: branchName,
-      onAuth: () => credentials ?? undefined,
+    await this.guarded(remoteUrl, true, () => gitFor(repoPath).push(remote, [`refs/heads/${branchName}:refs/heads/${branchName}`], {
+      credentials: credentialsFor(this.auth, remoteUrl),
     }))
     await this.pushPendingTags(repoPath, remote)
   }
@@ -1315,18 +1224,13 @@ export class SyncService {
     if (!file || tags.length === 0) return []
     const remoteUrl = await getRemoteUrl(repoPath, remote)
     if (!remoteUrl) return []
-    const credentials = isHttpRemote(remoteUrl) ? await this.auth.getHttpsCredentials(remoteUrl) : null
+    const g = gitFor(repoPath)
     const pushed: string[] = []
     for (const tag of tags) {
       try {
-        if (!isHttpRemote(remoteUrl)) {
-          await execFileAsync('git', ['push', remote, `refs/tags/${tag}`], { cwd: repoPath })
-        } else {
-          await this.guarded(remoteUrl, true, () => git.push({
-            fs, http, dir: repoPath, remote, ref: `refs/tags/${tag}`, remoteRef: `refs/tags/${tag}`,
-            onAuth: () => credentials ?? undefined,
-          }))
-        }
+        await this.guarded(remoteUrl, true, () => g.push(remote, [`refs/tags/${tag}:refs/tags/${tag}`], {
+          credentials: credentialsFor(this.auth, remoteUrl),
+        }))
         pushed.push(tag)
       } catch (err) {
         console.warn(`[sync] Tag ${tag} non poussé (reste en attente) :`, err)
@@ -1338,8 +1242,10 @@ export class SyncService {
   }
 
   async rebase(repoPath: string, onto: string): Promise<void> {
+    const g = gitFor(repoPath)
     try {
-      await execFileAsync('git', ['rebase', onto], { cwd: repoPath })
+      const author = await this.auth.getAuthor(repoPath)
+      await g.rebase(onto, { name: author.name, email: author.email })
     } catch (err: unknown) {
       // Only abort if a rebase is actually in progress (conflict mid-rebase).
       // Pre-rebase failures (unknown ref, dirty tree) never start a rebase, so
@@ -1350,7 +1256,7 @@ export class SyncService {
         await fsP.access(rebaseMergeDir).then(() => true).catch(() => false) ||
         await fsP.access(rebaseApplyDir).then(() => true).catch(() => false)
       if (inProgress) {
-        await execFileAsync('git', ['rebase', '--abort'], { cwd: repoPath }).catch(() => {})
+        await g.rebaseAbort().catch(() => {})
       }
       // Prefer stderr (actual git output) over message (just the command line)
       const stderr = (err as { stderr?: string }).stderr

@@ -44,10 +44,11 @@ export interface UpdateInstallPlan {
   otherWindows: number
 }
 
-// GH238 — terminal de la vue Version (desktop) : shell détecté, ou Git Bash introuvable.
-export type TerminalDetectResult =
-  | { status: 'found'; shell: { name: string; file: string } }
-  | { status: 'not-found'; winget: boolean }
+// GH238 — terminal de la vue Version (desktop) : shell utilisé (Git Bash embarqué sous Windows).
+// GH337 — plus d'état « introuvable » : sans git embarqué, la détection lève une erreur.
+export interface TerminalDetectResult {
+  status: 'found'
+  shell: { name: string; file: string }
+}
 
-/** `install-git` : `winget install Git.Git` dans le pseudo-terminal (Git absent, Windows). */
-export type TerminalKind = 'shell' | 'install-git'
+export type TerminalKind = 'shell'

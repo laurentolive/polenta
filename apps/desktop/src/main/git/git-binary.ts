@@ -100,7 +100,7 @@ export function resolveGitInstall(deps: ResolveDeps): GitInstall {
   if (!found) {
     if (platform === 'win32') {
       throw new GitUnavailableError(
-        'Git embarqué introuvable (resources/git). En développement : lancer `pnpm --filter @polenta/desktop git:fetch`.',
+        'Git embarqué introuvable (resources/git). En développement : lancer `pnpm git:fetch` dans apps/desktop.',
       )
     }
     found = { gitDir: null, gitExe: 'git', bashExe: null, pathDirs: [] }

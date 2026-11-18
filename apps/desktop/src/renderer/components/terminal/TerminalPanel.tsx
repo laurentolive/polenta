@@ -52,7 +52,7 @@ export function TerminalPanel() {
     document.addEventListener('mouseup', onMouseUp)
   }
 
-  const running = term.status === 'running' || term.status === 'installing'
+  const running = term.status === 'running'
   const showCd = term.status === 'running' && !!term.sessionRepo && term.selectedRepoPath !== term.sessionRepo
   const menuAction = (fn: () => void) => () => {
     setMenu(null)
@@ -113,24 +113,9 @@ export function TerminalPanel() {
         }}
       >
         <div ref={term.setHost} data-testid="terminal-host" className="absolute inset-0 pl-2 pt-1" />
-        {(term.status === 'not-found' || term.status === 'detecting') && (
+        {term.status === 'detecting' && (
           <div className="absolute inset-0 bg-surface flex flex-col items-center justify-center gap-3 text-sm text-ink-2">
-            {term.status === 'detecting' ? (
-              <p>{t('common.loading')}</p>
-            ) : (
-              <>
-                <p>{t('terminal.notFound')}</p>
-                <div className="flex gap-2">
-                  <button type="button" className="btn-primary-sm" onClick={term.install}>
-                    {t('terminal.installGit')}
-                  </button>
-                  <button type="button" className="btn-secondary-sm" onClick={term.recheck}>
-                    {t('terminal.recheck')}
-                  </button>
-                </div>
-                {!term.winget && <p className="text-xs text-ink-3">{t('terminal.installHint')}</p>}
-              </>
-            )}
+            <p>{t('common.loading')}</p>
           </div>
         )}
       </div>

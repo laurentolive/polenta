@@ -8,6 +8,7 @@ import { FileStore } from './file-store'
 import { createWebHostContext, createWebPlatformHost, pendingPrintRenderer, SessionTokenStore } from './web-host'
 import type { PrintRenderer } from '../main/host/print-renderer'
 import { registerWebHandlers, type UserDirs } from './web-handlers'
+import { closeUnder } from '../main/git/process-registry'
 
 export interface EventSocket {
   send(data: string): void
@@ -198,6 +199,8 @@ export class UserPool {
     rt.container.watcher.unwatchAll()
     // GH361 — plus aucune vue de cet utilisateur : ses verrous de rangement sont rendus.
     void rt.container.treeEditLocks.releaseAll().catch(err => console.error('[UserPool] verrous de rangement :', err))
+    // GH337 — fin de session : les git de cet utilisateur (dossier sous son espace) s'arrêtent.
+    void closeUnder(rt.dirs.root).catch(err => console.error('[UserPool] arrêt des processus git :', err))
     this.runtimes.delete(rt.login)
   }
 

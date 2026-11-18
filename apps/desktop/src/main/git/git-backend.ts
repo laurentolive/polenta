@@ -5,11 +5,15 @@ import * as path from 'path'
 import * as zlib from 'zlib'
 
 import { objectData, objectInfo, resolveGitDir, type ObjectInfo } from './cat-file-batch'
-import { GitError, isGitError } from './git-errors'
-import { gitText, isRepoWriteBusy, repoKey, runGit, splitZ, withRepoWriteLock, type RunOptions } from './git-runner'
+import { GitError, isGitError, MergeConflictError } from './git-errors'
+import { gitText, isRepoWriteBusy, repoKey, runGit, splitZ, withRepoWriteLock, type RunOptions, type RunResult } from './git-runner'
 import { closeRepo } from './process-registry'
 import { gitInstall } from './git-binary'
 import { nodeCheckout } from './node-checkout'
+import { openAskpassSession, type CredentialResolver } from './askpass'
+import { checkRemote } from '../services/forge/remote-guard'
+import { resolveProxyUrl } from '../services/net-proxy'
+import { CONNECT_TIMEOUT_BASE_MS, GIT_IO_TIMEOUT_BASE_MS, scaledTimeout } from '../services/net-timeouts'
 
 /**
  * Checkout écrit par Polenta (`nodeCheckout`) : Windows seulement (Defender n'existe que là), avec un
@@ -56,6 +60,14 @@ export interface MergeTreeResult { clean: boolean; tree: string; conflicts: stri
 
 export const NULL_OID = '0000000000000000000000000000000000000000'
 const OID_RE = /^[0-9a-f]{40}$/
+
+/** Auteur des commits de base virtuelle : jamais référencés, seul leur arbre compte. */
+const VIRTUAL_AUTHOR: GitAuthor = { name: 'Polenta', email: 'polenta@localhost' }
+
+/** `refs/heads/x` ou `refs/remotes/o/x` → `x` / `o/x` (message de fusion). */
+function shortRef(ref: string): string {
+  return ref.replace(/^refs\/(heads|remotes)\//, '')
+}
 
 /** Options `-c` qui neutralisent la config locale d'un dépôt pour un commit ou une fusion de Polenta. */
 function commitConfig(author?: GitAuthor): string[] {
@@ -303,11 +315,11 @@ export async function writeLooseObject(repo: string, type: 'blob' | 'tree', data
 }
 
 export interface NetworkOptions {
-  /** Variables askpass de l'opération (§6). */
-  env?: Record<string, string>
+  /** Identifiants de l'opération (§6) : lus à l'invite de git, jamais placés dans son environnement. */
+  credentials?: CredentialResolver
+  /** Délai de l'opération ; par défaut 300 s × facteur GH15. */
   timeoutMs?: number
-  /** Options `-c` (proxy). */
-  config?: string[]
+  /** Ligne de progression ou d'information reçue sur stderr. */
   onProgress?: (line: string) => void
   signal?: AbortSignal
 }
@@ -937,6 +949,17 @@ export class GitBackend {
     await this.w(['reset', '-q', '--soft', rev])
   }
 
+  /** Rebase de la branche courante sur `onto` ; les commits réécrits portent l'identité de Polenta. */
+  async rebase(onto: string, author: GitAuthor): Promise<void> {
+    await this.w([...commitConfig(author), 'rebase', onto], {
+      env: { extra: { ...personEnv('AUTHOR', author), ...personEnv('COMMITTER', author) } },
+    })
+  }
+
+  async rebaseAbort(): Promise<void> {
+    await this.w(['rebase', '--abort'])
+  }
+
   /** Avance la branche courante (et le working directory) sur `target`, en avance rapide seulement. */
   async mergeFastForward(target: string): Promise<void> {
     await this.w([...commitConfig(), 'merge', '-q', '--ff-only', '--no-edit', target])
@@ -959,21 +982,87 @@ export class GitBackend {
     return { clean: r.exitCode === 0, tree, conflicts }
   }
 
+  /**
+   * Fusion de `theirs` dans `ours` (branche ou oid) : déjà fusionné → rien ; avance rapide quand
+   * `ours` est un ancêtre ; sinon fusion à trois (base virtuelle récursive de git, GH332) puis commit
+   * à deux parents. La ref de `ours` n'avance qu'à la fin (`updateRefs` avec ancienne valeur) ; index
+   * et disque ne sont pas touchés : l'appelant réaligne la branche courante (`checkout --force`).
+   * Un conflit lève `MergeConflictError` (chemins) et ne modifie rien.
+   */
+  async mergeBranches(ours: string, theirs: string, opts: {
+    author: GitAuthor; message?: string; fastForwardOnly?: boolean; dryRun?: boolean
+  }): Promise<{ oid: string; tree: string; mergeCommit: boolean }> {
+    const ourOid = await this.resolveOrThrow(ours)
+    const theirOid = await this.resolveOrThrow(theirs)
+    const ref = ours.startsWith('refs/') ? ours : `refs/heads/${ours}`
+    // Un oid n'a pas de ref à faire avancer : seul un nom de branche (ou ref complète) est mis à jour.
+    const canMove = !opts.dryRun && !OID_RE.test(ours)
+    if (await this.isAncestor(theirOid, ourOid)) {
+      return { oid: ourOid, tree: (await this.readCommit(ourOid))!.tree, mergeCommit: false }
+    }
+    if (await this.isAncestor(ourOid, theirOid)) {
+      if (canMove) await this.updateRefs([{ ref, newOid: theirOid, oldOid: ourOid }])
+      return { oid: theirOid, tree: (await this.readCommit(theirOid))!.tree, mergeCommit: false }
+    }
+    if (opts.fastForwardOnly) {
+      throw new GitError('non-fast-forward', ['merge', '--ff-only', theirs], null, 'Not possible to fast-forward, aborting.')
+    }
+    const merged = await this.mergeTree(ourOid, theirOid)
+    if (!merged.clean) throw new MergeConflictError(merged.conflicts)
+    if (opts.dryRun) return { oid: '', tree: merged.tree, mergeCommit: true }
+    const message = opts.message ?? `Merge branch '${shortRef(theirs)}' into ${shortRef(ours)}`
+    const oid = await this.commitTree(merged.tree, [ourOid, theirOid], message, opts.author)
+    if (canMove) await this.updateRefs([{ ref, newOid: oid, oldOid: ourOid }])
+    return { oid, tree: merged.tree, mergeCommit: true }
+  }
+
+  /**
+   * Ancêtre commun à afficher dans l'éditeur de fusion (GH37) : l'unique base s'il n'y en a qu'une ;
+   * sinon une base virtuelle, pliée deux à deux. Un pli en conflit garde le premier ancêtre
+   * (`singleMergeBase` d'avant). `null` si les historiques n'ont rien en commun.
+   */
+  async displayBase(a: string, b: string): Promise<string | null> {
+    const bases = await this.mergeBases(a, b)
+    if (bases.length === 0) return null
+    if (bases.length === 1) return bases[0]
+    let acc = bases[0]
+    for (const next of bases.slice(1)) {
+      const inner = await this.displayBase(acc, next)
+      if (inner === null) continue
+      const r = await this.mergeTree(acc, next)
+      acc = r.clean ? await this.commitTree(r.tree, [acc, next], 'virtual merge base', VIRTUAL_AUTHOR) : inner
+    }
+    return acc
+  }
+
   // ─── Réseau ──────────────────────────────────────────────────────────────────
 
-  private net(args: string[], opts: NetworkOptions, write = true) {
-    return this.run([...(opts.config ?? []), ...args], {
-      write, timeoutMs: opts.timeoutMs, onStderrLine: opts.onProgress, signal: opts.signal,
-      env: { extra: opts.env },
-    })
+  /** URL de la remote `name`, `null` si elle n'est pas configurée. */
+  async remoteUrl(name: string): Promise<string | null> {
+    return (await this.remotes()).find(r => r.name === name)?.url ?? null
   }
 
-  async fetch(remote: string, opts: NetworkOptions & { prune?: boolean; refspecs?: string[] } = {}): Promise<void> {
-    await this.net(['fetch', '-q', ...(opts.prune ? ['--prune'] : []), remote, ...(opts.refspecs ?? [])], opts)
+  /**
+   * `fetch` de tous les tags (GH268) ; un tag local déjà présent n'est pas écrasé (git le refuse :
+   * seul ce refus est ignoré, le reste du fetch est fait). `url` : remote non configurée (repli de
+   * `urlFallback`), avec les branches suivies dans `refs/remotes/<remote>/*`.
+   */
+  async fetch(remote: string, opts: NetworkOptions & { prune?: boolean; refspecs?: string[]; url?: string } = {}): Promise<void> {
+    const url = opts.url ?? await this.remoteUrl(remote)
+    const args = opts.url
+      ? ['fetch', '--tags', opts.url, `+refs/heads/*:refs/remotes/${remote}/*`]
+      : ['fetch', '--tags', ...(opts.prune ? ['--prune'] : []), remote, ...(opts.refspecs ?? [])]
+    try {
+      await netRun(this.dir, url, args, opts, true)
+    } catch (err) {
+      if (!(isGitError(err) && /would clobber existing tag/.test(err.stderr))) throw err
+    }
   }
 
+  /** Pousse `refspecs` (`src:dst`, ou `:dst` pour supprimer). Le classement des refus lit le stderr. */
   async push(remote: string, refspecs: string[], opts: NetworkOptions & { force?: boolean } = {}): Promise<void> {
-    await this.net(['push', '-q', '--porcelain', ...(opts.force ? ['--force'] : []), remote, ...refspecs], opts)
+    const url = await this.remoteUrl(remote)
+    await netRun(this.dir, url, ['push', ...(opts.force ? ['--force'] : []), remote, ...refspecs], opts, true)
   }
 
   /** Arrête les processus persistants du dépôt et attend leur fin (avant suppression ou renommage du dossier). */
@@ -982,24 +1071,57 @@ export class GitBackend {
   }
 }
 
-/** Clone (hors d'un dépôt existant). */
-export async function gitClone(url: string, dest: string, opts: NetworkOptions & { branch?: string; depth?: number } = {}): Promise<void> {
+/**
+ * SSH sans invite (`BatchMode`) : `ssh` est celui de Git for Windows, en tête du PATH (gitEnv), comme
+ * la commande de `git` lui-même (design §6). Le délai de connexion suit le réglage GH15.
+ */
+function sshCommand(): string {
+  const seconds = Math.max(1, Math.round(scaledTimeout(CONNECT_TIMEOUT_BASE_MS) / 1000))
+  return `ssh -o BatchMode=yes -o ConnectTimeout=${seconds}`
+}
+
+/**
+ * Opération réseau de git (design §4) : garde du serveur web (GH44) sur l'URL, proxy résolu par
+ * Chromium quand il n'est pas dans l'environnement, identifiants par jeton askpass (§6), délai GH15.
+ */
+export async function netRun(
+  cwd: string, url: string | null, args: string[], opts: NetworkOptions, write: boolean,
+): Promise<RunResult> {
+  if (url && /^[a-z][a-z0-9+.-]*:\/\//i.test(url)) checkRemote(url)
+  const config: string[] = []
+  if (url && /^https?:\/\//i.test(url)) {
+    const proxy = await resolveProxyUrl(url)
+    if (proxy) config.push('-c', `http.proxy=${proxy}`)
+  }
+  const session = await openAskpassSession(opts.credentials ?? (async () => null))
+  try {
+    return await runGit(cwd, [...config, ...args], {
+      write,
+      timeoutMs: opts.timeoutMs ?? scaledTimeout(GIT_IO_TIMEOUT_BASE_MS),
+      onStderrLine: opts.onProgress,
+      signal: opts.signal,
+      env: { extra: { ...session.env, GIT_SSH_COMMAND: sshCommand() } },
+    })
+  } finally {
+    session.revoke()
+  }
+}
+
+/** Clone (hors d'un dépôt existant). Progression de git sur `onProgress` (`Receiving objects: 45%`). */
+export async function gitClone(url: string, dest: string, opts: NetworkOptions & { branch?: string; depth?: number; noTags?: boolean } = {}): Promise<void> {
   const parent = path.dirname(path.resolve(dest))
   fs.mkdirSync(parent, { recursive: true })
-  const args = [...(opts.config ?? []), 'clone', '--progress', '--no-hardlinks']
+  const args = ['clone', '--progress', '--no-hardlinks']
+  if (opts.noTags) args.push('--no-tags')
   if (opts.branch) args.push('--branch', opts.branch, '--single-branch')
   if (opts.depth) args.push('--depth', String(opts.depth))
   args.push('--', url, path.resolve(dest))
-  await runGit(parent, args, {
-    write: true, timeoutMs: opts.timeoutMs, onStderrLine: opts.onProgress, signal: opts.signal, env: { extra: opts.env },
-  })
+  await netRun(parent, url, args, opts, true)
 }
 
 /** Branches du remote (`refs/heads/*`), sans clone. */
-export async function gitLsRemoteHeads(url: string, cwd: string, opts: NetworkOptions = {}): Promise<string[]> {
-  const out = await runGit(cwd, [...(opts.config ?? []), 'ls-remote', '--heads', '--', url], {
-    timeoutMs: opts.timeoutMs, signal: opts.signal, env: { extra: opts.env },
-  })
+export async function gitLsRemoteHeads(url: string, opts: NetworkOptions = {}): Promise<string[]> {
+  const out = await netRun(os.tmpdir(), url, ['ls-remote', '--heads', '--', url], opts, false)
   return out.stdout.toString('utf8').split('\n').filter(Boolean).map(l => l.split('\t')[1].replace(/^refs\/heads\//, ''))
 }
 

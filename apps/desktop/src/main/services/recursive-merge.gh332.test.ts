@@ -9,7 +9,7 @@ import type { AuthService } from './auth.service'
 import { MergeResolutionService } from './merge-resolution.service'
 import { SchemaService } from './schema.service'
 import { SyncService } from './sync.service'
-import { mergeRecursive, singleMergeBase } from './recursive-merge.util'
+import { gitFor } from '../git/git-backend'
 
 /**
  * GH332 — fusion d'une histoire croisée (plusieurs ancêtres communs). Avant le correctif,
@@ -143,7 +143,7 @@ describe('GH332 — histoire croisée', () => {
   it('simulation (dryRun) : ne déplace aucune branche', async () => {
     await crissCross(['c.yaml', 'c: main\n'], ['d.yaml', 'd: other\n'])
     const before = await git.resolveRef({ fs, dir: repo, ref: 'main' })
-    const result = await mergeRecursive({ dir: repo, ours: 'main', theirs: 'other', author: AUTHOR, dryRun: true })
+    const result = await gitFor(repo).mergeBranches('main', 'other', { author: AUTHOR, dryRun: true })
     expect(result.tree).toBeTruthy()
     expect(await git.resolveRef({ fs, dir: repo, ref: 'main' })).toBe(before)
   })
@@ -161,7 +161,7 @@ describe('GH332 — histoire croisée', () => {
     const [m, o] = await Promise.all([
       git.resolveRef({ fs, dir: repo, ref: 'main' }), git.resolveRef({ fs, dir: repo, ref: 'other' }),
     ])
-    const base = await singleMergeBase(repo, m, o, AUTHOR)
+    const base = await gitFor(repo).displayBase(m, o)
     expect(base).toBeTruthy()
     const at = async (f: string) => Buffer.from((await git.readBlob({ fs, dir: repo, oid: base!, filepath: f })).blob).toString('utf8')
     expect(await at('a.yaml')).toBe('a: 1\n')

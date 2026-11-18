@@ -72,7 +72,6 @@ export function createIpcClient(
       cd: (id, repoPath) => invoke('terminal:cd', id, repoPath),
       resize: (id, cols, rows) => invoke('terminal:resize', id, cols, rows),
       kill: (id) => invoke('terminal:kill', id),
-      openGitDownload: () => invoke('terminal:open-git-download'),
     },
     schema: {
       get: (p) => invoke('schema:get', p),

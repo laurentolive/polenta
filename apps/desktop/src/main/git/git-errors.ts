@@ -28,6 +28,17 @@ export class GitError extends Error {
   }
 }
 
+/**
+ * Fusion qui laisse des conflits (`merge-tree`, GH37) : `kind` `conflict`, chemins dédoublonnés.
+ * Les appelants (éditeur de fusion) lisent `paths` ; l'arbre de travail n'a pas été touché.
+ */
+export class MergeConflictError extends GitError {
+  constructor(readonly paths: string[]) {
+    super('conflict', ['merge-tree'], 1, `CONFLICT (content): ${paths.join(', ')}`)
+    this.name = 'MergeConflictError'
+  }
+}
+
 function firstLines(s: string): string {
   return s.split(/\r?\n/).filter(l => l.trim()).slice(0, 4).join(' | ')
 }

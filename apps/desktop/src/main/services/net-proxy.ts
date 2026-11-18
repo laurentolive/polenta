@@ -13,7 +13,11 @@ import { CONNECT_TIMEOUT_BASE_MS, getNetworkTimeoutSeconds, isNetworkTimeoutAdju
 // la requête suivante, les agents précédents servent encore les requêtes en cours.
 const dispatcherCache = new Map<string, Dispatcher>()
 
-export async function resolveProxyDispatcher(targetUrl: string): Promise<Dispatcher> {
+/**
+ * Proxy à utiliser pour `targetUrl`, `undefined` en connexion directe. Variables d'environnement
+ * d'abord, puis la pile réseau de Chromium (GH347 : NO_PROXY exclut la cible).
+ */
+export async function resolveProxyUrl(targetUrl: string): Promise<string | undefined> {
   const envProxy =
     process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy
   let proxyUrl = envProxy ? normalizeProxyUrl(envProxy) : undefined
@@ -29,7 +33,11 @@ export async function resolveProxyDispatcher(targetUrl: string): Promise<Dispatc
       // resolveProxy est best-effort — en cas d'échec on retombe sur une connexion directe
     }
   }
+  return proxyUrl
+}
 
+export async function resolveProxyDispatcher(targetUrl: string): Promise<Dispatcher> {
+  const proxyUrl = await resolveProxyUrl(targetUrl)
   const timeout = scaledTimeout(CONNECT_TIMEOUT_BASE_MS)
   const key = `${proxyUrl ?? 'DIRECT'}|${timeout}`
   let agent = dispatcherCache.get(key)

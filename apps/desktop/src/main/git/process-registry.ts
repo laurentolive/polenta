@@ -68,10 +68,27 @@ export async function closeRepo(repo: string): Promise<void> {
 
 /** Fermeture de l'application ou du serveur : tout s'arrête. */
 export async function closeAll(): Promise<void> {
-  for (const repo of [...repoClosers.keys()]) void closeRepo(repo)
-  const all = [...children]
-  for (const e of all) killTree(e.child)
-  await Promise.all(all.map(e => exited(e.child)))
+  await stopWhere(() => true)
+}
+
+/**
+ * Fin d'une session utilisateur du serveur web : seuls les processus dont le dépôt est sous `dir`
+ * (dossier de l'utilisateur) s'arrêtent. Les autres utilisateurs gardent leurs opérations en cours.
+ */
+export async function closeUnder(dir: string): Promise<void> {
+  const root = repoKey(dir)
+  await stopWhere(repo => {
+    if (repo === null) return false
+    const rel = path.relative(root, repoKey(repo))
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+  })
+}
+
+async function stopWhere(match: (repo: string | null) => boolean): Promise<void> {
+  for (const key of [...repoClosers.keys()]) if (match(key)) void closeRepo(key)
+  const picked = [...children].filter(e => match(e.repo))
+  for (const e of picked) killTree(e.child)
+  await Promise.all(picked.map(e => exited(e.child)))
 }
 
 export function repoKey(repo: string): string {

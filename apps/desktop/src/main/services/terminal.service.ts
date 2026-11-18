@@ -3,20 +3,21 @@ import * as fs from 'fs'
 import * as os from 'os'
 import type { IPty } from 'node-pty'
 import type { TerminalDetectResult, TerminalKind } from '@polenta/types'
-import { cdCommand, resolveShell, shellEnv } from './terminal-shell.util'
+import { gitInstall } from '../git/git-binary'
+import { gitEnv } from '../git/git-config'
+import { cdCommand, resolveShell, shellEnv, type ShellSpec } from './terminal-shell.util'
 
 /**
  * GH238 — sessions de pseudo-terminal du panneau Terminal de la vue Version. Desktop seulement :
  * instancié par `registerDesktopOnlyHandlers`, hors du `Container` partagé avec le serveur web, pour
  * que le module natif `node-pty` n'y soit jamais chargé.
+ *
+ * GH337 — sous Windows, le shell est le Git Bash embarqué, avec le même environnement isolé que les
+ * processus git de Polenta (`gitEnv({ terminal: true })`). Sans installation embarquée, la session
+ * ne démarre pas : l'erreur (qui indique `pnpm git:fetch` en dev) s'affiche dans le terminal.
  */
 
 type NodePty = typeof import('node-pty')
-
-const WINGET_INSTALL_GIT = [
-  'install', '--id', 'Git.Git', '-e', '--source', 'winget',
-  '--accept-package-agreements', '--accept-source-agreements',
-]
 
 let nodePty: NodePty | null = null
 
@@ -35,54 +36,34 @@ function loadNodePty(): NodePty {
 export class TerminalService {
   private readonly sessions = new Map<string, { pty: IPty; owner: number }>()
   private nextId = 1
-  private wingetAvailable: Promise<boolean> | null = null
 
   /** `send` diffuse aux fenêtres (`terminal:data`, `terminal:exit`). */
   /** GH342 — `send` vise la fenêtre propriétaire (id de webContents) : avec plusieurs fenêtres, la
    *  sortie d'un shell ne part pas dans les autres. */
   constructor(private readonly send: (owner: number, channel: string, ...args: unknown[]) => void) {}
 
-  private shell() {
-    return resolveShell({ platform: process.platform, env: process.env, exists: p => fs.existsSync(p) })
+  /** Shell à lancer, re-résolu à chaque appel. Sous Windows, lève `GitUnavailableError` si le git
+   *  embarqué est absent. */
+  private shell(): ShellSpec {
+    const embeddedBash = process.platform === 'win32' ? gitInstall().bashExe : null
+    return resolveShell({ platform: process.platform, env: process.env, embeddedBash, exists: p => fs.existsSync(p) })
   }
 
-  /** Shell re-cherché à chaque appel (Git peut être installé pendant que Polenta tourne) ; la
-   *  présence de winget, elle, est mise en cache. */
   async detect(): Promise<TerminalDetectResult> {
     const shell = this.shell()
-    if (shell) return { status: 'found', shell: { name: shell.name, file: shell.file } }
-    return { status: 'not-found', winget: process.platform === 'win32' && await this.hasWinget() }
-  }
-
-  private hasWinget(): Promise<boolean> {
-    this.wingetAvailable ??= new Promise(resolve => {
-      execFile('winget', ['--version'], { timeout: 5000, windowsHide: true }, err => resolve(!err))
-    })
-    return this.wingetAvailable
+    return { status: 'found', shell: { name: shell.name, file: shell.file } }
   }
 
   /** `owner` : id du webContents demandeur — ses sessions sont tuées quand il recharge ou disparaît
    *  (`killOwnedBy`), le nettoyage React n'ayant alors pas lieu. */
-  start(kind: TerminalKind, cwd: string, cols: number, rows: number, owner: number): { id: string; name: string } {
-    let file: string
-    let args: string[]
-    let name: string
-    if (kind === 'install-git') {
-      file = 'winget'
-      args = WINGET_INSTALL_GIT
-      name = 'winget'
-      cwd = os.homedir()
-    } else {
-      const shell = this.shell()
-      if (!shell) throw new Error('Git Bash not found')
-      ;({ file, args, name } = shell)
-    }
-    const pty = loadNodePty().spawn(file, args, {
+  start(_kind: TerminalKind, cwd: string, cols: number, rows: number, owner: number): { id: string; name: string } {
+    const shell = this.shell()
+    const pty = loadNodePty().spawn(shell.file, shell.args, {
       name: 'xterm-256color',
       cols: Math.max(cols, 2),
       rows: Math.max(rows, 1),
       cwd: cwd && fs.existsSync(cwd) ? cwd : os.homedir(),
-      env: shellEnv(process.env, process.platform),
+      env: shellEnv(gitEnv({ terminal: true }), process.platform),
       // ConPTY de Windows, pas celui livré par node-pty (option expérimentale, désactivée aussi par
       // défaut dans VS Code) : avec ce dernier, une frappe rapide arrivait parfois dans le désordre
       // au shell (`techo` pour `echo`), constaté en test d'interface.
@@ -95,7 +76,7 @@ export class TerminalService {
       this.sessions.delete(id)
       this.send(owner, 'terminal:exit', id, exitCode)
     })
-    return { id, name }
+    return { id, name: shell.name }
   }
 
   write(id: string, data: string): void {

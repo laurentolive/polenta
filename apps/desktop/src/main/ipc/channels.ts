@@ -38,5 +38,4 @@ export const DESKTOP_ONLY_CHANNELS = [
   'terminal:cd',
   'terminal:resize',
   'terminal:kill',
-  'terminal:open-git-download',
 ] as const

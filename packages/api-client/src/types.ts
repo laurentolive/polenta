@@ -494,8 +494,6 @@ export interface ApiClient {
     cd(id: string, repoPath: string): Promise<void>
     resize(id: string, cols: number, rows: number): Promise<void>
     kill(id: string): Promise<void>
-    /** Ouvre https://git-scm.com/downloads dans le navigateur. */
-    openGitDownload(): Promise<void>
   }
   schema: {
     get(repoPath: string): Promise<ProjectSchema>

@@ -6,6 +6,8 @@ import { createElectronHostContext } from './host/electron-host'
 import { electronPrintRenderer } from './host/electron-print'
 import { UpdateService } from './services/update.service'
 import { TerminalService } from './services/terminal.service'
+import { closeAll } from './git/process-registry'
+import { closeAskpassServer } from './git/askpass'
 import { INVITE_SCHEME, inviteFromArgv, parseInviteLink, setPendingInvite, type InviteLink } from './host/invite-link'
 import { BRAND } from '../shared/brand'
 import { initAppZoom } from './host/app-zoom'
@@ -74,6 +76,8 @@ app.whenReady().then(() => {
     if (target && !target.isDestroyed()) target.send(channel, ...args)
   })
   app.on('will-quit', () => terminal.killAll())
+  // GH337 — aucun processus git (ni son réseau : git-remote-https, ssh) ne survit à l'application.
+  app.on('will-quit', () => { void closeAll(); void closeAskpassServer() })
   // GH361 — au mieux : un processus arrêté rend de toute façon ses verrous caducs (PID mort).
   app.on('will-quit', () => { void container.treeEditLocks.releaseAll().catch(() => {}) })
   registerDesktopOnlyHandlers(container, update, terminal)

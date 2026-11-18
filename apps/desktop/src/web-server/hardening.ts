@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { setGitRemoteGuard } from '../main/services/git-http'
+import { setRemoteGuard as setGitRemoteGuard } from '../main/services/forge/remote-guard'
+import { setAllowedGitProtocols } from '../main/git/git-config'
 import { BRAND } from '../shared/brand'
 
 /**
@@ -8,11 +9,15 @@ import { BRAND } from '../shared/brand'
  *
  * - **Dossier courant vide** : un chemin relatif qui échapperait à la garde de chemins se résout
  *   dans un dossier sans contenu, jamais dans les sources ou les données du serveur.
- * - **Pas de liens symboliques** : un repo cloné peut contenir des liens (mode git 120000) que
- *   isomorphic-git recrée au checkout — un lien `images/x.png -> /etc/passwd` serait ensuite lu
- *   par `image:read`. Comme git avec `core.symlinks=false`, le lien devient un fichier texte
- *   contenant sa cible.
- * - **Hôtes git autorisés** : clones, fetch et push limités aux hôtes de la forge (SSRF).
+ * - **Pas de liens symboliques** : un repo cloné peut contenir des liens (mode git 120000) ; un lien
+ *   `images/x.png -> /etc/passwd` serait ensuite lu par `image:read`. Le git embarqué ne les crée
+ *   pas, car la config isolée pose `core.symlinks=false` (`git/git-config.ts`) : le lien devient un
+ *   fichier texte contenant sa cible. Le patch de `fs.symlink` reste en filet pour le code de Polenta.
+ * - **Protocoles et hôtes git autorisés** (GH337) : `GIT_ALLOW_PROTOCOL=https` (http seulement si
+ *   `gitAllowHttp`) ; clones, fetch et push limités aux hôtes de la forge (SSRF), par la garde
+ *   `setGitRemoteGuard` des appels réseau.
+ *
+ * Aucun moteur git n'est utilisé ici : toute opération git passe par `GitBackend`.
  */
 export interface HardeningOptions {
   dataDir: string
@@ -22,7 +27,7 @@ export interface HardeningOptions {
 
 export function disableSymlinks(): void {
   // Le module réel (pas un namespace ES, en lecture seule et parfois copié par le bundler) :
-  // isomorphic-git lit `fs.promises.symlink` à chaque opération, le patch s'applique donc partout.
+  // le patch couvre tous les appels `fs.symlink` du processus, y compris ceux de Polenta.
   const realFs = require('fs') as typeof fs
   const asText = (target: fs.PathLike) => String(target)
   realFs.symlinkSync = ((target: fs.PathLike, linkPath: fs.PathLike) =>
@@ -51,5 +56,6 @@ export function applyServerHardening(opts: HardeningOptions): void {
   fs.mkdirSync(sandbox, { recursive: true })
   process.chdir(sandbox)
   disableSymlinks()
+  setAllowedGitProtocols(opts.gitAllowHttp ? 'https:http' : 'https')
   setGitRemoteGuard(gitRemoteGuard(opts.gitHosts, opts.gitAllowHttp))
 }

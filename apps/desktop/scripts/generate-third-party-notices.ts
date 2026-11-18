@@ -13,7 +13,7 @@
  *   (défaut : out/notices/THIRD-PARTY-NOTICES.txt — repris par electron-builder dans extraResources)
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 interface LicensedPackage {
@@ -99,6 +99,30 @@ for (const pkg of packages) {
 
 for (const [component, file] of VENDORED) {
   sections.push(separator, component, '', readFileSync(path.join(root, file), 'utf8').trim())
+}
+
+// GH337 — Git for Windows (PortableGit) embarqué sous Windows (`vendor/git`, `pnpm git:fetch`) :
+// git et ses outils sont sous GPLv2, les bibliothèques MSYS2 sous LGPL et autres licences libres.
+// La distribution de binaires oblige à offrir les sources : l'URL de la version fixée les donne.
+// Seulement si `vendor/git` est présent (installation embarquée, pas le git Docker du serveur web).
+if (existsSync(path.join(root, 'vendor/git'))) {
+  const gitVersion = JSON.parse(readFileSync(path.join(root, 'scripts/git-version.json'), 'utf8')) as {
+    version: string
+    url: string
+    sources: string
+  }
+  sections.push(
+    separator,
+    `Git for Windows (PortableGit) ${gitVersion.version}`,
+    [
+      'License: GPL-2.0-only (git and its tools); LGPL-2.1 and other free licenses (MSYS2 runtime, libraries,',
+      'and bundled utilities such as ssh, bash, vim, less and perl). Each component keeps its own license',
+      'and copyright notices, which are shipped with the Git for Windows release.',
+      `Source code (exact version shipped): ${gitVersion.sources}`,
+      `Download: ${gitVersion.url}`,
+      'The complete corresponding source code of the distributed binaries is available at the source URL above.',
+    ].join('\n'),
+  )
 }
 
 mkdirSync(path.dirname(output), { recursive: true })

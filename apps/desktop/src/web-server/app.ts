@@ -23,6 +23,8 @@ import { OidcClient, pkcePair } from './auth/oidc'
 import { HeadlessPrinter, type PrintSession } from './print/headless-print'
 import { IMAGE_MIME_BY_EXT } from '../main/ipc/file-ops'
 import { forgejoProvider, probeAccess } from '../main/services/forge/forgejo.provider'
+import { closeAll } from '../main/git/process-registry'
+import { closeAskpassServer } from '../main/git/askpass'
 import { registerAdminRoutes } from './admin/admin-routes'
 
 /** Extensions acceptées en upload : celles des sélecteurs du desktop (images, draw.io, classeur). */
@@ -512,6 +514,9 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
     if (accessTimer) clearInterval(accessTimer)
     clearInterval(evictTimer)
     pool.disposeAll()
+    // GH337 — arrêt du serveur : aucun git ni enfant réseau ne survit.
+    await closeAll()
+    await closeAskpassServer()
   })
 
   return { app, pool, sessions, checkAccesses }

@@ -96,7 +96,7 @@ function BgContextMenu({
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-44 text-xs"
+      data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-44 text-xs"
       style={{ left: x, top: y }}
     >
       {items.map(item => (
@@ -149,7 +149,7 @@ function ContextMenu({
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-44 text-xs"
+      data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-44 text-xs"
       style={{ left: x, top: y }}
     >
       {items.map((item, i) =>

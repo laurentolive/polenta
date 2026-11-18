@@ -130,5 +130,16 @@ Niveau 3 au merge (renderer touché).
 ## 5. Hors périmètre découvert
 
 Ouverture programmatique d'un nouvel onglet depuis une page modifiée (Ctrl+clic sur un lien
-d'élément, « Ouvrir dans un nouvel onglet ») : même perte de saisie, non couverte par la spec →
-issue séparée.
+d'élément, « Ouvrir dans un nouvel onglet »), bouton « Résoudre les conflits » de
+`ModificationControl`, onglet adopté d'une autre fenêtre par glisser : même perte de saisie, non
+couverte par la spec → #407.
+
+## 6. Écart en cours de sprint
+
+`modalOpen()` ne reconnaissait que `role="dialog"` et `.fixed.inset-0` : un menu contextuel sans fond
+(clic droit sur un onglet, arbre, grille, terminal), les popovers de liens et le menu du compte
+n'étaient pas vus (critère 8). Ajout de `role="menu"` et d'un marqueur `data-floating-menu` sur ces
+menus (`NodeContextMenu`, `ColumnFreezeMenu`, `ParamPicker`, menus de `ElementTree`, `ExcelView`,
+`WordView`, `TerminalPanel`, `AccountMenu`, confirmation d'abandon de `MergeResolvePage`). Vaut aussi
+pour Précédent / Suivant (même fonction). La popup d'aperçu au survol (`ElementPreviewPopup`) n'est
+pas marquée : passive, elle ne doit pas bloquer les raccourcis.

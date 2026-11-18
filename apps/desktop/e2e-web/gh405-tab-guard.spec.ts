@@ -45,12 +45,18 @@ async function dirtyRequirementTab(title: string) {
   return { req, input }
 }
 
-/** Ferme tous les onglets sauf le premier (sans garde : rien de modifié à ce stade). */
+/** Un seul onglet, non modifié, même après un test interrompu : popups refermées, onglets fermés
+ *  (saisie abandonnée), le dernier est remis sur l'accueil par sa fermeture. */
 async function resetTabs() {
-  while (await tabs().count() > 1) {
+  if (await dialog().isVisible()) await dialog().getByRole('button', { name: 'Rester' }).click().catch(() => {})
+  await s.page.keyboard.press('Escape')
+  for (let n = await tabs().count(); n > 0; n--) {
     await tabs().last().click({ button: 'middle' })
-    if (await dialog().isVisible()) await dialog().getByRole('button', { name: /Fermer sans enregistrer|Quitter sans enregistrer/ }).click()
+    const close = dialog().getByRole('button', { name: 'Fermer sans enregistrer' })
+    if (await close.isVisible().catch(() => false)) await close.click()
   }
+  await expect(tabs()).toHaveCount(1)
+  await expect(dialog()).toBeHidden()
 }
 
 test.afterEach(resetTabs)
@@ -121,15 +127,18 @@ test('W4 — vue Édition : la saisie en cours est enregistrée, pas de popup', 
   await expect.poll(() => new URL(s.page.url()).searchParams.get('view')).toBe('edit')
   const id = new URL(s.page.url()).searchParams.get('item')!
   const before = await savedTitle(id)
-  const input = s.page.locator(`main input[value="${before.replace(/"/g, '\\"')}"]`).first()
-  await input.click()
-  await input.fill(`${before} GH405`)
-  await tabs().nth(1).click()
-  await expect(dialog()).toBeHidden()
-  expect(await activeTab().getAttribute('data-tab-id')).toBe(await tabs().nth(1).getAttribute('data-tab-id'))
-  await expect.poll(() => savedTitle(id)).toBe(`${before} GH405`)
-  // Données de la démo : titre d'origine rétabli.
-  await s.invoke('requirements:update', s.project.localPath, id, { title: before })
+  try {
+    const input = s.page.locator(`main input[value="${before.replace(/"/g, '\\"')}"]`).first()
+    await input.click()
+    await input.fill(`${before} GH405`)
+    await tabs().nth(1).click()
+    await expect(dialog()).toBeHidden()
+    expect(await activeTab().getAttribute('data-tab-id')).toBe(await tabs().nth(1).getAttribute('data-tab-id'))
+    await expect.poll(() => savedTitle(id)).toBe(`${before} GH405`)
+  } finally {
+    // Données de la démo : titre d'origine rétabli.
+    await s.invoke('requirements:update', s.project.localPath, id, { title: before })
+  }
 })
 
 test('W5/W6 — page non modifiée : pas de popup ; Ctrl+PageDown non intercepté sur le web', async () => {

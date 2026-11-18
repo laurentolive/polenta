@@ -932,7 +932,7 @@ function ExcelContextMenu({
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-40 text-xs"
+      data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-40 text-xs"
       style={{ left: x, top: y }}
     >
       {items.map((item, i) =>
@@ -2591,7 +2591,7 @@ function ExcelViewInner({
         return (
           <div
             data-link-popover
-            className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 space-y-3"
+            data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 space-y-3"
             style={{ top: activeLinkPopover.top, left: activeLinkPopover.left, width: activeLinkPopover.width }}
             onClick={e => e.stopPropagation()}
           >

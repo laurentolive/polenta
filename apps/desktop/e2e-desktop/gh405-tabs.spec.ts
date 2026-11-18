@@ -206,6 +206,15 @@ test('E6 — menu ▾ ouvert : le raccourci ne fait rien', async () => {
   await page.keyboard.press('Control+Tab')
   await expectActive(0)
   await page.keyboard.press('Escape')
+  // Menu contextuel d'un onglet (sans fond cliquable, `data-floating-menu`).
+  await tabs().first().click({ button: 'right' })
+  await expect(page.getByText('Ouvrir dans une nouvelle fenêtre')).toBeVisible()
+  await page.keyboard.press('Control+Tab')
+  await expectActive(0)
+  await page.keyboard.press('Escape')
+  await expect(page.getByText('Ouvrir dans une nouvelle fenêtre')).toBeHidden()
+  await page.keyboard.press('Control+Tab')
+  await expectActive(1)
   await keepFirstTab()
 })
 

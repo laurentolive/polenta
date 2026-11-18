@@ -46,7 +46,7 @@ export function AccountMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-56 bg-surface border border-edge rounded-lg shadow-lg z-50">
+        <div data-floating-menu className="absolute right-0 top-full mt-1 w-56 bg-surface border border-edge rounded-lg shadow-lg z-50">
           {identity && (
             <div className="px-4 py-3 border-b border-edge">
               <p className="text-sm font-medium text-ink">{identity.name}</p>

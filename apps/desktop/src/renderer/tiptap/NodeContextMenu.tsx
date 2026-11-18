@@ -53,7 +53,7 @@ export function NodeContextMenu({ x, y, items, onClose }: Props) {
       // fermerait toute la popover d'édition. stopPropagation empêche le
       // mousedown de remonter jusqu'à ce genre d'écouteur global.
       onMouseDown={e => e.stopPropagation()}
-      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-52 text-xs"
+      data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-52 text-xs"
       style={{ left: x, top: y }}
     >
       {items.map((item, i) =>

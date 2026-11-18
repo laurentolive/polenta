@@ -24,18 +24,25 @@ export function TabBar() {
   const { t } = useTranslation()
   const { tabs, activeTabId, dirtyTabIds, attemptOpenTab, attemptCloseTab, attemptActivateTab, moveTab, detachTab, adoptTab, snapshotTab } = useTabs()
   const [showMenu, setShowMenu] = useState(false)
-
-  // GH405 — l'onglet activé (Ctrl+Tab, menu ▾, ouverture) devient visible quand la barre déborde.
-  useLayoutEffect(() => {
-    stripRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(activeTabId)}"]`)
-      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-  }, [activeTabId])
   // GH342 — menu contextuel d'un onglet (clic droit).
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const menuTab = tabMenu ? tabs.find(tab => tab.id === tabMenu.tabId) : undefined
 
   // ─── GH343 — glisser un onglet ──────────────────────────────────────────────────────────────────
   const stripRef = useRef<HTMLDivElement>(null)
+
+  // GH405 — l'onglet activé (Ctrl+Tab, menu ▾, ouverture) devient visible quand la barre déborde.
+  // Seule la barre défile (pas ses ancêtres, comme le ferait scrollIntoView).
+  useLayoutEffect(() => {
+    const strip = stripRef.current
+    const tab = strip?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(activeTabId)}"]`)
+    if (!strip || !tab) return
+    const s = strip.getBoundingClientRect()
+    const r = tab.getBoundingClientRect()
+    if (r.left < s.left) strip.scrollLeft -= s.left - r.left
+    else if (r.right > s.right) strip.scrollLeft += r.right - s.right
+  }, [activeTabId])
+
   /** Emplacement d'insertion (0…n) sous le pointeur pendant un glisser accepté par cette barre. */
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   /** Onglet de cette fenêtre en cours de glisser (`dropped` : déposé dans cette même barre). */

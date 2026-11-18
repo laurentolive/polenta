@@ -1074,7 +1074,7 @@ export const WordView = memo(function WordView({
         return (
           <div
             data-link-popover
-            className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl p-3"
+            data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl p-3"
             style={{ top: activeLinkPopover.top, left: activeLinkPopover.left, width: activeLinkPopover.width }}
             onClick={e => e.stopPropagation()}
           >

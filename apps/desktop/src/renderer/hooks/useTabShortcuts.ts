@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { api } from '../api'
 import { useTabs } from '../contexts/TabsContext'
 import { modalOpen } from '../lib/modalOpen'
@@ -13,8 +13,10 @@ import { isWeb } from '../platform'
  *  GH405 — Ctrl+Tab / Ctrl+Shift+Tab / Ctrl+PageDown / Ctrl+PageUp (desktop) : onglet voisin. */
 export function useTabShortcuts(): void {
   const tabsContext = useTabs()
-  const { activeTabId, activeTab, pendingCloseId, pendingLeave, attemptOpenTab, attemptCloseTab } = tabsContext
-  const activeHref = hrefOf(activeTab)
+  // GH405 — état lu par ref, mis à jour à chaque commit : les écouteurs restent enregistrés une
+  // fois et voient toujours l'onglet actif courant (répétition rapide de la touche comprise).
+  const latest = useRef(tabsContext)
+  useLayoutEffect(() => { latest.current = tabsContext })
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -22,15 +24,16 @@ export function useTabShortcuts(): void {
       // d'arriver à la page : la version web utilise Alt+T / Alt+W.
       const modifier = isWeb ? e.altKey && !e.ctrlKey && !e.metaKey : e.ctrlKey || e.metaKey
       if (!modifier) return
-      // The confirm-close popup already traps the interaction — opening a new tab or triggering
-      // another close attempt underneath it would be confusing without adding any real capability
-      // (ConfirmCloseTabModal's own Escape/Annuler/click-away already cover dismissing it).
+      const { activeTabId, activeTab, pendingCloseId, pendingLeave, attemptOpenTab, attemptCloseTab } = latest.current
+      // The confirm-close / leave popups already trap the interaction — opening a new tab or
+      // triggering another close attempt underneath them would be confusing without adding any
+      // real capability (their own Escape/Annuler/click-away already cover dismissing them).
       if (pendingCloseId || pendingLeave) return
 
       const key = e.key.toLowerCase()
       if (!isWeb && e.shiftKey && key === 'n') {
         e.preventDefault()
-        void api.app.openWindow(activeHref)
+        void api.app.openWindow(hrefOf(activeTab))
       } else if (key === 't') {
         e.preventDefault()
         attemptOpenTab()
@@ -39,31 +42,26 @@ export function useTabShortcuts(): void {
         attemptCloseTab(activeTabId)
       }
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeTabId, activeHref, pendingCloseId, pendingLeave, attemptOpenTab, attemptCloseTab])
 
-  // GH405 — état lu par ref : l'écouteur reste enregistré une fois, et une répétition rapide de la
-  // touche voit toujours l'onglet actif courant.
-  const latest = useRef(tabsContext)
-  latest.current = tabsContext
-
-  useEffect(() => {
-    // Le navigateur garde Ctrl+Tab / Ctrl+PageUp/PageDown pour ses propres onglets.
-    if (isWeb) return
     // Phase de capture sur `window` : passe avant les écouteurs du champ qui a le focus (richtext,
     // CodeMirror, grille, xterm), qui ne voient jamais la touche — le raccourci agit partout.
+    // Desktop seulement : le navigateur garde Ctrl+Tab / Ctrl+PageUp/PageDown pour ses onglets.
     function onKeyDownCapture(e: KeyboardEvent) {
       const delta = tabCycleDirection(e)
       if (delta === null) return
-      const { tabs, activeTabId: activeId, pendingCloseId: closing, pendingLeave: leaving, attemptActivateTab } = latest.current
-      if (closing || leaving || modalOpen()) return
+      const { tabs, activeTabId, pendingCloseId, pendingLeave, attemptActivateTab } = latest.current
+      if (pendingCloseId || pendingLeave || modalOpen()) return
       e.preventDefault()
       e.stopPropagation()
-      const target = cycleTabId(tabs, activeId, delta)
+      const target = cycleTabId(tabs, activeTabId, delta)
       if (target) attemptActivateTab(target)
     }
-    window.addEventListener('keydown', onKeyDownCapture, true)
-    return () => window.removeEventListener('keydown', onKeyDownCapture, true)
+
+    window.addEventListener('keydown', onKeyDown)
+    if (!isWeb) window.addEventListener('keydown', onKeyDownCapture, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keydown', onKeyDownCapture, true)
+    }
   }, [])
 }

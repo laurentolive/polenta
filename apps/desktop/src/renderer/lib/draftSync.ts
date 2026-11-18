@@ -108,7 +108,9 @@ export function useDraftForm(server: Draft | undefined, resetKey: string): Draft
       const { base, draft, conflicts } = adoptExternal(incoming.base, incoming.draft, prev.server)
       return { ...prev, base, draft, conflicts }
     }),
-    state !== null,
+    // GH407 — prêt pour CET objet seulement : même page, autre objet (/req/A → /req/B sans remontage),
+    // l'état de A ne doit pas recevoir la saisie de B, consommée ensuite par l'amorçage de B.
+    state !== null && seededFor.current === resetKey,
   )
 
   useEffect(() => {

@@ -140,6 +140,14 @@ async function windowWithTwoTabs(route: string): Promise<Page> {
   return page
 }
 
+/** GH407 — la page affichée par `page` est modifiée (saisie reçue à l'étape précédente) : l'onglet déposé
+ *  arrive en arrière-plan et « Quitter cette page ? » décide de son affichage. */
+async function leaveDirtyPage(page: Page): Promise<void> {
+  const dialog = page.getByRole('dialog').filter({ hasText: 'Quitter cette page ?' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Quitter sans enregistrer' }).click()
+}
+
 const fieldValues = (page: Page) => page.$$eval('main input, main textarea', els => els.map(e => (e as HTMLInputElement).value))
 
 test.beforeAll(async () => {
@@ -262,6 +270,7 @@ test('GH343 T27 — saisie transférée : test, Schéma, campagne, diff', async 
     const id = await dragStart(source, 0)
     expect(await dropOn(target, id)).toBe(true)
     await dragEnd(source, true)
+    await leaveDirtyPage(target)   // saisie reçue à l'étape précédente (GH407)
     await expect.poll(() => routePath(target)).toBe(`/campaign/${campaignId}`)
     await expect.poll(() => fieldValues(target)).toContain('Atelier 3')
     await destroy(source)
@@ -275,6 +284,7 @@ test('GH343 T27 — saisie transférée : test, Schéma, campagne, diff', async 
     const id = await dragStart(source, 0)
     expect(await dropOn(target, id)).toBe(true)
     await dragEnd(source, true)
+    await leaveDirtyPage(target)   // saisie reçue à l'étape précédente (GH407)
     await expect.poll(() => routePath(target)).toBe('/schema')
     const last = (await tabs(target).count()) - 1
     await expect(dirtyDot(target, last)).toBeVisible()
@@ -293,6 +303,7 @@ test('GH343 T27 — saisie transférée : test, Schéma, campagne, diff', async 
     const id = await dragStart(source, 0)
     expect(await dropOn(target, id)).toBe(true)
     await dragEnd(source, true)
+    await leaveDirtyPage(target)   // saisie reçue à l'étape précédente (GH407)
     await expect.poll(() => routePath(target)).toBe('/diff')
     await expect(target.locator('.cm-content[contenteditable="true"]').last()).toContainText('ligne glissée', { timeout: 20_000 })
     await expect(dirtyDot(target, (await tabs(target).count()) - 1)).toBeVisible()

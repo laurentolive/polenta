@@ -81,6 +81,7 @@ export function setupSession(options: SessionOptions = {}) {
     expect(unexpected, unexpected.join('\n')).toEqual([])
   })
 
+  // eslint-disable-next-line no-empty-pattern -- Playwright exige un motif objet pour le 1er argument (fixtures)
   test.afterAll(async ({}, testInfo) => {
     const t = timer()
     await context?.close()

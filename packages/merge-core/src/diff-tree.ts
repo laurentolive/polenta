@@ -32,8 +32,6 @@ export interface DiffNode {
   indexes?: [number | null, number | null]
 }
 
-type Obj = Record<string, unknown>
-
 function kindOf(v: unknown): NodeKind {
   if (isPlainObject(v)) return 'map'
   if (Array.isArray(v)) return 'list'

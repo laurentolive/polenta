@@ -89,7 +89,6 @@ export function AppLayout() {
   })
 
   const searchParams = new URLSearchParams(search ?? '')
-  const repoPathFromSearch = searchParams.get('repoPath') ?? ''
   const currentProjectId = deriveCurrentProjectId(search)
 
   // T155: runs for as long as a project is open, independently of which panel is active — a

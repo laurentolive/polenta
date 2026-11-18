@@ -64,6 +64,8 @@ function CompliancePage() {
       })
 
     return () => { cancelled = true }
+    // GH395 — chargement par dossier seulement : la sélection initiale ne doit pas relancer la requête.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dir])
 
   const currentMatrix = matrices.find(m => m.interfaceName === selectedInterface)

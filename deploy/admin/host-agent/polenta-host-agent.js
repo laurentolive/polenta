@@ -65,6 +65,7 @@ function run(argv, { timeoutMs, onLine, env }) {
       buf += chunk.toString('utf8')
       const parts = buf.split('\n')
       buf = parts.pop() || ''
+      // eslint-disable-next-line no-control-regex -- séquences ANSI (ESC) retirées volontairement
       for (const p of parts) onLine && onLine(p.replace(/\x1b\[[0-9;]*m/g, ''))
     }
     child.stdout.on('data', (d) => {
@@ -239,7 +240,7 @@ function serve(socketPath = SOCKET, exec = realExec) {
         let res
         try {
           res = await handle(v, send, exec)
-        } catch (err) {
+        } catch {
           res = { id: v.id, ok: false, error: 'internal', code: 1 }
         }
         hostLog(`${v.action} par ${v.actor}`, res.ok ? 'OK' : `ERREUR ${res.error}`)

@@ -14,7 +14,7 @@ async function setRole(level: 'instance' | 'host' | null, durationMs = 1500) {
   expect(res.ok).toBe(true)
 }
 
-async function openAccount(page: Page) {
+async function openAccount(_page: Page) {
   await s.openView('Compte')
 }
 

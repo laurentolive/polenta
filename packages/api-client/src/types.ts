@@ -1,5 +1,5 @@
 import type {
-  AdoptRepoRequest, ReadmeState, ReadmeSyncOutcome, RepoAccessLevel, RepoSettings, RepoVisibility, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, ForgeMemberSuggestion, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  AdoptRepoRequest, ReadmeState, ReadmeSyncOutcome, RepoAccessLevel, RepoSettings, RepoVisibility, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, ForgeMemberSuggestion, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, WidgetParamValues, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget, RunRef,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,

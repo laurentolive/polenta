@@ -362,7 +362,6 @@ export function TabsProvider({ children }: Props) {
     }
 
     if (currentProjectId !== null) lastNonNullProjectId.current = currentProjectId
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId, pathname, t])
 
   /** Non gardé (passer par `attemptOpenTab`). Appelé après un `await` (hors d'un événement), il doit

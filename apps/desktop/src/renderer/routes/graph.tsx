@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useTranslation, Trans } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react'
@@ -279,7 +279,7 @@ interface GraphContextMenuProps {
 }
 
 function GraphContextMenu({
-  state, repoPath, isClean, currentBranch, allBranches, headSha, projectId,
+  state, repoPath, isClean, allBranches, headSha, projectId,
   workspaceDir, flatNodes, node, onClose, onInvalidate, onPinWarning, onCheckoutResult,
 }: GraphContextMenuProps) {
   const { t } = useTranslation()

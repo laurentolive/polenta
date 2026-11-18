@@ -134,3 +134,23 @@ test('GH105-4 — pair absent du workspace : pastille « introuvable » (L4)', a
   await s.shot('gh105-4-introuvable')
   await s.page.keyboard.press('Escape')
 })
+
+test('GH401 — ligne de liens au bas de la fenêtre : popover ouvert au-dessus, entièrement visible', async () => {
+  await openDocView(rTypeLabel)
+  const line = linkLine(card(R.id), OUT)
+  await expect(line).toBeVisible()
+  // Fenêtre réduite jusqu'au bas de la ligne : sous elle, plus aucune place pour le popover.
+  const viewport = s.page.viewportSize()!
+  const box = (await line.boundingBox())!
+  await s.page.setViewportSize({ width: viewport.width, height: Math.round(box.y + box.height + 2) })
+  try {
+    const before = (await line.boundingBox())!
+    await line.click({ position: { x: 20, y: 4 } })
+    await expect(popover()).toBeInViewport({ ratio: 1 })
+    const pop = (await popover().boundingBox())!
+    expect(pop.y + pop.height).toBeLessThanOrEqual(before.y)
+    await expect(popover().locator('[data-link-chip="GHOST-9999"]').getByRole('button', { name: '×' })).toBeInViewport({ ratio: 1 })
+  } finally {
+    await s.page.setViewportSize(viewport)
+  }
+})

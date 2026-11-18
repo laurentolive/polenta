@@ -16,6 +16,7 @@ import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
 import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
 import { MultiEnumPopover } from './MultiEnumPopover'
+import { AnchoredPopover } from './AnchoredPopover'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { useScrollToNode } from '../../hooks/useScrollToNode'
 import { useViewScrollMemory } from './viewScrollMemory'
@@ -39,6 +40,8 @@ interface ActiveLinkPopover {
   objectId: string
   typeName: string
   top: number
+  /** GH401 — haut de la ligne cliquée : le popover s'ouvre au-dessus s'il ne tient pas dessous. */
+  anchorTop: number
   left: number
   width: number
 }
@@ -47,6 +50,7 @@ interface ActiveMultiEnumPopover {
   objectId: string
   field: string
   top: number
+  anchorTop: number
   left: number
   width: number
 }
@@ -926,6 +930,7 @@ export const WordView = memo(function WordView({
       objectId,
       typeName: typeKey,
       top: rect.bottom + 4,
+      anchorTop: rect.top,
       left: rect.left,
       width: Math.max(rect.width, 320),
     })
@@ -936,7 +941,7 @@ export const WordView = memo(function WordView({
       setActiveMultiEnumPopover(null)
       return
     }
-    setActiveMultiEnumPopover({ objectId, field, top: rect.bottom + 4, left: rect.left, width: rect.width })
+    setActiveMultiEnumPopover({ objectId, field, top: rect.bottom + 4, anchorTop: rect.top, left: rect.left, width: rect.width })
   }
 
   function renderNodes(nodes: TypeTreeNode[], depth: number): ReactNode[] {
@@ -1057,7 +1062,9 @@ export const WordView = memo(function WordView({
               onInlineEdit?.(activeMultiEnumPopover.objectId, activeMultiEnumPopover.field, serializeMultiEnumValue(next))
             }}
             onClose={() => setActiveMultiEnumPopover(null)}
-            style={{ top: activeMultiEnumPopover.top, left: activeMultiEnumPopover.left, minWidth: activeMultiEnumPopover.width }}
+            top={activeMultiEnumPopover.top}
+            anchorTop={activeMultiEnumPopover.anchorTop}
+            style={{ left: activeMultiEnumPopover.left, minWidth: activeMultiEnumPopover.width }}
           />
         )
       })()}
@@ -1072,10 +1079,13 @@ export const WordView = memo(function WordView({
         if (activeLinkDirection === 'out' ? !v.showOutgoing : !v.showIncoming) return null
 
         return (
-          <div
+          <AnchoredPopover
             data-link-popover
             data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl p-3"
-            style={{ top: activeLinkPopover.top, left: activeLinkPopover.left, width: activeLinkPopover.width }}
+            top={activeLinkPopover.top}
+            anchorTop={activeLinkPopover.anchorTop}
+            left={activeLinkPopover.left}
+            width={activeLinkPopover.width}
             onClick={e => e.stopPropagation()}
           >
             <LinkTypeEditor
@@ -1089,7 +1099,7 @@ export const WordView = memo(function WordView({
               direction={activeLinkDirection === 'out' ? 'out' : 'in'}
               onLinkChange={onLinkChange}
             />
-          </div>
+          </AnchoredPopover>
         )
       })()}
     </div>

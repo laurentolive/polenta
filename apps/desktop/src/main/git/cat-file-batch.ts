@@ -6,7 +6,7 @@ import * as path from 'path'
 import { gitInstall } from './git-binary'
 import { gitEnv } from './git-config'
 import { GitError } from './git-errors'
-import { countGitSpawn, gitText, repoKey } from './git-runner'
+import { countGitSpawn, gitText, repoKey, trackPending } from './git-runner'
 import { killTree, onRepoClose, track } from './process-registry'
 
 /**
@@ -27,7 +27,14 @@ interface Request {
   attempts: number
 }
 
-const IDLE_MS = 60_000
+/**
+ * Arrêt après inactivité. `POLENTA_GIT_BATCH_IDLE_MS` le raccourcit pour les tests : vitest exécute
+ * les fichiers dans des threads d'un même processus, et sous Windows un processus lancé par un thread
+ * hérite des tuyaux qu'un autre thread crée au même moment. Un `cat-file` qui vit 60 s garde alors
+ * ouverte la sortie d'un `git add` déjà terminé, qui semble bloqué jusqu'à son arrêt (mesuré : 50 s
+ * et plus). Sans objet dans l'application, qui lance git depuis un seul thread.
+ */
+const IDLE_MS = Number(process.env.POLENTA_GIT_BATCH_IDLE_MS) || 60_000
 
 /**
  * Dossier git de `repo` : `.git` (dossier, ou fichier `gitdir:` d'un worktree), ou `repo` lui-même
@@ -71,10 +78,11 @@ class CatFileBatch {
   }
 
   request(cmd: 'info' | 'contents', rev: string): Promise<ObjectInfo | ObjectData | null> {
-    return new Promise((resolve, reject) => {
+    const untrack = trackPending(`cat-file ${cmd} ${rev} (${this.repo})`)
+    return new Promise<ObjectInfo | ObjectData | null>((resolve, reject) => {
       this.queue.push({ cmd, rev, resolve, reject, attempts: 0 })
       this.pump()
-    })
+    }).finally(untrack)
   }
 
   close(): void {

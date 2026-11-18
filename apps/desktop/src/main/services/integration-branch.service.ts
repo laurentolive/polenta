@@ -186,10 +186,10 @@ export class IntegrationBranchService {
   }
 
   private async branchLists(repoPath: string): Promise<[string[], string[]]> {
-    const g = gitFor(repoPath)
-    const locals = await g.refNames('refs/heads').catch(() => [] as string[])
-    const remotes = await g.refNames('refs/remotes/origin').catch(() => [] as string[])
-    return [locals, remotes.filter(b => b !== 'HEAD')]
+    // Un seul `for-each-ref` pour les deux listes (chemin de chaque rafraîchissement).
+    const refs = await gitFor(repoPath).refs(['refs/heads/', 'refs/remotes/origin/']).catch(() => [])
+    const under = (base: string): string[] => refs.filter(r => r.ref.startsWith(base)).map(r => r.ref.slice(base.length))
+    return [under('refs/heads/'), under('refs/remotes/origin/').filter(b => b !== 'HEAD')]
   }
 
   /** `integrationBranch` écrit dans le `project.yaml` du WD, sans le repli `main` (garde §1.5). */

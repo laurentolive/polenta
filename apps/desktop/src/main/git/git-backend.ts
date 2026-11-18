@@ -113,6 +113,38 @@ function parseTagObject(oid: string, data: Buffer): TagInfo {
 }
 
 /**
+ * `remote.<nom>.url` d'une config git au format simple, dans l'ordre du fichier (comme `git config
+ * --get-regexp`). `null` (→ `git config`) dès que le fichier sort de ce format : `include`, ligne
+ * continuée, guillemet ou barre oblique inverse dans une valeur, section mal formée.
+ */
+export function parseRemoteUrls(text: string): { name: string; url: string }[] | null {
+  const out: { name: string; url: string }[] = []
+  let remote: string | null = null
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#') || line.startsWith(';')) continue
+    if (line.startsWith('[')) {
+      const m = /^\[\s*([A-Za-z0-9.-]+)(?:\s+"([^"\\]*)")?\s*\]$/.exec(line)
+      if (!m) return null
+      const section = m[1].toLowerCase()
+      if (section === 'include' || section === 'includeif' || section.startsWith('remote.')) return null
+      remote = section === 'remote' && m[2] !== undefined ? m[2] : null
+      continue
+    }
+    if (/\\\s*$/.test(line)) return null
+    const eq = line.indexOf('=')
+    const name = (eq < 0 ? line : line.slice(0, eq)).trim().toLowerCase()
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) return null
+    if (remote === null || name !== 'url') continue
+    let value = eq < 0 ? '' : line.slice(eq + 1).trim()
+    if (/["\\]/.test(value)) return null
+    value = value.replace(/\s+[#;].*$/, '')
+    out.push({ name: remote, url: value })
+  }
+  return out
+}
+
+/**
  * Objet arbre brut (`<mode> <nom>\0<oid binaire>` répété) → entrées, chemins préfixés par `base`.
  * Modes affichés comme `ls-tree` (`040000` pour un dossier).
  */
@@ -408,7 +440,10 @@ export class GitBackend {
     const st = gitDir ? await fs.promises.stat(path.join(gitDir, 'config'), { bigint: true }).catch(() => null) : null
     const key = st ? `${st.mtimeNs}:${st.ctimeNs}:${st.size}` : null
     if (key && this.remotesCache?.key === key) return this.remotesCache.value.map(r => ({ ...r }))
-    const value = await this.remotesProcess()
+    // Première lecture : la config locale lue directement (un processus de moins par dépôt à
+    // l'ouverture du workspace), `git config` dès qu'elle sort du format simple.
+    const text = gitDir ? await fs.promises.readFile(path.join(gitDir, 'config'), 'utf8').catch(() => null) : null
+    const value = (text !== null ? parseRemoteUrls(text) : null) ?? await this.remotesProcess()
     if (key) this.remotesCache = { key, value }
     return value.map(r => ({ ...r }))
   }
@@ -436,9 +471,21 @@ export class GitBackend {
     }
   }
 
-  /** Commits accessibles depuis `tip` qu'aucune branche `refs/remotes/<remote>/*` ne contient. */
-  async notOnRemotes(tip: string, remote = 'origin'): Promise<string[]> {
-    return (await this.text(['rev-list', tip, '--not', `--remotes=${remote}`])).split('\n').filter(Boolean)
+  /**
+   * Commits accessibles depuis `tip` qu'aucune branche `refs/remotes/<remote>/*` ne contient (GH41 :
+   * `git log <b> --not --remotes`), les `limit` plus récents au plus. Un seul processus, quel que soit
+   * le nombre de branches distantes.
+   */
+  async notOnRemotes(tip: string, remote = 'origin', limit?: number): Promise<string[]> {
+    const args = ['rev-list', ...(limit ? [`--max-count=${limit}`] : []), tip, '--not', `--remotes=${remote}`]
+    return (await this.text(args)).split('\n').filter(Boolean)
+  }
+
+  /** `[avance, retard]` de `local` sur `remote` (commits de l'un absents de l'autre), en un processus. */
+  async aheadBehind(local: string, remote: string): Promise<[number, number]> {
+    const out = (await this.text(['rev-list', '--left-right', '--count', `${local}...${remote}`])).trim()
+    const [ahead, behind] = out.split(/\s+/).map(Number)
+    return [ahead || 0, behind || 0]
   }
 
   async isAncestor(ancestor: string, descendant: string): Promise<boolean> {

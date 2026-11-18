@@ -378,15 +378,13 @@ export class SyncService {
       const b = await g.currentBranch()
       branch = b ?? ''
       // Branche sans commit : rien à compter (isomorphic-git levait ici).
-      if (b && await g.resolve(`refs/heads/${b}`)) {
-        const localCommits = await g.log(`refs/heads/${b}`, { limit: 100 })
-        const remoteRef = `refs/remotes/origin/${b}`
-        if (await g.resolve(remoteRef)) {
-          const remoteCommits = await g.log(remoteRef, { limit: 100 })
-          const remoteSet = new Set(remoteCommits.map(c => c.oid))
-          const localSet = new Set(localCommits.map(c => c.oid))
-          ahead = localCommits.filter(c => !remoteSet.has(c.oid)).length
-          behind = remoteCommits.filter(c => !localSet.has(c.oid)).length
+      // GH337 — résolutions par le `cat-file` persistant, puis un seul processus pour les comptes
+      // (`rev-list --left-right --count`), au lieu de deux `log` : chemin de chaque rafraîchissement.
+      const remoteRef = `refs/remotes/origin/${b}`
+      const [localOid, remoteOid] = b ? await Promise.all([g.resolve(`refs/heads/${b}`), g.resolve(remoteRef)]) : [null, null]
+      if (b && localOid) {
+        if (remoteOid) {
+          [ahead, behind] = await g.aheadBehind(localOid, remoteOid)
         } else {
           // No refs/remotes/origin/<branch> yet. Only treat local commits as "ahead" if a
           // remote is actually configured (branch just never pushed) — with no remote at
@@ -395,7 +393,8 @@ export class SyncService {
           // --remotes`) — a branch forked from a pushed one would otherwise count its whole
           // history (e.g. `dev-resync`, GH39).
           const hasRemote = (await getRemoteUrl(repoPath, 'origin')) !== null
-          ahead = hasRemote ? await countNotOnRemote(repoPath, localCommits.map(c => c.oid)) : 0
+          // Même fenêtre de 100 commits qu'avant.
+          ahead = hasRemote ? (await g.notOnRemotes(localOid, 'origin', 100).catch(() => [])).length : 0
         }
       }
     } catch {
@@ -1469,14 +1468,4 @@ async function getRemoteUrl(repoPath: string, remote: string): Promise<string | 
   } catch {
     return null
   }
-}
-
-/** GH41: how many of `oids` (a branch's history, newest first) no `origin/*` branch contains —
- *  `git log <branch> --not --remotes`, within the same 100-commit window `status()` uses. */
-async function countNotOnRemote(repoPath: string, oids: string[], remote = 'origin'): Promise<number> {
-  if (oids.length === 0) return 0
-  // GH337 — un seul processus (`rev-list <pointe> --not --remotes=origin`), quel que soit le nombre de
-  // branches distantes : un `log` par branche en parallèle saturait (leçon GH335).
-  const notOnRemote = new Set(await gitFor(repoPath).notOnRemotes(oids[0], remote).catch(() => oids))
-  return oids.filter(oid => notOnRemote.has(oid)).length
 }

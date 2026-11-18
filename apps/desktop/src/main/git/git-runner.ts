@@ -45,7 +45,14 @@ export function isRepoWriteBusy(repo: string): boolean {
 export function withRepoWriteLock<T>(repo: string, fn: () => Promise<T>): Promise<T> {
   const key = repoKey(repo)
   const prev = writeQueues.get(key) ?? Promise.resolve()
-  const next = prev.then(fn, fn)
+  const who = hangLog ? (new Error().stack ?? '').split('\n').slice(2, 6).map(l => l.trim()).join(' < ') : ''
+  const untrackWait = trackPending(`file d'écriture, en attente : ${who}`)
+  const run = async (): Promise<T> => {
+    untrackWait()
+    const untrackRun = trackPending(`file d'écriture, en cours : ${who}`)
+    try { return await fn() } finally { untrackRun() }
+  }
+  const next = prev.then(run, run)
   const tail = next.catch(() => undefined)
   writeQueues.set(key, tail)
   void tail.then(() => { if (writeQueues.get(key) === tail) writeQueues.delete(key) })
@@ -73,11 +80,40 @@ const statsFile = process.env.POLENTA_GIT_SPAWN_STATS
 /** Compte un lancement de git (ponctuel ici, persistant dans `cat-file-batch`). */
 export function countGitSpawn(sub: string): void {
   gitSpawnStats.set(sub, (gitSpawnStats.get(sub) ?? 0) + 1)
-  if (statsFile) appendFileSync(statsFile, `${sub}\n`)
+  if (statsFile) {
+    // Premier appelant hors de `git/` (services, tests) : qui lance quoi.
+    const caller = (new Error().stack ?? '').split('\n').slice(2)
+      .find(l => !/[\\/]git[\\/](git-|cat-file|node-checkout)/.test(l) && /\.ts:\d+/.test(l))
+    const where = caller?.match(/([\w.-]+\.ts):(\d+)/)
+    appendFileSync(statsFile, `${sub}\t${where ? `${where[1]}:${where[2]}` : '?'}\n`)
+  }
+}
+
+/**
+ * Diagnostic des blocages : `POLENTA_GIT_HANG_LOG=<fichier>` y écrit, toutes les 5 s, ce qui attend
+ * depuis plus de 10 s (processus, file d'écriture, requête cat-file). C'est ce journal qui a montré
+ * les tuyaux hérités entre threads de test (cat-file-batch.ts, IDLE_MS).
+ */
+const pending = new Map<number, { what: string; since: number }>()
+let pendingSeq = 0
+const hangLog = process.env.POLENTA_GIT_HANG_LOG
+if (hangLog) {
+  setInterval(() => {
+    const now = Date.now()
+    const old = [...pending.values()].filter(p => now - p.since > 10_000)
+    if (old.length) appendFileSync(hangLog, old.map(p => `${Math.round((now - p.since) / 1000)}s ${p.what}\n`).join(''))
+  }, 5000).unref()
+}
+export function trackPending(what: string): () => void {
+  if (!hangLog) return () => undefined
+  const id = ++pendingSeq
+  pending.set(id, { what, since: Date.now() })
+  return () => { pending.delete(id) }
 }
 
 function spawnGit(cwd: string, args: string[], opts: RunOptions): Promise<RunResult> {
   countGitSpawn(args.find((a, i) => !a.startsWith('-') && args[i - 1] !== '-c') ?? '?')
+  const untrack = trackPending(`processus git ${args.join(' ').slice(0, 120)} (${cwd})`)
   const { gitExe } = gitInstall()
   const env = gitEnv({ readOnly: !opts.write, ...opts.env })
   return new Promise<RunResult>((resolve, reject) => {
@@ -96,6 +132,7 @@ function spawnGit(cwd: string, args: string[], opts: RunOptions): Promise<RunRes
     const done = (fn: () => void): void => {
       if (settled) return
       settled = true
+      untrack()
       if (timer) clearTimeout(timer)
       opts.signal?.removeEventListener('abort', onAbort)
       fn()

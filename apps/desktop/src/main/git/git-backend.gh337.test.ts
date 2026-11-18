@@ -3,7 +3,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { gitFor, type GitBackend } from './git-backend'
+import { gitFor, parseRemoteUrls, type GitBackend } from './git-backend'
 import { runGit } from './git-runner'
 import { closeAll } from './process-registry'
 
@@ -212,6 +212,31 @@ describe('lectures', () => {
     await commit({ '.gitignore': '*.pref\ncache/\n' }, 'm')
     expect(await g.checkIgnore(['a[1].pref', 'é.txt', 'cache/x', 'README.md']))
       .toEqual(new Set(['a[1].pref', 'cache/x']))
+  })
+
+  it('L14 remotes lus dans .git/config : identiques à git config, repli sur les formats inhabituels', async () => {
+    const viaGit = async (): Promise<{ name: string; url: string }[]> => {
+      const r = await runGit(dir, ['config', '--get-regexp', '^remote\\..*\\.url$'], { okExitCodes: [1] })
+      return r.stdout.toString().split('\n').filter(Boolean).map(l => {
+        const sp = l.indexOf(' ')
+        return { name: l.slice('remote.'.length, sp - '.url'.length), url: l.slice(sp + 1) }
+      })
+    }
+    const base = '[core]\n\trepositoryformatversion = 0\n\tbare = false\n'
+    const cases: [string, boolean][] = [
+      [base, true],
+      [`${base}[remote "origin"]\n\turl = https://h/x.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n`, true],
+      [`${base}[remote "origin"]\r\n\tURL=https://h/x.git ; commentaire\r\n# autre\r\n[remote "a.b"]\n\turl = git@h:y.git\n[branch "main"]\n\tremote = origin\n`, true],
+      [`${base}[remote "origin"]\n\tpushurl = https://p/x.git\n\turl = https://h/x.git\n\turl = https://h2/x.git\n`, true],
+      [`${base}[include]\n\tpath = autre\n[remote "origin"]\n\turl = https://h/x.git\n`, false],
+      [`${base}[remote.origin]\n\turl = https://h/x.git\n`, false],
+      [`${base}[remote "origin"]\n\turl = "https://h/x y.git"\n`, false],
+    ]
+    for (const [config, simple] of cases) {
+      fs.writeFileSync(path.join(dir, '.git', 'config'), config)
+      expect(parseRemoteUrls(config) !== null, config).toBe(simple)
+      expect(await gitFor(dir).remotes(), config).toEqual(await viaGit())
+    }
   })
 
   it('L10 refNames : branches imbriquées, tags et branches distantes, préfixe retiré, sans débordement de préfixe', async () => {

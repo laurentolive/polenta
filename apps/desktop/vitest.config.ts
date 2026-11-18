@@ -20,13 +20,15 @@ export default defineConfig({
     environment: 'node',
     // GH49 — les services partagés lisent la marque au chargement (src/shared/brand.ts).
     setupFiles: ['scripts/register-brand.ts'],
-    // GH337 — chaque opération git lance un processus git (~50 à 140 ms sous Windows, bien plus quand
-    // la suite sature la machine) : des tests qui passent seuls en quelques secondes dépassaient 20 s
-    // dans la suite complète, au hasard. Un vrai blocage reste signalé, plus tard.
-    testTimeout: 60_000,
+    testTimeout: 20_000,
     // GH283 — des tests qui lancent git en ligne de commande (push vers un repo nu) dépassent les 10 s par
-    // défaut d'un hook sur une machine chargée. GH337 : même raison que testTimeout.
-    hookTimeout: 60_000,
+    // défaut d'un hook sur une machine chargée.
+    hookTimeout: 20_000,
+    // GH337 — sous Windows, un processus lancé par un thread de test hérite des tuyaux qu'un autre thread
+    // crée au même moment : un `cat-file` persistant (60 s d'inactivité) gardait ouverte la sortie d'un
+    // git déjà terminé, et des tests sans rapport « dépassaient » 20 s au hasard (suite 2× plus lente).
+    // Arrêt après 2 s d'inactivité en test (cat-file-batch.ts).
+    env: { POLENTA_GIT_BATCH_IDLE_MS: '2000' },
     // GH283 — sous Windows, le pool `forks` perdait un processus de test environ une fois sur cinq (« Worker
     // exited unexpectedly ») : son fichier disparaissait du total, sans échec. Aucun en `threads` sur
     // 26 passages, qui est aussi plus rapide.

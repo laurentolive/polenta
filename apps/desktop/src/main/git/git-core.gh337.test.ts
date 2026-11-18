@@ -130,15 +130,13 @@ describe('P — exécution', () => {
     expect((await objectData(repo, 'HEAD:a.txt'))?.data.toString()).toBe('alpha\n')
   })
 
-  // 20 processus en file, l'un après l'autre (plus d'une seconde chacun quand la suite complète sature
-  // la machine) : assez pour qu'ils se chevauchent sans la file, et tenir dans le délai.
-  it('P3 20 écritures concurrentes sans conflit index.lock', async () => {
-    await Promise.all(Array.from({ length: 20 }, (_, i) => {
+  it('P3 50 écritures concurrentes sans conflit index.lock', async () => {
+    await Promise.all(Array.from({ length: 50 }, (_, i) => {
       fs.writeFileSync(path.join(repo, `w${i}.txt`), String(i))
       return runGit(repo, ['add', '--', `w${i}.txt`], { write: true })
     }))
     const staged = (await gitText(repo, ['diff', '--cached', '--name-only'])).split('\n').filter(Boolean)
-    expect(staged).toHaveLength(20)
+    expect(staged).toHaveLength(50)
     await runGit(repo, ['reset', '-q'], { write: true })
   })
 

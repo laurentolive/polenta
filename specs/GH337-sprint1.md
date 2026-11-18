@@ -59,11 +59,25 @@ sur isomorphic-git jusqu'aux sprints 2 et 3.
    « à confirmer »). Le cas inverse, CRLF sur disque et LF dans git, reste non modifié (spec §4.3).
 2. **Tests GH296 / GH335** : la fixture reçoit le `.gitattributes` de #336, qui porte la règle depuis
    (spec §4.3, §5.4).
-3. **Durée de la suite unitaire** : environ 140 s contre 78 s sur main, et 2× plus de temps de test
-   cumulé. Chaque opération lance un processus git, et la suite sature la machine. Des tests qui
-   passent seuls en quelques secondes dépassaient 20 s au hasard. `testTimeout` et `hookTimeout`
-   passent à 60 s (précédent GH283), et P3 passe de 50 à 20 écritures. La réécriture native des
-   fixtures (sprint 4) devra rester rapide : création de dépôts groupée.
+3. **Durée de la suite unitaire : réglée.** Elle était passée de ~80 s à ~140 s, avec des tests qui
+   dépassaient 20 s au hasard. Ces dépassements étaient des **blocages**, pas de la lenteur
+   (`POLENTA_GIT_HANG_LOG`) : un `git add` ou un `rev-list` de quelques ms restait en vie plus de 50 s.
+   - **Cause** : vitest exécute les fichiers dans des threads d'un même processus. Sous Windows, un
+     processus lancé par un thread hérite des tuyaux qu'un autre thread crée au même moment. Un
+     `cat-file` persistant (60 s d'inactivité) gardait ainsi ouverte la sortie d'un git déjà terminé.
+   - **Preuve** : avec le pool `forks`, zéro blocage.
+   - **Correctif** : `POLENTA_GIT_BATCH_IDLE_MS=2000` en test (`vitest.config.ts`).
+   - **Résultat** : 81 à 95 s, contre 78 à 91 s pour main dans les mêmes conditions. Délais de 20 s
+     d'origine et P3 à 50 écritures, verts 3 fois sur 3.
+   - **L'application n'est pas concernée** : elle lance git depuis un seul thread.
+
+   En plus, les chemins chauds lancent moins de processus :
+   - avance et retard : un `rev-list --left-right --count` au lieu de deux `log` ;
+   - remotes : lus dans `.git/config` (repli sur `git config` hors format simple) ;
+   - branches d'intégration : un seul `for-each-ref`.
+
+   Soit 1 712 lancements sur la suite au lieu de 1 943, et au total ~25 % de moins qu'au début du
+   sprint.
 4. **État mixte, transitoire** : index écrit par isomorphic-git, lu par git natif. Une réécriture de
    même taille dans la seconde d'un commit peut échapper au statut natif. Un échec isolé
    (`versions.gh245` A5, `DIRTY_CHANGES`) une fois sur trois suites complètes ; il passe seul. Cela

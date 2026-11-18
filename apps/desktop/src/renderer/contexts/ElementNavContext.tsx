@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import type { ObjectCategory } from '@polenta/types'
@@ -96,7 +97,8 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
   ])
   const sv = useSystemView()
   const qc = useQueryClient()
-  const { openTab } = useTabs()
+  // GH407 — ouverture gardée : un Ctrl+clic depuis une page modifiée passe par « Quitter cette page ? ».
+  const { attemptOpenTab } = useTabs()
   const navigate = useNavigate()
   const { pathname, searchStr } = useRouterState({ select: s => ({ pathname: s.location.pathname, searchStr: s.location.searchStr }) })
 
@@ -247,7 +249,8 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
         const row = history.rows[0]
         const runTarget = row ? runPage(row, target.repoPath, currentProjectId) : null
         if (!runTarget || window.location.href !== from) return
-        if (opts?.newTab) { openTab(runTarget.pathname, runTarget.search); return }
+        // Après un `await` : sous flushSync (GH37, `openTab` de TabsContext).
+        if (opts?.newTab) { flushSync(() => attemptOpenTab(runTarget.pathname, runTarget.search)); return }
         if (window.location.pathname.endsWith(runTarget.pathname)) return
         navigate({ to: runTarget.pathname as never, search: runTarget.search as never })
       }).catch(err => console.error('[ElementNav] exécution', id, err))
@@ -263,7 +266,7 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
       page = s.objectPage(target.repoPath, nodeId, typeId, s.viewModeForLink(target.repoPath), id, target.category)
     }
     if (opts?.newTab) {
-      openTab(page.pathname, page.search)
+      attemptOpenTab(page.pathname, page.search)
       return
     }
     // Lien vers la page affichée : re-goto (re-défilement), pas de nouvelle entrée d'historique.
@@ -278,7 +281,7 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
       return
     }
     navigate({ to: page.pathname as never, search: page.search as never })
-  }, [index, closePreview, currentProjectId, openTab, navigate, qc, ws.workspaceDir])
+  }, [index, closePreview, currentProjectId, attemptOpenTab, navigate, qc, ws.workspaceDir])
 
   const value = useMemo<ElementNav>(() => ({
     ready: ws.objectsLoaded,

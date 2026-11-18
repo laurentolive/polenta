@@ -44,7 +44,7 @@ interface Props {
 export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) {
   const { t } = useTranslation()
   const qc = useQueryClient()
-  const { openTab } = useTabs()
+  const { attemptOpenTab } = useTabs()
   const { isReadonly } = useVersioning()
   const { data: schema } = useProjectSchema(repoPath)
 
@@ -282,8 +282,8 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
     const wsTarget = ws.objectsById.get(peerId)
     const target = wsTarget ?? candidateObjects.find((c) => c.id === peerId)
     const path = target?.category === 'test' ? `/test/${peerId}` : `/req/${peerId}`
-    openTab(path, { repoPath: wsTarget?.repoPath ?? repoPath, projectId })
-  }, [ws.objectsById, candidateObjects, openTab, repoPath, projectId])
+    attemptOpenTab(path, { repoPath: wsTarget?.repoPath ?? repoPath, projectId })
+  }, [ws.objectsById, candidateObjects, attemptOpenTab, repoPath, projectId])
 
   // GH206 — pré-contrôle du menu de statut de la vue Édition.
   const transitionScope = useMemo(() => ({ repoPath, category, workspaceDir: ws.workspaceDir }), [repoPath, category, ws.workspaceDir])

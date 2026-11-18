@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import type { FieldVisibilityPref } from '@polenta/api-client'
-import { findSystemNode, type Issue, type MatrixCell, type ObjectTypeDefinition, type Requirement, type SchemaField, type TestCampaign, type TestCase, stripRichTextColorTags } from '@polenta/types'
+import { findSystemNode, type Issue, type MatrixCell, type ObjectCategory, type ObjectTypeDefinition, type Requirement, type SchemaField, type TestCampaign, type TestCase, stripRichTextColorTags } from '@polenta/types'
 import { api } from '../../api'
 import { InPreviewContext, useElementNav, useElementPreviewTarget, type ElementRef } from '../../contexts/ElementNavContext'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
@@ -13,6 +13,7 @@ import { CoverageBadge } from '../system/CoverageBadge'
 import { RevalidationFlag } from '../system/RevalidationFlag'
 import { linkColumnLabel, parseLinkColumn } from '../system/linkUtils'
 import { ElementLink } from './ElementLink'
+import { RunPreviewBody } from '../executions/RunPreview'
 
 /**
  * GH229 — popup d'aperçu d'un élément (specs/GH229.md §5) : une seule à la fois, pilotée par
@@ -71,14 +72,14 @@ export function ElementPreviewPopup() {
       onPointerLeave={nav.leave}
     >
       <InPreviewContext.Provider value={true}>
-        <PreviewBody target={ref} />
+        {ref.category === 'run' ? <RunPreviewBody target={ref} /> : <PreviewBody target={ref as ElementRef & { category: ObjectCategory }} />}
       </InPreviewContext.Provider>
     </div>,
     document.body,
   )
 }
 
-function PreviewBody({ target }: { target: ElementRef }) {
+function PreviewBody({ target }: { target: ElementRef & { category: ObjectCategory } }) {
   const { t } = useTranslation()
   const nav = useElementNav()!
   const { repoPath, id, category } = target

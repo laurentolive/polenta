@@ -1,7 +1,7 @@
 import type {
   CampaignTestRun, ExecutionHistory, ExecutionHistoryRow, ExecutionHistoryTarget, ObjectLink, TestCampaign, TestCase, TestRun,
 } from '@polenta/types'
-import { isOpenCampaignStatus, sortExecutionHistory } from '@polenta/types'
+import { isOpenCampaignStatus, runTestId, sortExecutionHistory, type RunRef } from '@polenta/types'
 import type { CampaignsService } from './campaigns.service'
 import type { RequirementsService } from './requirements.service'
 import type { TestsService } from './tests.service'
@@ -24,11 +24,14 @@ export class ExecutionHistoryService {
   async history(repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string): Promise<ExecutionHistory> {
     const allTests = await this.tests.findAll(repoPath)
     const requirementId = 'requirementId' in target ? target.requirementId : undefined
+    // GH399 — une seule exécution : son test, puis sa seule ligne (ni les autres runs, ni les attentes).
+    const runId = 'runId' in target ? target.runId : undefined
+    const testId = 'testId' in target && target.testId ? target.testId : runId ? runTestId(runId) : undefined
     const tests = requirementId
       ? await this.coveringTests(repoPath, requirementId, allTests)
       : 'objectTypeRef' in target
         ? allTests.filter(t => t.objectTypeRef === target.objectTypeRef)   // GH400 — vue Exécutions
-        : allTests.filter(t => t.id === (target as { testId: string }).testId)
+        : allTests.filter(t => t.id === testId)
 
     // Une erreur de lecture des campagnes remonte : sinon chaque run serait affiché « campagne introuvable ».
     const campaigns = await this.campaigns.list(repoPath)
@@ -58,8 +61,10 @@ export class ExecutionHistoryService {
     tests.forEach((test, i) => {
       const base = { testCaseId: test.id, testTitle: test.title, objectTypeRef: test.objectTypeRef }
       for (const run of runsByTest[i]) {
+        if (runId && run.id !== runId) continue
         if (forTarget(run.requirementId)) rows.push(runRow(run, base, campaignById, entryByRunId))
       }
+      if (runId) return
       for (const { campaign, entry } of pendingByTest.get(test.id) ?? []) {
         if (!forTarget(entry.requirementId)) continue
         rows.push({
@@ -86,6 +91,14 @@ export class ExecutionHistoryService {
     const runFieldDefs: ExecutionHistory['runFieldDefs'] = {}
     typeRefs.forEach((ref, i) => { runFieldDefs[ref] = { runFields: defs[i]?.runFields ?? [], stepFields: defs[i]?.stepFields ?? [] } })
     return { rows: sortExecutionHistory(rows), runFieldDefs }
+  }
+
+  /** GH399 — ID des exécutions du repo (index des liens), lus dans l'index en mémoire des tests. */
+  async runIds(repoPath: string): Promise<RunRef[]> {
+    const byTest = await this.tests.runsMap(repoPath)
+    const out: RunRef[] = []
+    for (const [testCaseId, runs] of byTest) for (const run of runs) out.push({ id: run.id, testCaseId })
+    return out
   }
 
   /** Tests reliés à l'exigence (tout lien test ↔ exigence, sens indifférent, comme la traçabilité). */

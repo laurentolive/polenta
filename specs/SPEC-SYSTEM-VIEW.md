@@ -313,6 +313,25 @@ introuvable (texte simple, marqueur « introuvable » dans les puces).
 - Exception de geste : listes internes à un écran (constellation : recentrer le graphe ; analyse
   d'impact : fiche de l'élément) — le clic simple garde le geste de l'écran, Ctrl+clic et
   l'aperçu suivent la règle commune.
+- **Lien d'exécution (GH399)** : une exécution (`TestRun`, ID `<ID du test>-run-NNNN`) est une cible
+  de l'index (catégorie `run`), rangée dans le repo de son test. L'index liste les ID de chaque repo
+  du workspace (`executions:run-ids`) ; une exécution d'un test introuvable n'est pas indexée.
+  - **Clic** : la page d'exécution si sa campagne est ouverte, la relecture sinon. Une exécution
+    isolée, une entrée retirée, un essai remplacé ou une campagne introuvable ne naviguent pas, mais
+    gardent la popup. La ligne de l'exécution est relue (`executions:history`, cible `{ runId }`) ;
+    si la page a changé entre-temps, rien ne se passe.
+  - **Popup** : un en-tête (ID, test, verdict, date, testeur, campagne et entrée avec badges, repo
+    s'il diffère), puis les colonnes de l'onglet Popup de la vue Exécutions pour le type du test
+    (`runPopup`, § Vue Exécutions). Sans notes, sans étapes, sans compte des étapes (GH79).
+  - **Emplacements** :
+    - Entrée de la grille d'historique (section de l'éditeur, Tableau et Document de la vue
+      Exécutions) ; pour une exécution isolée, son ID en grisé. Une entrée en attente reste un bouton
+      vers la page d'exécution.
+    - Date d'une exécution dépliée dans la vue Validation.
+    - Exécutions à l'origine d'une issue.
+    - Pastille de résultat d'une entrée exécutée, dans la grille d'une campagne.
+    - ID écrits dans le texte (SPEC-REQ §3.2g).
+  - **Pas de lien** : l'exécution sur sa propre page, les impressions et les exports.
 
 ---
 
@@ -616,7 +635,7 @@ seule, données brutes (GH79) — `specs/GH400.md`.
 - **Panneau 👁** (`ExecutionConfigPanel`) : onglets **Tableau** (`runExcel`), **Document**
   (`runWord`, sans l'en-tête de fiche ni les notes, case « Étapes » `steps`, défaut durée / version
   testée / origine / champs `defaultVisible` / étapes) et **Popup** (`runPopup`, défaut vide —
-  champs de la popup d'aperçu d'une exécution, #399). Clés de `fieldVisibility[<nœud>::<type de
+  champs de la popup d'aperçu d'une exécution, § Liens d'élément, GH399). Clés de `fieldVisibility[<nœud>::<type de
   test>]` dans le `.pref` du repo, distinctes de `executions` (section de l'éditeur) et des réglages
   des tests ; « Réinitialiser » retire la clé de l'onglet seulement.
 - **Lien « Voir les exécutions »** de la fiche d'une campagne : vue sur le type du premier test de la

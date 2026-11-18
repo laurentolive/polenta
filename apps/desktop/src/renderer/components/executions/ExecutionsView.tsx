@@ -15,7 +15,7 @@ import type { ChecklistGroup } from '../grid/ColumnChecklist'
 import type { ColumnFilters } from '../grid/columnFilters'
 import type { GridColumn } from '../grid/gridTypes'
 import { useGridPrefs } from '../grid/useGridPrefs'
-import { ExecutionHistoryGrid, useExecutionGestures } from './ExecutionHistoryGrid'
+import { ExecutionHistoryGrid, useExecutionCellGestures } from './ExecutionHistoryGrid'
 import { buildExecutionColumns } from './executionColumnDefs'
 import { DOC_HEADER_KEYS, STEPS_KEY, defaultRunExcelColumns, defaultRunWordColumns } from './executionColumns'
 import { ExecutionConfigPanel, type ExecutionConfigTab, type ExecutionConfigTabDef } from './ExecutionConfigPanel'
@@ -90,7 +90,7 @@ export function ExecutionsView({ search }: { search: ExecutionsSearch }) {
   const forceVisible = useMemo(() => (search.campaign ? ['campaign'] : undefined), [search.campaign])
 
   // Colonnes (libellés du panneau, Document) et préférences des trois onglets.
-  const gestures = useExecutionGestures(repoPath, projectId)
+  const gestures = useExecutionCellGestures(repoPath, projectId)
   const columns = useMemo(
     () => buildExecutionColumns({ history, withTestColumn: true, t, language: i18n.language, repoPath, gestures }),
     [history, t, i18n.language, repoPath, gestures],

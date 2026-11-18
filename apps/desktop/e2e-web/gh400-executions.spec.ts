@@ -163,11 +163,15 @@ test('GH400-4 — « Voir les exécutions » de la fiche campagne, même colonne
   await s.page.getByTestId('execution-config-close').click()
 })
 
-test('GH400-5 — navigation : relecture (C1 clôturée), pas de lien pour remplacé / retiré / isolé', async () => {
+test('GH400-5 — navigation : relecture (C1 clôturée), aucune pour remplacé / retiré', async () => {
   await openExecutions(TYPE_A)
-  await expect(s.page.getByTestId(`execution-entry-${runs.first}`).locator('button')).toHaveCount(0)
-  await expect(s.page.getByTestId(`execution-entry-${runs.removed}`).locator('button')).toHaveCount(0)
-  await s.page.getByTestId(`execution-entry-${runs.retry}`).locator('button').click()
+  // GH399 — toute exécution est un lien d'exécution (popup) ; seule une entrée vivante navigue.
+  const url = s.page.url()
+  await s.page.getByTestId(`execution-entry-${runs.first}`).locator(`[data-element-link="${runs.first}"]`).click()
+  await s.page.getByTestId(`execution-entry-${runs.removed}`).locator(`[data-element-link="${runs.removed}"]`).click()
+  await s.page.waitForTimeout(300)
+  expect(s.page.url()).toBe(url)
+  await s.page.getByTestId(`execution-entry-${runs.retry}`).locator(`[data-element-link="${runs.retry}"]`).click()
   await expect(s.page).toHaveURL(new RegExp(`/campaign/${c1.id}/run/`))
 })
 

@@ -1,7 +1,7 @@
 import type {
   AdoptRepoRequest, ReadmeState, ReadmeSyncOutcome, RepoAccessLevel, RepoSettings, RepoVisibility, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, ForgeMemberSuggestion, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, WidgetParamValues, QueryParameterDef, QueryColumnDef,
-  ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
+  ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget, RunRef,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
   VersionReleasePreview, VersionSummary, VersionAnalysis, VersionTestsToRun, ImpactAnalysisStatus,
@@ -660,6 +660,8 @@ export interface ApiClient {
   /** GH197 — historique des exécutions d'un test ou d'une exigence. */
   executions: {
     history(repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string): Promise<ExecutionHistory>
+    /** GH399 — ID des exécutions du repo (index des liens). */
+    runIds(repoPath: string): Promise<RunRef[]>
   }
   drawio: {
     /**

@@ -14,7 +14,7 @@ function parseJson<T>(raw: string, fallback: T): T {
   try { return raw ? JSON.parse(raw) as T : fallback } catch { return fallback }
 }
 
-const INERT_GESTURES: ExecutionGestures = { open: () => {}, openVersion: () => {} }
+const INERT_GESTURES: ExecutionGestures = { openVersion: () => {}, openPending: () => {} }
 
 /**
  * GH400 — PDF du Document de la vue Exécutions (specs/GH400-design.md §10) : relit l'historique du

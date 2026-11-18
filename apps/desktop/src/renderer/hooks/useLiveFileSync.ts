@@ -95,6 +95,10 @@ export function useLiveFileSync(): void {
         qc.invalidateQueries({ queryKey: ['validations'] })
       }
       if (relPath === '*' || /^(versions|validations)\//.test(relPath)) refreshElementNav()
+      // GH399 — liens d'exécution : ID du repo (index), et ligne d'une exécution (campagne, entrée,
+      // marqueurs : suit aussi les campagnes).
+      if (relPath.startsWith('test-runs/')) qc.invalidateQueries({ queryKey: ['element-nav', 'runs', repoPath] })
+      if (relPath === '*' || /^(test-runs|campaigns)\//.test(relPath)) qc.invalidateQueries({ queryKey: ['execution-run', repoPath] })
       // GH210 — reflets Design et Validation : versions, validations, exigences, schéma.
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
         || /^(requirements|versions|validations)\//.test(relPath)) {

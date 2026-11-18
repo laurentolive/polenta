@@ -157,11 +157,16 @@ export function CampaignEntriesGrid({
       {
         key: 'status', label: t('campaignPage.columns.status'),
         getText: r => t(RUN_STATUS_LABEL_KEY[r.run.status]),
-        render: r => (
-          <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${RUN_STATUS_CLASS[r.run.status]}`}>
-            {t(RUN_STATUS_LABEL_KEY[r.run.status])}
-          </span>
-        ),
+        render: r => {
+          const pill = (
+            <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${RUN_STATUS_CLASS[r.run.status]}`}>
+              {t(RUN_STATUS_LABEL_KEY[r.run.status])}
+            </span>
+          )
+          // GH399 — entrée exécutée : lien vers son exécution courante (popup, navigation).
+          return r.run.runId ? <ElementLink id={r.run.runId}>{pill}</ElementLink> : pill
+        },
+        elementId: r => r.run.runId,
       },
       {
         key: 'actions', label: t('campaignPage.columns.actions'), filterable: false,

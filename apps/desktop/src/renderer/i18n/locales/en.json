@@ -2511,7 +2511,6 @@
   },
   "issues": {
     "origin": "Origin",
-    "originRuns": "Executions: {{ids}}",
     "proposal": {
       "title": "Failed execution",
       "hint": "{{id}} did not pass: do you want to track this problem in an issue?",
@@ -2531,7 +2530,8 @@
       "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}",
       "decisionHintMany": "{{count}} requirements: \"{{decision}}\". Do you want to track this finding in an issue?",
       "decisionDefaultTitleMany": "{{decision}} — {{count}} requirements"
-    }
+    },
+    "originRunsLabel": "Executions:"
   },
   "versions": {
     "title": "Product version",
@@ -3003,6 +3003,7 @@
       "word": "Document",
       "popup": "Popup"
     },
-    "stepComment": "Comment"
+    "stepComment": "Comment",
+    "runLabel": "Execution"
   }
 }

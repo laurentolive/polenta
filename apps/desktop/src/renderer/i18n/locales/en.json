@@ -947,7 +947,15 @@
       }
     },
     "campaignListView": {
-      "noTest": "No test"
+      "noTest": "No test",
+      "title": "Campaigns",
+      "newCampaign": "New campaign",
+      "createFirst": "Create the first campaign",
+      "colId": "ID",
+      "colStatus": "Status",
+      "colTitle": "Title",
+      "colTests": "Tests",
+      "colRuns": "Entries"
     },
     "richTextToolbar": {
       "rawMarkdownMode": "Raw markdown mode"
@@ -1059,6 +1067,16 @@
     "editParamValues": "Edit parameter values",
     "viewResult": "View result",
     "view": "View",
+    "entriesTitle": "Entries {{id}}",
+    "columns": {
+      "test": "Test",
+      "title": "Title",
+      "requirement": "Requirement",
+      "carried": "Carried over from",
+      "params": "Parameters",
+      "status": "Status",
+      "actions": "Actions"
+    },
     "executeThisTest": "Execute this test",
     "execute": "Execute",
     "newInstanceOf": "New instance of {{tcId}} — parameter values:",
@@ -1168,6 +1186,7 @@
       "tabCampaign": "From a campaign"
     },
     "carry": {
+      "gridTitle": "Carry over from a campaign",
       "sources": "Source campaigns",
       "noCampaign": "No other campaign",
       "statusFilter": "Entry status:",
@@ -1418,6 +1437,7 @@
       "chooseMatrixFields": "Choose the rows, the columns and the value."
     },
     "resultTable": {
+      "gridTitle": "Result",
       "booleanTrue": "yes",
       "booleanFalse": "no",
       "executeQueryHint": "Run a query to see a result.",
@@ -2413,8 +2433,6 @@
   "executionHistory": {
     "title": "Executions",
     "empty": "No execution.",
-    "columns": "Columns",
-    "configure": "Choose columns",
     "toggleSteps": "Show steps",
     "removed": "entry removed",
     "isolated": "standalone run",
@@ -2506,7 +2524,9 @@
       "importTitle_other": "{{count}} failed executions:",
       "decisionTitle": "Decision to track",
       "decisionHint": "{{id}}: \"{{decision}}\". Do you want to track this finding in an issue?",
-      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}"
+      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}",
+      "decisionHintMany": "{{count}} requirements: \"{{decision}}\". Do you want to track this finding in an issue?",
+      "decisionDefaultTitleMany": "{{decision}} — {{count}} requirements"
     }
   },
   "versions": {
@@ -2566,7 +2586,9 @@
       "type": "Type",
       "id": "ID",
       "label": "Label",
-      "diff": "Diff"
+      "diff": "Diff",
+      "requirements": "Requirements",
+      "actions": "Actions"
     },
     "page": {
       "changes": "Changes",
@@ -2706,7 +2728,8 @@
       "status": "Authoring",
       "design": "Design",
       "coverage": "Verification",
-      "impact": "Impact"
+      "impact": "Impact",
+      "mentions": "Mentions"
     },
     "impact": {
       "changed": "changed",
@@ -2780,7 +2803,12 @@
       "TITLE_EMPTY": "The title is required."
     },
     "noTest": "No test linked to this requirement.",
-    "otherComponent": "Executions in another component"
+    "otherComponent": "Executions in another component",
+    "group": {
+      "decision": "Decision",
+      "requirement": "Requirement"
+    },
+    "remainingShort": "left to decide: {{count}}"
   },
   "transitions": {
     "notice": {
@@ -2946,5 +2974,17 @@
     "reload": "Reload",
     "keep": "Keep my changes",
     "status": "Status"
+  },
+  "grid": {
+    "columns": "Columns",
+    "toggleRow": "Expand / collapse row",
+    "count": "{{shown}} / {{total}}",
+    "lockedColumn": "Always displayed",
+    "bulkFailed_one": "{{count}} row not written:",
+    "bulkFailed_other": "{{count}} rows not written:",
+    "confirmSelection": "Confirm selection",
+    "rejectSelection": "Reject selection",
+    "collapseHeader": "Collapse header",
+    "expandHeader": "Expand header"
   }
 }

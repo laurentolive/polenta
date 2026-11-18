@@ -1,10 +1,10 @@
-import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, startTransition, memo, createContext, useContext, type MouseEvent as ReactMouseEvent } from 'react'
+import React, { useState, useCallback, useRef, useEffect, useMemo, startTransition, memo, createContext, useContext } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ElementLink } from '../element/ElementLink'
 import { ElementRefText } from '../element/elementRefDelegation'
 import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor } from './LinkTypeEditor'
-import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-react'
+import { ChevronRight, ChevronDown, Pencil } from 'lucide-react'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
 import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions, statusValueLabels, fieldValueToText, stripRichTextColorTags } from '@polenta/types'
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
@@ -17,6 +17,7 @@ import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
 import { RenderGateProvider, useRenderWhenVisibleAtRest } from './useRenderWhenVisibleAtRest'
 import { MultiEnumPopover } from './MultiEnumPopover'
+import { RowMaxLinesContext, useCellClamp, ClampedContent, RichtextClamp } from '../grid/RowClamp'
 import { LinkFieldPopover } from '../links/LinkFieldPopover'
 import { LinkList } from '../links/LinkList'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
@@ -25,13 +26,22 @@ import { useViewScrollMemory } from './viewScrollMemory'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 import { getExportColumnLabel } from '../../lib/exportColumns'
-import { FilterOptionsToggle } from '../FilterOptionsToggle'
 import { ExcelCellStoreContext, createExcelCellStore, useCellGestures, refocusGrid, type CaretRequest } from './excelCellStore'
 import { rawOffsetAtPoint } from './excelCaret'
 import { ExcelTextEditor } from './ExcelTextEditor'
 import { useOrgMembers } from './UserFieldInput'
 import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
-import { rowClick, checkboxClick, groupState, toggleGroup, type GroupState } from '../../lib/gridSelection'
+import { groupState, toggleGroup, type GroupState } from '../grid/rowSelection'
+import { useRowSelection } from '../grid/useRowSelection'
+import { useColumnFilters } from '../grid/useColumnFilters'
+import { ColumnFilterPopover } from '../grid/ColumnFilterPopover'
+import { useColumnLayout } from '../grid/useColumnLayout'
+import { autoWidth, maxAutoWidth } from '../grid/columnLayout'
+import { GridHeaderCell } from '../grid/GridHeaderCell'
+import { ColumnFreezeMenu } from '../grid/ColumnFreezeMenu'
+import { useGridKeyboard, isTypingTarget } from '../grid/useGridKeyboard'
+import type { GridKeyAction } from '../grid/gridKeyboard'
+import type { DisplayedExportRow } from '../../lib/exportColumns'
 import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
 import { isReflectionColumn, ReflectionValue, reflectionText, type ReflectionsData } from './ReflectionCell'
 import { backdropDismiss } from '../../lib/backdropDismiss'
@@ -106,13 +116,24 @@ interface Props {
   colWidths: Record<string, number>
   onColWidthsChange: (widths: Record<string, number>) => void
   /** GH33 — mode sélection (sélecteur de tests d'une campagne) : lecture seule forcée, colonne
-   *  de cases à cocher, sélection par objectId (cf. `lib/gridSelection.ts`). */
+   *  de cases à cocher, sélection par objectId (cf. `components/grid/rowSelection.ts`). */
   selection?: ExcelSelectionMode
   /** GH70 — colonnes calculées affichables (clé `query::<ID>`) et résultats de leur script ; les
    *  valeurs sont déjà dans `objects`. Colonnes en lecture seule. */
   computedColumns?: Map<string, { column: ComputedColumn; result?: ComputedColumnResult }>
   /** GH70 — double-clic sur une cellule calculée qui désigne une cible (`_ids` du script). */
   onOpenComputedTarget?: (target: string) => void
+  /** GH389 — export Tableau (spec §1.10) : la vue y expose ce qu'elle affiche (lignes, texte des cellules). */
+  exportRef?: { current: ExcelExportSource | null }
+}
+
+/** GH389 — ce qu'affiche la Vue Excel, pour l'export Tableau : colonnes visibles, lignes affichées
+ *  (dossiers compris), texte affiché d'une cellule, libellé d'une colonne. */
+export interface ExcelExportSource {
+  fields: string[]
+  rows: DisplayedExportRow[]
+  text(row: DisplayedExportRow, col: string): string
+  label(col: string): string
 }
 
 export interface ExcelSelectionMode {
@@ -127,6 +148,11 @@ export interface ExcelSelectionMode {
 
 /** Largeur de la colonne de tête : crayon d'édition (32 px) ou case de sélection + badge (GH33). */
 const SELECTION_COL_WIDTH = 52
+const DEFAULT_COLUMNS = ['id', 'name']
+const NO_LINK_TYPES: LinkTypeDefinition[] = []
+/** GH389 — touches de navigation (spec §1.7) ; mode sélection : flèches et Espace seulement (§3). */
+const NAV_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', ' ']
+const SELECTION_NAV_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ']
 
 /** Case à cocher à trois états (dossier / en-tête du mode sélection, GH33). */
 function TriStateCheckbox({ state, onToggle, title }: {
@@ -153,36 +179,6 @@ function TriStateCheckbox({ state, onToggle, title }: {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Hauteur max des lignes (en lignes de texte) — fournie par `ExcelView`, lue par les cellules
- *  via `useCellClamp` plutôt que propagée en prop à chaque composant de cellule. */
-const RowMaxLinesContext = createContext(1)
-
-/** Classe du `<td>` et enveloppe du contenu selon la hauteur max des lignes : à 1, la cellule
- *  reste mono-ligne tronquée (`truncate`) ; au-delà, le texte passe à la ligne et est coupé
- *  (ellipse) après `maxLines` lignes ; à `Infinity`, il n'est pas coupé. */
-function useCellClamp() {
-  const maxLines = useContext(RowMaxLinesContext)
-  if (maxLines <= 1) {
-    return { maxLines, tdClass: 'truncate', wrap: (content: React.ReactNode) => content }
-  }
-  const style: React.CSSProperties = Number.isFinite(maxLines)
-    ? {
-        display: '-webkit-box',
-        WebkitBoxOrient: 'vertical',
-        WebkitLineClamp: maxLines,
-        overflow: 'hidden',
-        whiteSpace: 'pre-wrap',
-        overflowWrap: 'anywhere',
-      }
-    : { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
-  return { maxLines, tdClass: '', wrap: (content: React.ReactNode) => <div style={style}>{content}</div> }
-}
-
-function ClampedContent({ children }: { children: React.ReactNode }) {
-  const clamp = useCellClamp()
-  return <>{clamp.wrap(children)}</>
-}
 
 /** T164 — contour persistant de la ligne / ligne de groupe ciblée par un "goto" depuis
  *  l'arbre. Trait bleu plein en retrait, distinct de la surbrillance de sélection (fond pâle)
@@ -213,14 +209,7 @@ function isDescendantOf(node: TypeTreeNode, targetId: string): boolean {
   return node.children.some(c => c.id === targetId || isDescendantOf(c, targetId))
 }
 
-// ── Column filters (T51) ───────────────────────────────────────────────────────
-
-interface ColumnFilterState {
-  text: string
-  options: FilterOptions
-}
-
-const DEFAULT_FILTER_OPTIONS: FilterOptions = { caseSensitive: false, wholeWord: false, regex: false }
+// ── Column filters (T51, brique commune GH389 `useColumnFilters`) ─────────────
 
 /** Colonnes sans valeur texte pertinente à filtrer. */
 function isFilterableColumn(col: string): boolean {
@@ -258,6 +247,8 @@ interface ExcelCellActions {
   toggleSteps(nodeId: string): void
   /** GH70 — ouverture de la cible d'une cellule calculée. */
   openComputedTarget(target: string): void
+  /** GH389 — Tab / Maj+Tab dans un éditeur texte validé : cellule suivante / précédente. */
+  tab(nodeId: string, col: string, shift: boolean): void
 }
 
 const ExcelCellActionsContext = createContext<ExcelCellActions | null>(null)
@@ -304,7 +295,7 @@ const NameCell = memo(function NameCell({
 
   if (edit) {
     return (
-      <td ref={tdRef} style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink max-w-xs', stickyBg ?? '', CELL_SELECTED_CLASS].join(' ')}>
+      <td ref={tdRef} data-col="name" style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink max-w-xs', stickyBg ?? '', CELL_SELECTED_CLASS].join(' ')}>
         <ExcelTextEditor
           initialValue={value}
           multiline={false}
@@ -315,6 +306,7 @@ const NameCell = memo(function NameCell({
             setEdit(null)
           }}
           onCancel={() => setEdit(null)}
+          onTab={shift => actions.tab(nodeId, 'name', shift)}
         />
       </td>
     )
@@ -323,6 +315,8 @@ const NameCell = memo(function NameCell({
   return (
     <td
       ref={tdRef}
+      data-col="name"
+      data-active={g.isSelected || undefined}
       style={freezeStyle}
       className={[
         'border border-edge px-2 py-1 text-xs text-ink max-w-xs',
@@ -456,6 +450,8 @@ const InlineCell = memo(function InlineCell({
     return (
       <td
         ref={tdRef}
+        data-col={field}
+        data-active={g.isSelected || undefined}
         style={freezeStyle}
         className={['border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs', clamp.tdClass, g.isSelected ? CELL_SELECTED_CLASS : '', openTarget ? 'cursor-pointer' : ''].join(' ')}
         onClick={g.onClick}
@@ -475,7 +471,7 @@ const InlineCell = memo(function InlineCell({
 
   if (edit && fieldDef?.type === 'enum') {
     return (
-      <td style={freezeStyle} className={['border border-edge px-0 py-0', stickyBg ?? ''].join(' ')}>
+      <td data-col={field} style={freezeStyle} className={['border border-edge px-0 py-0', stickyBg ?? ''].join(' ')}>
         <select
           autoFocus
           ref={el => { if (el) el.showPicker?.() }}
@@ -508,7 +504,7 @@ const InlineCell = memo(function InlineCell({
     // mono-ligne pour les nombres, dates, etc.
     const multiline = fieldDef?.type === 'text' || fieldDef?.type === 'textarea'
     return (
-      <td ref={tdRef} style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink max-w-xs', stickyBg ?? '', CELL_SELECTED_CLASS].join(' ')}>
+      <td ref={tdRef} data-col={field} style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink max-w-xs', stickyBg ?? '', CELL_SELECTED_CLASS].join(' ')}>
         <ExcelTextEditor
           initialValue={value}
           multiline={multiline}
@@ -520,6 +516,7 @@ const InlineCell = memo(function InlineCell({
             setEdit(null)
           }}
           onCancel={() => setEdit(null)}
+          onTab={shift => actions.tab(nodeId, field, shift)}
         />
       </td>
     )
@@ -528,6 +525,8 @@ const InlineCell = memo(function InlineCell({
   return (
     <td
       ref={tdRef}
+      data-col={field}
+      data-active={g.isSelected || undefined}
       data-multi-enum-popover={isMultiEnum ? '' : undefined}
       style={freezeStyle}
       className={[
@@ -578,6 +577,8 @@ const LinkCell = memo(function LinkCell({
   return (
     <td
       ref={tdRef}
+      data-col={col}
+      data-active={g.isSelected || undefined}
       data-link-cell
       // GH169 — seule la cellule ouverte compte comme « dans le popover » (son clic le referme
       // via le geste de la cellule) ; un clic sur une autre cellule de lien le referme.
@@ -634,6 +635,8 @@ const StepsCell = memo(function StepsCell({
   const g = useCellGestures(nodeId, col, () => actions.toggleSteps(nodeId))
   return (
     <td
+      data-col={col}
+      data-active={g.isSelected || undefined}
       style={freezeStyle}
       className={[
         `border border-edge px-2 py-1 text-xs cursor-pointer ${CELL_EDITABLE_CLASS}`,
@@ -648,6 +651,29 @@ const StepsCell = memo(function StepsCell({
         {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         {stepsCount > 0 ? stepsCount : <span className="text-ink-3 italic">—</span>}
       </span>
+    </td>
+  )
+})
+
+/** GH389 — cellule sans éditeur (couverture, reflets) : sélectionnable au clic et au clavier. */
+const PlainCell = memo(function PlainCell({ nodeId, col, className, freezeStyle, stickyBg, children }: {
+  nodeId: string
+  col: string
+  className: string
+  freezeStyle?: React.CSSProperties
+  stickyBg?: string
+  children?: React.ReactNode
+}) {
+  const g = useCellGestures(nodeId, col)
+  return (
+    <td
+      data-col={col}
+      data-active={g.isSelected || undefined}
+      style={freezeStyle}
+      className={[className, stickyBg ?? '', g.isSelected ? CELL_SELECTED_CLASS : ''].join(' ')}
+      onClick={g.onClick}
+    >
+      {children}
     </td>
   )
 })
@@ -694,35 +720,6 @@ interface RichtextCellProps {
   onEditorMouseDown: () => void
 }
 
-/** Hauteur max « N lignes » d'un rendu richtext mis en forme : `-webkit-line-clamp` est
- *  inopérant sur du HTML en blocs, d'où `max-height` + estompage du bas (masque, indépendant
- *  de la couleur de fond : sélection, survol, colonne figée, thème) seulement si ça déborde.
- *  À `Infinity` (toutes les lignes), aucune borne : le rendu est affiché en entier. */
-function RichtextClamp({ maxLines, children }: { maxLines: number; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [overflowing, setOverflowing] = useState(false)
-  // Effet de layout : l'estompage du bas est posé dès la première peinture, pas une frame après.
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 1)
-    check()
-    // Contenu observé (et pas seulement la boîte bornée) : images et diagrammes draw.io se
-    // chargent en asynchrone et font grandir le contenu sans changer la boîte.
-    const ro = new ResizeObserver(check)
-    ro.observe(el)
-    if (el.firstElementChild) ro.observe(el.firstElementChild)
-    return () => ro.disconnect()
-  }, [maxLines])
-  if (!Number.isFinite(maxLines)) return <div>{children}</div>
-  const mask = overflowing ? 'linear-gradient(to bottom, #000 calc(100% - 1rem), transparent)' : undefined
-  return (
-    <div ref={ref} style={{ maxHeight: `${maxLines}rem`, overflow: 'hidden', maskImage: mask, WebkitMaskImage: mask }}>
-      {children}
-    </div>
-  )
-}
-
 function RichtextCell({
   value,
   repoPath,
@@ -766,6 +763,7 @@ function RichtextCell({
     return (
       <td
         ref={tdRef}
+        data-col={col}
         data-richtext-cell-editor
         style={freezeStyle}
         // Cadre d'édition = contour de la cellule (l'éditeur compact n'a pas de bordure propre),
@@ -830,6 +828,8 @@ function RichtextCell({
   return (
     <td
       ref={tdRef}
+      data-col={col}
+      data-active={g.isSelected || undefined}
       style={freezeStyle}
       className={[
         'border border-edge px-2 py-1 text-xs text-ink',
@@ -860,9 +860,12 @@ function FolderNameText({
   edit,
   onEditEnd,
   textRef,
+  onTab,
 }: {
   node: TypeTreeNode
   onRename?: (nodeId: string, name: string) => void
+  /** GH389 — Tab / Maj+Tab : valide puis cellule suivante / précédente. */
+  onTab?: (shift: boolean) => void
   /** T176 — édition en cours (ouverte par double-clic / F2 sur la cellule), curseur initial. */
   edit: { caret: number } | null
   onEditEnd: () => void
@@ -882,6 +885,7 @@ function FolderNameText({
             onEditEnd()
           }}
           onCancel={onEditEnd}
+          onTab={onTab}
         />
       </span>
     )
@@ -952,59 +956,6 @@ function ExcelContextMenu({
   )
 }
 
-// ── ColumnFreezeMenu — figer/libérer les volets (T151) ───────────────────────
-
-function ColumnFreezeMenu({
-  x, y, colIdx, freezeColCount, onFreeze, onUnfreeze, onClose,
-}: {
-  x: number; y: number
-  colIdx: number
-  freezeColCount: number
-  onFreeze: (uptoColIdx: number) => void
-  onUnfreeze: () => void
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    window.addEventListener('mousedown', handler)
-    return () => window.removeEventListener('mousedown', handler)
-  }, [onClose])
-
-  const alreadyFrozenHere = freezeColCount === colIdx + 1
-
-  return (
-    <div
-      ref={ref}
-      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-56 text-xs"
-      style={{ left: x, top: y }}
-    >
-      {!alreadyFrozenHere && (
-        <button
-          type="button"
-          onClick={() => { onFreeze(colIdx + 1); onClose() }}
-          className="w-full text-left px-3 py-1.5 hover:bg-hover transition-colors text-ink"
-        >
-          {t('system.excelView.freezeColumns')}
-        </button>
-      )}
-      {freezeColCount > 0 && (
-        <button
-          type="button"
-          onClick={() => { onUnfreeze(); onClose() }}
-          className="w-full text-left px-3 py-1.5 hover:bg-hover transition-colors text-ink"
-        >
-          {t('system.excelView.unfreezeColumns')}
-        </button>
-      )}
-    </div>
-  )
-}
-
 // ── GroupRow (folder) ─────────────────────────────────────────────────────────
 
 function GroupRow({
@@ -1065,6 +1016,7 @@ function GroupRow({
   // T176 — nom du dossier : clic = sélection de la cellule (sans sélectionner la ligne, comme
   // avant) ; double-clic / F2 = renommage (le double-clic ne replie donc plus la ligne depuis le
   // nom : chevron, cellule d'action ou de section).
+  const actions = useCellActions()
   const nameTextRef = useRef<HTMLSpanElement>(null)
   const nameTdRef = useRef<HTMLTableCellElement>(null)
   // GH25 — `width` : largeur de l'éditeur quand le nom est collé (colonnes figées), mesurée à
@@ -1079,7 +1031,7 @@ function GroupRow({
     onDoubleClick: g.onDoubleClick,
   } : {}
   const folderNameText = (
-    <FolderNameText node={node} onRename={onRename} edit={folderEdit} onEditEnd={() => setFolderEdit(null)} textRef={nameTextRef} />
+    <FolderNameText node={node} onRename={onRename} edit={folderEdit} onEditEnd={() => setFolderEdit(null)} textRef={nameTextRef} onTab={shift => actions.tab(node.id, 'name', shift)} />
   )
   // Le pencil d'action (index "-1", avant la 1ère colonne) suit la même règle que
   // l'en-tête : il se fige dès qu'au moins une colonne est figée, pour rester adjacent
@@ -1176,6 +1128,8 @@ function GroupRow({
                   g.isSelected || folderEdit ? CELL_SELECTED_CLASS : '',
                 ].join(' ')}
                 ref={nameTdRef}
+                data-col="name"
+                data-active={g.isSelected || undefined}
                 {...nameCellProps}
               >
                 {nameStickyStyle ? <span className="inline-flex" style={nameStickyStyle}>{folderNameText}</span> : folderNameText}
@@ -1194,6 +1148,8 @@ function GroupRow({
                 g.isSelected || folderEdit ? CELL_SELECTED_CLASS : '',
               ].join(' ')}
               ref={nameTdRef}
+              data-col="name"
+              data-active={g.isSelected || undefined}
               {...nameCellProps}
             >
               <span className={[nameStickyStyle ? 'inline-flex' : 'flex', 'items-center gap-1.5'].join(' ')} style={nameStickyStyle}>
@@ -1273,7 +1229,7 @@ function ExcelViewInner({
   visibleFields,
   foldersHidden = false,
   sectionNumbers,
-  linkTypes = [],
+  linkTypes = NO_LINK_TYPES,
   linksByObjectId,
   coverageByReqId,
   reflections,
@@ -1310,6 +1266,7 @@ function ExcelViewInner({
   selection,
   computedColumns,
   onOpenComputedTarget,
+  exportRef,
 }: Props) {
   const { t } = useTranslation()
   // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
@@ -1326,8 +1283,6 @@ function ExcelViewInner({
       return next
     })
   }, [])
-  // GH33 — ancre des plages Maj+clic du mode sélection (objectId).
-  const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null)
   const [localSelectedIds, setLocalSelectedIds] = useState<string[]>([])
   const effectiveSelectedIds = selectedIds ?? localSelectedIds
   const effectiveOnSelect = onSelect ?? setLocalSelectedIds
@@ -1343,18 +1298,8 @@ function ExcelViewInner({
   // scroll latéral. Index dans `columns`. GH24 — persisté dans la pref du type (SystemView),
   // borné au nombre de colonnes affichées (cf. `freezeColCount` après `columns`).
   const [columnFreezeMenu, setColumnFreezeMenu] = useState<{ colIdx: number; x: number; y: number } | null>(null)
-  // GH288 — largeur de la colonne en cours de redimensionnement, locale le temps du glissé :
-  // le parent n'enregistre que la valeur finale, au relâchement.
-  const [dragWidth, setDragWidth] = useState<{ col: string; width: number } | null>(null)
-  const colWidths = useMemo(
-    () => dragWidth ? { ...storedColWidths, [dragWidth.col]: dragWidth.width } : storedColWidths,
-    [storedColWidths, dragWidth],
-  )
-  const colWidthsRef = useRef({ widths: storedColWidths, onChange: onColWidthsChange })
-  colWidthsRef.current = { widths: storedColWidths, onChange: onColWidthsChange }
-  const colDragState = useRef<{ startX: number; startWidth: number; col: string } | null>(null)
-  const autoColWidthsRef = useRef<Record<string, number>>({})
-  const frozenAutoWidthsRef = useRef<Record<string, number> | null>(null)
+  const openFreezeMenu = useCallback((colIdx: number, x: number, y: number) => setColumnFreezeMenu({ colIdx, x, y }), [])
+  const closeFreezeMenu = useCallback(() => setColumnFreezeMenu(null), [])
   const [activeLinkPopover, setActiveLinkPopover] = useState<{ nodeId: string; col: string; top: number; left: number; width: number } | null>(null)
   useEffect(() => {
     if (!activeLinkPopover) return
@@ -1428,26 +1373,6 @@ function ExcelViewInner({
     return () => document.removeEventListener('mousedown', handler)
   }, [activeMultiEnumPopover])
 
-  // T51 — filtre par colonne : état local (texte + options), non persisté
-  const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilterState>>({})
-  const [activeColumnFilterPopover, setActiveColumnFilterPopover] = useState<{
-    column: string
-    top: number
-    left: number
-    width: number
-  } | null>(null)
-  useEffect(() => {
-    if (!activeColumnFilterPopover) return
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (!target.closest('[data-column-filter-popover]') && !target.closest('[data-column-filter-icon]')) {
-        setActiveColumnFilterPopover(null)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [activeColumnFilterPopover])
-
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Rendu progressif (cf. INITIAL_RENDERED_ROWS) — d'emblée complet si une cible « goto » ou un
@@ -1471,42 +1396,6 @@ function ExcelViewInner({
 
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
   const [rowDropIndicator, setRowDropIndicator] = useState<RowDropIndicator | null>(null)
-  const [draggingCol, setDraggingCol] = useState<string | null>(null)
-  const [dropColTarget, setDropColTarget] = useState<{ col: string; position: 'before' | 'after' } | null>(null)
-
-  const handleColResizeStart = useCallback((e: ReactMouseEvent, col: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (!frozenAutoWidthsRef.current) {
-      frozenAutoWidthsRef.current = { ...autoColWidthsRef.current }
-    }
-    const startWidth = colWidths[col] ?? autoColWidthsRef.current[col] ?? 200
-    colDragState.current = { startX: e.clientX, startWidth, col }
-    let lastWidth: number | null = null
-
-    const onMouseMove = (ev: MouseEvent) => {
-      const state = colDragState.current
-      if (!state) return
-      const dx = ev.clientX - state.startX
-      lastWidth = Math.max(20, Math.round(state.startWidth + dx))
-      setDragWidth({ col: state.col, width: lastWidth })
-    }
-
-    const onMouseUp = () => {
-      document.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('mouseup', onMouseUp)
-      colDragState.current = null
-      setDragWidth(null)
-      // Simple clic sur la poignée (pas de déplacement) : rien à enregistrer.
-      if (lastWidth !== null && lastWidth !== startWidth) {
-        const { widths, onChange } = colWidthsRef.current
-        onChange({ ...widths, [col]: lastWidth })
-      }
-    }
-
-    document.addEventListener('mousemove', onMouseMove)
-    document.addEventListener('mouseup', onMouseUp)
-  }, [colWidths])
 
   // Ref plutôt que dépendances : garde `toggleFolder` stable (passé aux lignes mémoïsées).
   const collapsedFoldersRef = useRef({ set: collapsedFolders, onChange: onCollapsedFoldersChange })
@@ -1519,51 +1408,31 @@ function ExcelViewInner({
   }, [])
 
   // Build object map for quick lookup
-  const objectMap = new Map<string, AnyObject>()
-  for (const obj of objects) {
-    objectMap.set(getObjectId(obj), obj)
-  }
+  const objectMap = useMemo(() => new Map(objects.map(obj => [getObjectId(obj), obj])), [objects])
 
   const viewObjectTypeRef = objects.length > 0
     ? (objects[0] as Record<string, string>)?.objectTypeRef
     : undefined
 
   // Column order follows visibleFields as-is (enables DnD reorder persistence)
-  const columns = visibleFields.length > 0 ? visibleFields : ['id', 'name']
-  // Le nombre de colonnes figées ne dépasse jamais le nombre de colonnes affichées — borné à
-  // l'affichage, sans réécrire la valeur stockée.
-  const freezeColCount = Math.min(storedFreezeColCount, columns.length)
+  const columns = useMemo(() => (visibleFields.length > 0 ? visibleFields : DEFAULT_COLUMNS), [visibleFields])
 
-  // T51 — oublie le filtre d'une colonne qui n'est plus affichée (pas de filtre "fantôme")
+  // T51 / GH389 — filtres par colonne (brique commune) : oubliés quand la colonne disparaît (popover
+  // compris), remis à zéro au changement de composant / type, même si le nouveau type partage un nom
+  // de colonne avec le précédent (ex. "status").
+  const colFilters = useColumnFilters(columns, `${typeDef?.prefix ?? ''}|${repoPath ?? ''}`)
+  // Cellule sélectionnée dont la colonne disparaît.
   useEffect(() => {
-    setColumnFilters(prev => {
-      const staleKeys = Object.keys(prev).filter(col => !columns.includes(col))
-      if (staleKeys.length === 0) return prev
-      const next = { ...prev }
-      for (const col of staleKeys) delete next[col]
-      return next
-    })
-    // Ferme aussi le popover s'il pointait sur la colonne qui vient de disparaître —
-    // sinon il reste affiché, détaché, au-dessus d'un en-tête qui n'existe plus.
-    setActiveColumnFilterPopover(prev => (prev && !columns.includes(prev.column) ? null : prev))
-    // Idem pour la cellule sélectionnée si sa colonne disparaît.
     const selected = cellStore.getSelected()
-    if (selected && !columns.includes(selected.col)) cellStore.select(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns.join(',')])
-
-  // T51 — changer de composant/type réinitialise entièrement les filtres de colonnes,
-  // même si le nouveau type partage un nom de colonne avec le précédent (ex. "status")
+    if (selected && selected.col !== 'name' && !columns.includes(selected.col)) cellStore.select(null)
+  }, [cellStore, columns])
   useEffect(() => {
-    setColumnFilters({})
-    setActiveColumnFilterPopover(null)
     cellStore.select(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeDef?.prefix, repoPath])
+  }, [cellStore, typeDef?.prefix, repoPath])
 
   // Labels système délégués à `getExportColumnLabel` (apps/desktop/src/renderer/lib/exportColumns.ts)
   // — seule source de vérité partagée avec l'export, pour que les deux ne puissent jamais diverger.
-  function getColumnLabel(col: string): string {
+  const getColumnLabel = useCallback((col: string): string => {
     const computed = computedColumns?.get(col)
     if (computed) return computed.column.label
     const link = parseLinkColumn(col)
@@ -1573,11 +1442,11 @@ function ExcelViewInner({
       return linkColumnLabel(lt, link.direction, viewObjectTypeRef, typeDef?.category)
     }
     return getExportColumnLabel(col, typeDef)
-  }
+  }, [computedColumns, linkTypes, viewObjectTypeRef, typeDef])
 
   // GH137 — `direction` : colonne d'un seul sens (`link-out::` / `link-in::`) d'un type à la fois
   // source et cible ; `both` (colonne `link::`) garde les deux sens séparés par ` | `.
-  function getLinkCellValue(objectId: string, linkTypeName: string, direction: LinkColumnDirection = 'both'): string {
+  const getLinkCellValue = useCallback((objectId: string, linkTypeName: string, direction: LinkColumnDirection = 'both'): string => {
     if (!linksByObjectId || !objectId) return ''
     const links = linksByObjectId.get(objectId) ?? []
     const filtered = links.filter(l => l.type === linkTypeName)
@@ -1591,8 +1460,12 @@ function ExcelViewInner({
       parts.push(incoming.join(', '))
     }
     return parts.join(' | ')
-  }
+  }, [linksByObjectId])
 
+  const enumLabelFields = useMemo(
+    () => new Map((typeDef?.fields ?? []).filter(f => f.type === 'enum' && f.valueLabels).map(f => [f.name, f])),
+    [typeDef],
+  )
   // T176 — définition « enum » de la colonne statut, stable (prop d'une cellule mémoïsée).
   const statusFieldDef = useMemo<SchemaField | undefined>(
     () => typeDef?.statuses?.length
@@ -1603,17 +1476,17 @@ function ExcelViewInner({
 
   // Valeur texte affichée pour une colonne donnée — point de vérité unique partagé par le
   // calcul de largeur auto, le rendu de cellule et le filtrage (global + par colonne, T51).
-  function getCellText(node: TypeTreeNode, obj: AnyObject | null | undefined, col: string): string {
+  const getCellText = useCallback((node: TypeTreeNode, obj: AnyObject | null | undefined, col: string): string => {
     if (col === 'section') return sectionNumbers?.get(node.id) ?? ''
     if (col === 'name') return node.name
     const link = parseLinkColumn(col)
     if (link) return getLinkCellValue(node.objectId ?? '', link.typeName, link.direction)
     return obj ? getFieldValue(obj, col) : (col === 'id' ? node.objectId ?? '' : '')
-  }
+  }, [sectionNumbers, getLinkCellValue])
 
   // GH136 — texte tel qu'affiché : libellé du statut à la place de son nom technique. Sert à la
   // largeur auto et au filtre de colonne ; `getCellText` reste la valeur éditée.
-  function getCellDisplayText(node: TypeTreeNode, obj: AnyObject | null | undefined, col: string): string {
+  const getCellDisplayText = useCallback((node: TypeTreeNode, obj: AnyObject | null | undefined, col: string): string => {
     // GH224 — couverture : libellé affiché par le badge (vide si l'objet n'a pas d'entrée).
     if (col === 'coverageStatus') {
       const coverage = node.objectId ? coverageByReqId?.get(node.objectId) : undefined
@@ -1622,80 +1495,81 @@ function ExcelViewInner({
     // GH210 — reflets : texte affiché, filtré et exporté.
     if (isReflectionColumn(col)) return reflectionText(col, node.objectId ? reflections?.byId.get(node.objectId) : undefined)
     const text = getCellText(node, obj, col)
-    return col === 'status' ? statusFieldDef?.valueLabels?.[text] ?? text : text
-  }
+    if (col === 'status') return statusFieldDef?.valueLabels?.[text] ?? text
+    // GH389 — enum à libellés (GH136) : le libellé affiché (filtre de colonne, largeur, export).
+    const field = text ? enumLabelFields.get(col) : undefined
+    return field?.valueLabels?.[text] ?? text
+  }, [coverageByReqId, t, reflections, getCellText, statusFieldDef, enumLabelFields])
 
-  // Flatten tree to render rows in order
-  const rows: Array<{ kind: 'folder' | 'item'; node: TypeTreeNode; depth: number }> = []
-  function flatten(nodes: TypeTreeNode[], depth: number, parentCollapsed: boolean) {
-    for (const n of nodes) {
-      if (parentCollapsed) continue
-      // T162 — titres masqués : aucune ligne de dossier, et le collapse est ignoré (tous
-      // les éléments sont listés à plat).
-      if (!(foldersHidden && n.kind === 'folder')) {
-        rows.push({ kind: n.kind, node: n, depth })
-      }
-      if (n.kind === 'folder') {
-        flatten(n.children, depth + 1, foldersHidden ? false : collapsedFolders.has(n.id))
+  // Flatten tree to render rows in order. GH389 — mémoïsé (comme les largeurs auto et le filtrage) :
+  // un changement de sélection ne refait plus ces parcours de tout le tableau.
+  const rows = useMemo(() => {
+    const out: Array<{ kind: 'folder' | 'item'; node: TypeTreeNode; depth: number }> = []
+    const flatten = (nodes: TypeTreeNode[], depth: number, parentCollapsed: boolean) => {
+      for (const n of nodes) {
+        if (parentCollapsed) continue
+        // T162 — titres masqués : aucune ligne de dossier, et le collapse est ignoré (tous
+        // les éléments sont listés à plat).
+        if (!(foldersHidden && n.kind === 'folder')) {
+          out.push({ kind: n.kind, node: n, depth })
+        }
+        if (n.kind === 'folder') {
+          flatten(n.children, depth + 1, foldersHidden ? false : collapsedFolders.has(n.id))
+        }
       }
     }
-  }
-  flatten(root, 0, false)
+    flatten(root, 0, false)
+    return out
+  }, [root, foldersHidden, collapsedFolders])
 
   // T149 — nodeId <-> objectId, pour propager une édition inline à toute la sélection
   // multiple (les IDs de sélection sont des nodeId d'arbre, pas des objectId de fond).
-  const nodeIdToObjectId = new Map<string, string>()
-  const objectIdToNodeId = new Map<string, string>()
-  for (const { node } of rows) {
-    if (node.objectId) {
-      nodeIdToObjectId.set(node.id, node.objectId)
-      objectIdToNodeId.set(node.objectId, node.id)
+  const { nodeIdToObjectId, objectIdToNodeId } = useMemo(() => {
+    const byNode = new Map<string, string>()
+    const byObject = new Map<string, string>()
+    for (const { node } of rows) {
+      if (node.objectId) {
+        byNode.set(node.id, node.objectId)
+        byObject.set(node.objectId, node.id)
+      }
     }
-  }
+    return { nodeIdToObjectId: byNode, objectIdToNodeId: byObject }
+  }, [rows])
 
   // Auto-fit column widths from content (capped at 1/4 screen width)
-  const maxAutoWidth = typeof window !== 'undefined' ? Math.floor(window.innerWidth / 4) : 400
-  const autoColWidths: Record<string, number> = {}
-  for (const col of columns) {
-    // GH70 — en-tête d'une colonne calculée : place du suffixe « (calc) », du ⚠ et de l'icône de filtre.
-    let maxLen = getColumnLabel(col).length + (isComputedColumnKey(col) ? 12 : 0)
-    for (const { node, kind } of rows) {
-      if (kind === 'folder') continue
-      const obj = node.objectId ? objectMap.get(node.objectId) : null
-      const val = getCellDisplayText(node, obj, col)
-      if (val.length > maxLen) maxLen = val.length
+  const autoColWidths = useMemo(() => {
+    const max = maxAutoWidth()
+    const items = rows.filter(r => r.kind === 'item').map(r => ({ node: r.node, obj: r.node.objectId ? objectMap.get(r.node.objectId) : null }))
+    const out: Record<string, number> = {}
+    for (const col of columns) {
+      // GH70 — en-tête d'une colonne calculée : place du suffixe « (calc) », du ⚠ et de l'icône de filtre.
+      out[col] = autoWidth(getColumnLabel(col), items.map(({ node, obj }) => getCellDisplayText(node, obj, col)), max, isComputedColumnKey(col) ? 12 : 0)
     }
-    autoColWidths[col] = Math.min(Math.max(maxLen * 7 + 24, 60), maxAutoWidth)
-  }
-  autoColWidthsRef.current = autoColWidths
-  const baseWidths = frozenAutoWidthsRef.current ?? autoColWidths
-  const effectiveColWidths = { ...baseWidths, ...colWidths }
+    return out
+  }, [rows, columns, objectMap, getColumnLabel, getCellDisplayText])
   // Colonne de tête : crayon d'édition, ou case de sélection (GH33) — exclusifs, le mode
   // sélection neutralise `onEditOpen`.
   const leadingColWidth = selection ? SELECTION_COL_WIDTH : onEditOpen ? 32 : 0
-  const totalTableWidth = columns.reduce((sum, col) => sum + (effectiveColWidths[col] ?? 120), 0) + leadingColWidth
-
-  // Figer les volets (T151) — offset gauche cumulé de chaque colonne, pour `position: sticky`.
-  // La colonne de tête (crayon ou case de sélection), si présente, est toujours la plus à gauche.
-  const colLeftOffsets: number[] = []
-  {
-    let acc = leadingColWidth
-    for (const col of columns) {
-      colLeftOffsets.push(acc)
-      acc += effectiveColWidths[col] ?? 120
-    }
-  }
+  // GH288 / T151 / GH389 — largeurs (locale pendant le glisser de la poignée, écrite au relâchement),
+  // colonnes figées (bornées aux colonnes affichées, sans réécrire la préférence ; styles stables,
+  // props des cellules mémoïsées) et ordre par glisser d'en-tête : brique commune.
+  const layout = useColumnLayout({
+    keys: columns,
+    autoWidths: autoColWidths,
+    chosenWidths: storedColWidths,
+    onWidthsChange: onColWidthsChange,
+    freezeCount: storedFreezeColCount,
+    leadingWidth: leadingColWidth,
+    onReorder: onColumnsReorder,
+  })
+  const freezeColCount = layout.freezeCount
+  const freezeStyles = layout.freezeStyles
+  const totalTableWidth = layout.totalWidth
+  const draggingCol = layout.draggingCol
+  /** Décalage gauche de la colonne `colIdx` (colonne de tête comprise). */
+  const colLeftOffset = (colIdx: number) => leadingColWidth + layout.widths.slice(0, colIdx).reduce((a, b) => a + b, 0)
   /** Style `position: sticky` pour la colonne d'index `colIdx`, si elle fait partie des
-   * colonnes figées ; sinon `undefined`. `bg` est la classe Tailwind de fond opaque à
-   * appliquer par-dessus (le `<td>` est transparent par défaut, laissant apparaître les
-   * colonnes défilées derrière lui sans ce fond). */
-  // T176 — objets de style stables d'un rendu à l'autre (props des cellules mémoïsées) : recalculés
-  // seulement quand le nombre de colonnes figées ou leurs décalages changent.
-  const frozenOffsetsKey = colLeftOffsets.slice(0, freezeColCount).join(',')
-  const freezeStyles = useMemo<React.CSSProperties[]>(
-    () => frozenOffsetsKey ? frozenOffsetsKey.split(',').map(left => ({ position: 'sticky', left: Number(left), zIndex: 2 })) : [],
-    [frozenOffsetsKey],
-  )
+   * colonnes figées ; sinon `undefined`. */
   function getFreezeStyle(colIdx: number): React.CSSProperties | undefined {
     return colIdx < freezeColCount ? freezeStyles[colIdx] : undefined
   }
@@ -1709,13 +1583,10 @@ function ExcelViewInner({
   // T166 — honore le mode du filtre global (casse / mot entier / regex), comme l'arbre latéral
   // et le filtre par colonne T51. buildFilterRegex renvoie null si le filtre est vide OU si
   // l'expression regex est invalide → dans les deux cas on n'exclut aucune ligne.
-  const filterRe = buildFilterRegex(filter ?? '', filterOptions ?? NO_FILTER_OPTIONS)
+  const filterRe = useMemo(() => buildFilterRegex(filter ?? '', filterOptions ?? NO_FILTER_OPTIONS), [filter, filterOptions])
 
-  // T51 — filtres par colonne actifs (texte non vide, colonne toujours visible)
-  const activeColumnFilters = Object.entries(columnFilters)
-    .filter(([col, f]) => columns.includes(col) && f.text.trim())
-    .map(([col, f]) => ({ col, re: buildFilterRegex(f.text, f.options) }))
-    .filter((f): f is { col: string; re: RegExp } => f.re !== null)
+  // T51 — filtres par colonne actifs (texte non vide, regex valide, colonne toujours visible)
+  const activeColumnFilters = colFilters.active
 
   // ── Row Drag & Drop ──────────────────────────────────────────────────────────
 
@@ -1793,52 +1664,6 @@ function ExcelViewInner({
   function handleRowDragEnd() {
     setDraggingNodeId(null)
     setRowDropIndicator(null)
-  }
-
-  // ── Column Drag & Drop ───────────────────────────────────────────────────────
-
-  function handleColDragStart(e: React.DragEvent, col: string) {
-    setDraggingCol(col)
-    e.dataTransfer.setData('text/plain', col)
-    e.dataTransfer.effectAllowed = 'move'
-  }
-
-  function handleColDragOver(e: React.DragEvent, col: string) {
-    e.preventDefault()
-    if (col === draggingCol) { setDropColTarget(null); return }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const relX = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5
-    setDropColTarget({ col, position: relX < 0.5 ? 'before' : 'after' })
-  }
-
-  function handleColDrop(e: React.DragEvent, col: string) {
-    e.preventDefault()
-    const draggedCol = e.dataTransfer.getData('text/plain')
-    // Bail si pas une colonne valide ou même colonne
-    if (!draggedCol || !onColumnsReorder || !columns.includes(draggedCol) || draggedCol === col) {
-      setDraggingCol(null); setDropColTarget(null); return
-    }
-    // Recompute position from event coordinates — plus fiable que l'état React
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const relX = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5
-    const position: 'before' | 'after' = relX < 0.5 ? 'before' : 'after'
-    const newOrder = [...columns]
-    const fromIdx = newOrder.indexOf(draggedCol)
-    const toIdx = newOrder.indexOf(col)
-    if (fromIdx < 0 || toIdx < 0) { setDraggingCol(null); setDropColTarget(null); return }
-    newOrder.splice(fromIdx, 1)
-    const insertIdx = position === 'before'
-      ? (fromIdx < toIdx ? toIdx - 1 : toIdx)
-      : (fromIdx < toIdx ? toIdx : toIdx + 1)
-    newOrder.splice(insertIdx, 0, draggedCol)
-    onColumnsReorder(newOrder)
-    setDraggingCol(null)
-    setDropColTarget(null)
-  }
-
-  function handleColDragEnd() {
-    setDraggingCol(null)
-    setDropColTarget(null)
   }
 
   // ── Bulk inline edit (T149) — propage une édition à toute la sélection multiple ──
@@ -2025,9 +1850,25 @@ function ExcelViewInner({
     }
   }
 
+  /** GH389 — navigation clavier (spec §1.7, §3) : flèches, Tab / Maj+Tab, Maj+↑↓, Entrée (= F2, sauf
+   *  boîte de suppression ouverte), ←/→ sur un dossier ; mode sélection (lecture seule) : flèches et
+   *  Espace. Une frappe venue d'un bouton ou d'un lien qui a le focus lui reste. */
+  function handleNavKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.ctrlKey || e.metaKey || e.altKey || deleteConfirm || contextMenu) return
+    if (!(selection ? SELECTION_NAV_KEYS : NAV_KEYS).includes(e.key)) return
+    if (isTypingTarget(document.activeElement, containerRef.current)) return
+    const s = cellStore.getSelected()
+    if (keyboard.move(s ? { rowId: s.nodeId, col: s.col } : null, { key: e.key, shift: e.shiftKey })) e.preventDefault()
+  }
+
+  function onGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    handleKeyDown(e)
+    if (!e.defaultPrevented) handleNavKeyDown(e)
+  }
+
   const hasActiveFilter = !!filterRe || activeColumnFilters.length > 0
 
-  function itemMatchesFilters(node: TypeTreeNode, obj: AnyObject | null | undefined): boolean {
+  const itemMatchesFilters = useCallback((node: TypeTreeNode, obj: AnyObject | null | undefined): boolean => {
     if (filterRe) {
       // Le filtre texte global (barre de recherche du panneau latéral) cherche dans le nom
       // de l'élément, son ID et TOUTES les valeurs de champs — pas seulement les colonnes
@@ -2044,33 +1885,33 @@ function ExcelViewInner({
       ]
       if (!values.some(v => filterRe.test(v))) return false
     }
-    return activeColumnFilters.every(({ col, re }) => re.test(getCellDisplayText(node, obj, col)))
-  }
+    return activeColumnFilters.every(({ key, re }) => re.test(getCellDisplayText(node, obj, key)))
+  }, [filterRe, activeColumnFilters, getCellDisplayText])
 
-  // Un dossier/section ne doit s'afficher, quand un filtre est actif, que s'il contient au
-  // moins un élément descendant qui matche — sinon on se retrouve avec des dossiers vides
-  // affichés parmi des résultats filtrés, ce qui est trompeur (le dossier n'a rien à montrer).
-  function folderHasMatchingDescendant(node: TypeTreeNode): boolean {
-    return node.children.some(child => {
+  const richtextEditNodeId = activeRichtextEdit?.nodeId
+  const filteredRows = useMemo(() => {
+    // Un dossier/section ne doit s'afficher, quand un filtre est actif, que s'il contient au
+    // moins un élément descendant qui matche — sinon on se retrouve avec des dossiers vides
+    // affichés parmi des résultats filtrés, ce qui est trompeur (le dossier n'a rien à montrer).
+    const folderHasMatchingDescendant = (node: TypeTreeNode): boolean => node.children.some(child => {
       if (child.kind === 'folder') return folderHasMatchingDescendant(child)
       const obj = child.objectId ? objectMap.get(child.objectId) : null
       return itemMatchesFilters(child, obj)
     })
-  }
+    return rows.filter(r => {
+      // T169 — la ligne en cours d'édition richtext reste affichée même si la frappe la fait
+      // sortir d'un filtre (colonne ou global, qui lisent les valeurs live) : sinon l'éditeur
+      // se démonterait en pleine saisie. Le filtre s'applique de nouveau en sortie d'édition.
+      if (richtextEditNodeId === r.node.id) return true
+      if (r.kind === 'folder') {
+        return hasActiveFilter ? folderHasMatchingDescendant(r.node) : true
+      }
+      const obj = r.node.objectId ? objectMap.get(r.node.objectId) : null
+      return itemMatchesFilters(r.node, obj)
+    })
+  }, [rows, richtextEditNodeId, hasActiveFilter, objectMap, itemMatchesFilters])
 
-  const filteredRows = rows.filter(r => {
-    // T169 — la ligne en cours d'édition richtext reste affichée même si la frappe la fait
-    // sortir d'un filtre (colonne ou global, qui lisent les valeurs live) : sinon l'éditeur
-    // se démonterait en pleine saisie. Le filtre s'applique de nouveau en sortie d'édition.
-    if (activeRichtextEdit?.nodeId === r.node.id) return true
-    if (r.kind === 'folder') {
-      return hasActiveFilter ? folderHasMatchingDescendant(r.node) : true
-    }
-    const obj = r.node.objectId ? objectMap.get(r.node.objectId) : null
-    return itemMatchesFilters(r.node, obj)
-  })
-
-  const visibleRowIds = filteredRows.map(r => r.node.id)
+  const visibleRowIds = useMemo(() => filteredRows.map(r => r.node.id), [filteredRows])
 
   // GH229 — ligne ciblée (goto : lien suivi, clic dans l'arbre) ou ancrée : les lignes jusqu'à elle
   // sont rendues tout de suite, sans attendre le rendu complet, qui passe par une transition et
@@ -2127,24 +1968,23 @@ function ExcelViewInner({
     walk(root, [])
   }
 
+  // GH389 — gestes de sélection (brique commune) : mode lignes (nodeIds, T149) ou mode cases du
+  // sélecteur (objectIds, GH33 — un clic ajoute ou retire, Maj = plage affichée depuis l'ancre).
+  const selectedSet = useMemo(() => new Set(effectiveSelectedIds), [effectiveSelectedIds])
+  const onSelectSet = useCallback((next: Set<string>) => effectiveOnSelect([...next]), [effectiveOnSelect])
+  const select = useRowSelection(
+    selection ? 'checkbox' : 'rows',
+    selection ? selection.selected : selectedSet,
+    selection ? selection.onChange : onSelectSet,
+    selection ? displayedObjectIds : visibleRowIds,
+  )
+
   function handleSelectionRowClick(objectId: string, e: React.MouseEvent) {
-    if (!selection) return
-    const r = rowClick({
-      selected: selection.selected, displayed: displayedObjectIds, anchor: selectionAnchor,
-      target: objectId, shift: e.shiftKey,
-    })
-    setSelectionAnchor(r.anchor)
-    selection.onChange(r.selected)
+    if (selection) select.click(objectId, { shift: e.shiftKey })
   }
 
   function handleSelectionCheckboxClick(objectId: string, e: React.MouseEvent) {
-    if (!selection) return
-    const r = checkboxClick({
-      selected: selection.selected, displayed: displayedObjectIds, anchor: selectionAnchor,
-      target: objectId, shift: e.shiftKey,
-    })
-    setSelectionAnchor(r.anchor)
-    selection.onChange(r.selected)
+    if (selection) select.checkbox(objectId, e.shiftKey)
   }
 
   // T169 — ligne éditée disparue (collapse, suppression, changement de type — pas les filtres,
@@ -2154,41 +1994,83 @@ function ExcelViewInner({
     if (!richtextEditRowVisible) setActiveRichtextEdit(null)
   }, [richtextEditRowVisible])
 
+  // Maj+clic : plage affichée depuis l'ancre ; Ctrl+clic : bascule. T149 — un clic simple sur une
+  // ligne déjà membre d'une sélection multiple NE la réduit PAS (le clic sur une cellule pour
+  // l'éditer remonte jusqu'ici : la propagation en masse resterait inatteignable à la souris).
+  // T176 — déjà la seule ligne sélectionnée : pas de nouveau tableau, pas de re-rendu.
   function handleRowSelect(nodeId: string, e: React.MouseEvent) {
-    if (e.shiftKey && effectiveSelectedIds.length > 0) {
-      const lastId = effectiveSelectedIds[effectiveSelectedIds.length - 1]
-      const from = visibleRowIds.indexOf(lastId)
-      const to = visibleRowIds.indexOf(nodeId)
-      if (from >= 0 && to >= 0) {
-        const [start, end] = from < to ? [from, to] : [to, from]
-        effectiveOnSelect(visibleRowIds.slice(start, end + 1))
-        return
-      }
-    }
-    if (e.ctrlKey || e.metaKey) {
-      if (effectiveSelectedIds.includes(nodeId)) {
-        effectiveOnSelect(effectiveSelectedIds.filter(id => id !== nodeId))
-      } else {
-        effectiveOnSelect([...effectiveSelectedIds, nodeId])
-      }
-      return
-    }
-    // T149 — un clic simple (sans modificateur) sur une ligne déjà membre d'une sélection
-    // multiple NE la réduit PAS à elle seule : le clic sur une cellule pour l'éditer (ex.
-    // Statut) bulle jusqu'ici sans stopPropagation, donc sans ce garde-fou la sélection
-    // multiple s'effondrerait avant même que l'édition ne commence, rendant la propagation
-    // en masse inatteignable à la souris. Cliquer sur une ligne hors sélection reste solo.
-    if (effectiveSelectedIds.length > 1 && effectiveSelectedIds.includes(nodeId)) return
-    // T176 — déjà la seule ligne sélectionnée (ex. 2d clic d'un double-clic) : pas de nouveau
-    // tableau de sélection, donc pas de re-rendu du tableau.
-    if (effectiveSelectedIds.length === 1 && effectiveSelectedIds[0] === nodeId) return
-    effectiveOnSelect([nodeId])
+    select.click(nodeId, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
   }
 
   // T51 — l'en-tête (et ses icônes de filtre par colonne) reste toujours monté même
   // quand aucune ligne ne correspond : sans ça, un filtre qui exclut tout masquait
   // l'unique endroit permettant de le modifier ou de l'effacer.
   const colCount = columns.length + (onEditOpen || selection ? 1 : 0)
+  const renderedRows = filteredRows.slice(0, renderedRowCount)
+
+  // ── GH389 — clavier (spec §1.7) ────────────────────────────────────────────
+  const rowKindById = useMemo(() => new Map(filteredRows.map(r => [r.node.id, r])), [filteredRows])
+  const runKeyAction = (action: GridKeyAction, rowId: string, col: string): boolean => {
+    const row = rowKindById.get(rowId)
+    if (!row) return false
+    switch (action) {
+      case 'edit':
+      case 'activate':
+        if (selection) return false
+        if (cellStore.requestEdit(rowId, col, { kind: 'end' })) return true
+        // Dossier sans renommage : Entrée replie / déplie (action de la ligne).
+        if (row.kind === 'folder') { toggleFolder(rowId); return true }
+        return false
+      case 'expand':
+      case 'collapse':
+        if (row.kind === 'folder' && (action === 'expand') === collapsedFolders.has(rowId)) toggleFolder(rowId)
+        return row.kind === 'folder'
+      case 'toggle':
+        if (!selection) return false
+        if (row.kind === 'item') {
+          if (row.node.objectId) select.checkbox(row.node.objectId, false)
+        } else {
+          const ids = matchedByFolder.get(rowId) ?? []
+          selection.onChange(toggleGroup(ids, selection.selected))
+        }
+        return true
+    }
+  }
+  const keyboard = useGridKeyboard(cellStore, containerRef, () => ({
+    rows: renderedRows.map(r => r.kind === 'folder'
+      ? { id: r.node.id, group: { col: 'name', expanded: !collapsedFolders.has(r.node.id) } }
+      : { id: r.node.id }),
+    cols: columns,
+    frozenWidth: freezeColCount > 0 ? colLeftOffset(freezeColCount) : leadingColWidth,
+    // Toute cellule « s'ouvre » : `requestEdit` dit si elle a un éditeur (registre des cellules).
+    isEditable: () => true,
+  }), {
+    selectRow: id => select.only(id),
+    extendSelection: id => select.extendTo(id),
+    action: (action, cell) => runKeyAction(action, cell.rowId, cell.col),
+    escape: () => false,
+  })
+
+  // ── GH389 — export Tableau (spec §1.10) : ce qui est affiché ────────────────
+  const exportLatest = useRef({ filteredRows, columns, objectMap, getCellDisplayText, getColumnLabel, stepsByObjectId })
+  exportLatest.current = { filteredRows, columns, objectMap, getCellDisplayText, getColumnLabel, stepsByObjectId }
+  useEffect(() => {
+    if (!exportRef) return
+    exportRef.current = {
+      get fields() { return [...exportLatest.current.columns] },
+      get rows() {
+        return exportLatest.current.filteredRows.map(r => ({ kind: r.kind, nodeId: r.node.id, objectId: r.node.objectId, name: r.node.name }))
+      },
+      text(row, col) {
+        const { objectMap: objects, getCellDisplayText: display, stepsByObjectId: steps } = exportLatest.current
+        if (col === 'steps') return String(steps?.get(row.objectId ?? '')?.length ?? 0)
+        const node = { id: row.nodeId, kind: row.kind, name: row.name, objectId: row.objectId, children: [] } as TypeTreeNode
+        return display(node, row.objectId ? objects.get(row.objectId) : null, col)
+      },
+      label: col => exportLatest.current.getColumnLabel(col),
+    }
+    return () => { exportRef.current = null }
+  }, [exportRef])
 
   // T176 (sprint 2) — actions des cellules : implémentation recréée à chaque rendu (elle lit l'état
   // courant), exposée via un objet stable qui délègue à la dernière version (ref).
@@ -2232,6 +2114,7 @@ function ExcelViewInner({
     navigateToObject: (peerId, opts) => onNavigateToObject?.(peerId, opts),
     toggleSteps: toggleStepExpand,
     openComputedTarget: target => onOpenComputedTarget?.(target),
+    tab: (nodeId, col, shift) => { keyboard.move({ rowId: nodeId, col }, { key: 'Tab', shift }) },
   }
   const cellActionsRef = useRef(cellActionsImpl)
   cellActionsRef.current = cellActionsImpl
@@ -2249,6 +2132,7 @@ function ExcelViewInner({
     navigateToObject: (p, o) => cellActionsRef.current.navigateToObject(p, o),
     toggleSteps: n => cellActionsRef.current.toggleSteps(n),
     openComputedTarget: target => cellActionsRef.current.openComputedTarget(target),
+    tab: (n, c, sh) => cellActionsRef.current.tab(n, c, sh),
   }), [])
 
   return (
@@ -2259,7 +2143,7 @@ function ExcelViewInner({
       data-view-scroll
       tabIndex={0}
       onClick={() => { effectiveOnSelect([]); cellStore.select(null) }}
-      onKeyDown={handleKeyDown}
+      onKeyDown={onGridKeyDown}
     >
       <ExcelCellStoreContext.Provider value={cellStore}>
       <ExcelCellActionsContext.Provider value={cellActions}>
@@ -2311,7 +2195,7 @@ function ExcelViewInner({
           freezeColCount={freezeColCount}
           onFreeze={onFreezeColCountChange}
           onUnfreeze={() => onFreezeColCountChange(0)}
-          onClose={() => setColumnFreezeMenu(null)}
+          onClose={closeFreezeMenu}
         />
       )}
 
@@ -2343,38 +2227,13 @@ function ExcelViewInner({
                 />
               </th>
             )}
-            {columns.map((col, colIdx) => {
-              const frozen = colIdx < freezeColCount
-              const colStyle: React.CSSProperties = {
-                width: colIdx === columns.length - 1 ? undefined : effectiveColWidths[col],
-                position: frozen ? 'sticky' : 'relative',
-                left: frozen ? colLeftOffsets[colIdx] : undefined,
-                zIndex: frozen ? 3 : undefined,
-                userSelect: 'none',
-                opacity: col === draggingCol ? 0.5 : 1,
-                ...(dropColTarget?.col === col && dropColTarget.position === 'before'
-                  ? { boxShadow: 'inset 2px 0 0 0 #3b82f6' }
-                  : dropColTarget?.col === col && dropColTarget.position === 'after'
-                  ? { boxShadow: 'inset -2px 0 0 0 #3b82f6' }
-                  : {}),
-              }
-              return (
-                <th
-                  key={col}
-                  style={colStyle}
-                  className="border border-edge px-2 py-1.5 text-left font-medium text-ink-2 bg-hover text-xs whitespace-nowrap"
-                  draggable={!!onColumnsReorder && col !== 'section'}
-                  onDragStart={onColumnsReorder && col !== 'section' ? (e) => handleColDragStart(e, col) : undefined}
-                  onDragOver={onColumnsReorder && col !== 'section' ? (e) => handleColDragOver(e, col) : undefined}
-                  onDrop={onColumnsReorder && col !== 'section' ? (e) => handleColDrop(e, col) : undefined}
-                  onDragEnd={onColumnsReorder && col !== 'section' ? handleColDragEnd : undefined}
-                  onContextMenu={e => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setColumnFreezeMenu({ colIdx, x: e.clientX, y: e.clientY })
-                  }}
-                >
-                  {getColumnLabel(col)}
+            {columns.map((col, colIdx) => (
+              <GridHeaderCell
+                key={col}
+                col={col}
+                colIdx={colIdx}
+                label={getColumnLabel(col)}
+                adornment={<>
                   {isSystemField(col) && !isComputedColumnKey(col) && <span className="ml-1 text-ink-3 font-normal">(sys)</span>}
                   {isComputedColumnKey(col) && (
                     <span className="ml-1 text-ink-3 font-normal" title={computedColumns?.get(col)?.column.headerTitle}>(calc)</span>
@@ -2382,37 +2241,22 @@ function ExcelViewInner({
                   {computedColumns?.get(col)?.result?.error && (
                     <span className="ml-1 text-status-warning cursor-help" title={computedColumns.get(col)!.result!.error} data-testid="computed-column-error">⚠</span>
                   )}
-                  {isFilterableColumn(col) && (
-                    <button
-                      type="button"
-                      draggable={false}
-                      data-column-filter-icon
-                      title={t('system.excelView.filterColumn')}
-                      onClick={e => {
-                        e.stopPropagation()
-                        if (activeColumnFilterPopover?.column === col) {
-                          setActiveColumnFilterPopover(null)
-                          return
-                        }
-                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                        setActiveColumnFilterPopover({ column: col, top: rect.bottom + 4, left: rect.left, width: 220 })
-                      }}
-                      className={[
-                        'ml-1 align-middle',
-                        activeColumnFilters.some(f => f.col === col) ? 'text-status-info' : 'text-ink-3 hover:text-ink-2',
-                      ].join(' ')}
-                    >
-                      <FilterIcon size={10} />
-                    </button>
-                  )}
-                  <div
-                    style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 4, cursor: 'col-resize' }}
-                    className="hover:bg-status-info-solid"
-                    onMouseDown={(e) => handleColResizeStart(e, col)}
-                  />
-                </th>
-              )
-            })}
+                </>}
+                width={colIdx === columns.length - 1 ? undefined : layout.widths[colIdx]}
+                frozenLeft={colIdx < freezeColCount ? colLeftOffset(colIdx) : undefined}
+                filterable={isFilterableColumn(col)}
+                filtered={colFilters.activeKeys.has(col)}
+                reorderable={!!onColumnsReorder && col !== 'section'}
+                dragging={draggingCol === col}
+                dropSide={layout.dropTarget?.col === col && col !== draggingCol ? layout.dropTarget.side : undefined}
+                testId={`excel-header-${col}`}
+                onFilterClick={colFilters.togglePopover}
+                onResizeStart={layout.startResize}
+                drag={layout.headerDrag}
+                onFreezeMenu={openFreezeMenu}
+                clip={false}
+              />
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -2423,7 +2267,7 @@ function ExcelViewInner({
               </td>
             </tr>
           )}
-          {filteredRows.slice(0, renderedRowCount).map(({ kind, node, depth }) => {
+          {renderedRows.map(({ kind, node, depth }) => {
             const rowDrop = rowDropIndicator?.targetNodeId === node.id ? rowDropIndicator : null
             const isDraggingRow = draggingNodeId === node.id
             const dropStyle: React.CSSProperties = {}
@@ -2465,7 +2309,7 @@ function ExcelViewInner({
                   onContextMenu={e => handleContextMenu(e, node.id)}
                   freezeColCount={freezeColCount}
                   getFreezeStyle={getFreezeStyle}
-                  nameStickyLeft={freezeColCount > 0 ? colLeftOffsets[columns[0] === 'section' ? 1 : 0] : undefined}
+                  nameStickyLeft={freezeColCount > 0 ? colLeftOffset(columns[0] === 'section' ? 1 : 0) : undefined}
                   isGotoTarget={gotoNodeId === node.id}
                 />
               )
@@ -2567,23 +2411,23 @@ function ExcelViewInner({
                   }
                   if (isReflectionColumn(col)) {
                     return (
-                      <td key={col} style={freezeStyle} className={['border border-edge px-2 py-1 text-xs', stickyBg ?? ''].join(' ')}>
+                      <PlainCell key={col} nodeId={node.id} col={col} freezeStyle={freezeStyle} stickyBg={stickyBg} className="border border-edge px-2 py-1 text-xs">
                         {typeDef?.category === 'requirement' && node.objectId && (
                           <ReflectionValue col={col} objectId={node.objectId} data={reflections} />
                         )}
-                      </td>
+                      </PlainCell>
                     )
                   }
                   if (col === 'coverageStatus') {
                     return (
-                      <td key={col} style={freezeStyle} className={['border border-edge px-2 py-1', stickyBg ?? ''].join(' ')}>
+                      <PlainCell key={col} nodeId={node.id} col={col} freezeStyle={freezeStyle} stickyBg={stickyBg} className="border border-edge px-2 py-1">
                         {typeDef?.category === 'requirement' && node.objectId && (
                           <CoverageBadge
                             coverage={coverageByReqId?.get(node.objectId)}
                             testsById={testsById ?? new Map()}
                           />
                         )}
-                      </td>
+                      </PlainCell>
                     )
                   }
                   if (col === 'name') {
@@ -2686,62 +2530,16 @@ function ExcelViewInner({
       </RenderGateProvider>
       </RowMaxLinesContext.Provider>
 
-      {/* T51 — popover de filtre colonne */}
-      {activeColumnFilterPopover && (() => {
-        const col = activeColumnFilterPopover.column
-        const current = columnFilters[col] ?? { text: '', options: DEFAULT_FILTER_OPTIONS }
-        const setCurrent = (next: ColumnFilterState) => {
-          setColumnFilters(prev => ({ ...prev, [col]: next }))
-        }
-        return (
-          <div
-            data-column-filter-popover
-            style={{
-              position: 'fixed',
-              top: activeColumnFilterPopover.top,
-              left: activeColumnFilterPopover.left,
-              width: activeColumnFilterPopover.width,
-              zIndex: 50,
-            }}
-            className="bg-surface border border-edge rounded-lg shadow-xl p-2 space-y-2"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-1">
-              <input
-                autoFocus
-                value={current.text}
-                onChange={e => setCurrent({ ...current, text: e.target.value })}
-                onKeyDown={e => {
-                  if (e.key === 'Escape') {
-                    e.preventDefault()
-                    // GH33 — `Échap` consommé ici : sans ça il remonte jusqu'à l'écouteur
-                    // `window` d'une modale hôte (sélecteur de tests) et la ferme.
-                    e.stopPropagation()
-                    e.nativeEvent.stopImmediatePropagation()
-                    setCurrent({ ...current, text: '' })
-                    setActiveColumnFilterPopover(null)
-                  }
-                }}
-                placeholder={t('common.filterPlaceholder')}
-                className="flex-1 text-xs bg-transparent text-ink border border-edge rounded px-2 py-1 outline-none"
-              />
-              {current.text && (
-                <button
-                  type="button"
-                  onClick={() => setCurrent({ ...current, text: '' })}
-                  className="text-ink-3 hover:text-ink text-xs"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            <FilterOptionsToggle
-              options={current.options}
-              onChange={opts => setCurrent({ ...current, options: opts })}
-            />
-          </div>
-        )
-      })()}
+      {/* T51 — popover de filtre colonne (brique commune) */}
+      {colFilters.popover && (
+        <ColumnFilterPopover
+          top={colFilters.popover.top}
+          left={colFilters.popover.left}
+          value={colFilters.filters[colFilters.popover.column]}
+          onChange={next => colFilters.setFilter(colFilters.popover!.column, next)}
+          onClose={colFilters.closePopover}
+        />
+      )}
 
       {/* Multi-enum popover — fixed position to escape overflow-auto clipping */}
       {activeMultiEnumPopover && (() => {

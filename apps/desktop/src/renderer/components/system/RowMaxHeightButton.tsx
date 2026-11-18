@@ -94,3 +94,10 @@ export function readExcelRowMaxLines(): number {
     return ROW_MAX_LINES_DEFAULT
   }
 }
+
+/** GH389 — enregistre la hauteur max des lignes, commune à toutes les grilles (ignoré si `localStorage` est indisponible). */
+export function writeExcelRowMaxLines(value: number): void {
+  try {
+    localStorage.setItem('polenta:excelRowMaxLines', String(value))
+  } catch { /* stockage indisponible : réglage non mémorisé */ }
+}

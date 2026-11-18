@@ -20,7 +20,8 @@ let target: Campaign
 let A: string, B: string, C: string
 
 const repoSearch = () => ({ repoPath: s.project.localPath })
-const row = (p: Page, entry: string) => p.locator(`tr[data-entry="${entry}"]`)
+/** GH389 — ligne de la grille commune (`campagne/entrée`) ; une entrée indisponible n'a pas de case. */
+const row = (p: Page, entry: string) => p.locator(`tr[data-node-id="${entry}"]`)
 const rowBox = (p: Page, entry: string) => row(p, entry).getByRole('checkbox')
 /** Mention « ↩ » d'une entrée reportée : l'ID de la source est un lien d'élément depuis GH229. */
 const carryLinks = (p: Page, campaignId: string) => p.locator('[title^="Reporté depuis"]').getByRole('link', { name: campaignId })
@@ -102,7 +103,7 @@ test('U1–U4 — ajout depuis une campagne clôturée : filtre, coches conserv�
   // Rouverte : les entrées reportées sont « Déjà présent », la restante est proposée.
   await p.getByText('Ajouter des tests').click()
   await openCarryTab(p, source.id)
-  await expect(rowBox(p, `${source.id}/${B}-1`)).toBeDisabled()
+  await expect(rowBox(p, `${source.id}/${B}-1`)).toHaveCount(0)
   await expect(row(p, `${source.id}/${B}-1`)).toContainText('Déjà présent')
   await expect(rowBox(p, `${source.id}/${C}-1`)).toBeChecked()
   await p.getByRole('button', { name: 'Annuler' }).click()

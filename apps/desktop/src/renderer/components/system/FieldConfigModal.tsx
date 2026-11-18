@@ -7,6 +7,7 @@ import { getRelevantLinkTypes, isLinkTypeValid, linkColumnKeys, linkColumnLabel,
 import { defaultVisibleFields } from '../../lib/exportColumns'
 import { toggleVisibleField } from './fieldToggle'
 import { backdropDismiss } from '../../lib/backdropDismiss'
+import { ColumnCheckItem } from '../grid/ColumnChecklist'
 
 // ── FieldConfig modal (⚙) — onglets Tableau / Document indépendants ─────────
 
@@ -204,25 +205,17 @@ export function FieldConfigModal({
 
         {/* Scrollable field list */}
         <div className="overflow-y-auto max-h-80 space-y-1.5">
+          {/* GH389 — cases communes aux panneaux de colonnes des grilles (`ColumnCheckItem`). */}
           {allFields.map(f => (
-            <label
+            <ColumnCheckItem
               key={f}
-              title={lockedFields[f]}
-              className={`flex items-center gap-2 text-xs text-ink ${f in lockedFields ? 'cursor-default' : 'cursor-pointer'} hover:bg-hover px-1 py-0.5 rounded`}
-            >
-              <input
-                type="checkbox"
-                checked={isChecked(f)}
-                disabled={f in lockedFields}
-                onChange={() => toggle(f)}
-                className="h-3 w-3 accent-ink"
-                data-testid={`field-config-field-${f}`}
-              />
-              <span>{systemFieldLabels[f] ?? typeDef?.fields.find(cf => cf.name === f)?.label ?? f}</span>
-              {systemFields.includes(f) && (
-                <span className="text-ink-3">(sys)</span>
-              )}
-            </label>
+              label={systemFieldLabels[f] ?? typeDef?.fields.find(cf => cf.name === f)?.label ?? f}
+              checked={isChecked(f)}
+              lockedHint={lockedFields[f]}
+              onToggle={() => toggle(f)}
+              suffix={systemFields.includes(f) ? <span className="text-ink-3">(sys)</span> : undefined}
+              testId={`field-config-field-${f}`}
+            />
           ))}
 
           {/* GH70 — colonnes calculées définies par le projet (requêtes partagées) */}
@@ -231,20 +224,14 @@ export function FieldConfigModal({
               <p className="text-xs text-ink-3 font-medium mb-1">{t('system.fieldConfig.computedColumns')}</p>
               <div className="space-y-1.5">
                 {shownComputedPanel.map(entry => entry.kind === 'column' ? (
-                  <label
+                  <ColumnCheckItem
                     key={entry.column.key}
+                    label={entry.column.label}
                     title={entry.column.headerTitle}
-                    className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked(entry.column.key)}
-                      onChange={() => toggle(entry.column.key)}
-                      className="h-3 w-3 accent-ink"
-                    />
-                    <span>{entry.column.label}</span>
-                    <span className="text-ink-3">(calc)</span>
-                  </label>
+                    checked={isChecked(entry.column.key)}
+                    onToggle={() => toggle(entry.column.key)}
+                    suffix={<span className="text-ink-3">(calc)</span>}
+                  />
                 ) : (
                   // GH126 — colonne éclatée : titre du groupe, puis une case par sous-colonne.
                   <div key={entry.queryId} data-testid="field-config-computed-group" data-query-id={entry.queryId}>
@@ -263,19 +250,14 @@ export function FieldConfigModal({
                     )}
                     <div className="space-y-1.5 mt-1">
                       {entry.columns.map(c => (
-                        <label
+                        <ColumnCheckItem
                           key={c.key}
+                          label={c.label}
                           title={`${entry.queryId} — ${entry.queryTitle} · ${c.split?.value ?? ''}`}
-                          className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover pl-6 pr-1 py-0.5 rounded"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked(c.key)}
-                            onChange={() => toggle(c.key)}
-                            className="h-3 w-3 accent-ink"
-                          />
-                          <span>{c.label}</span>
-                        </label>
+                          checked={isChecked(c.key)}
+                          onToggle={() => toggle(c.key)}
+                          indent
+                        />
                       ))}
                     </div>
                   </div>
@@ -288,15 +270,7 @@ export function FieldConfigModal({
           {hasSteps && (
             <div className="pt-2 mt-1 border-t border-edge">
               <p className="text-xs text-ink-3 font-medium mb-1">{t('system.fieldConfig.testCase')}</p>
-              <label className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded">
-                <input
-                  type="checkbox"
-                  checked={isChecked('steps')}
-                  onChange={() => toggle('steps')}
-                  className="h-3 w-3 accent-ink"
-                />
-                <span>{t('system.wordView.stepsHeading')}</span>
-              </label>
+              <ColumnCheckItem label={t('system.wordView.stepsHeading')} checked={isChecked('steps')} onToggle={() => toggle('steps')} />
             </div>
           )}
 
@@ -310,22 +284,14 @@ export function FieldConfigModal({
                 {relevantLinkTypes.flatMap(lt => linkKeysOf(lt).map(key => ({ lt, key }))).map(({ lt, key }) => {
                   const displayLabel = linkColumnLabel(lt, parseLinkColumn(key)!.direction, objectTypeRef, category)
                   return (
-                    <label
+                    <ColumnCheckItem
                       key={key}
-                      className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked(key)}
-                        data-testid={`field-config-field-${key}`}
-                        onChange={() => toggle(key)}
-                        className="h-3 w-3 accent-ink"
-                      />
-                      <span>{displayLabel || lt.name}</span>
-                      {!isLinkTypeValid(lt) && (
-                        <span className="text-status-warning" title={t('system.fieldConfig.missingRefs')}>⚠</span>
-                      )}
-                    </label>
+                      label={displayLabel || lt.name}
+                      checked={isChecked(key)}
+                      onToggle={() => toggle(key)}
+                      suffix={isLinkTypeValid(lt) ? undefined : <span className="text-status-warning" title={t('system.fieldConfig.missingRefs')}>⚠</span>}
+                      testId={`field-config-field-${key}`}
+                    />
                   )
                 })}
               </div>

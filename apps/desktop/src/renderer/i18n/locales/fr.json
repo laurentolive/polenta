@@ -947,7 +947,15 @@
       }
     },
     "campaignListView": {
-      "noTest": "Aucun test"
+      "noTest": "Aucun test",
+      "title": "Campagnes",
+      "newCampaign": "Nouvelle campagne",
+      "createFirst": "Créer la première campagne",
+      "colId": "ID",
+      "colStatus": "Statut",
+      "colTitle": "Titre",
+      "colTests": "Tests",
+      "colRuns": "Entrées"
     },
     "richTextToolbar": {
       "rawMarkdownMode": "Mode markdown brut"
@@ -1059,6 +1067,16 @@
     "editParamValues": "Modifier les valeurs des paramètres",
     "viewResult": "Consulter le résultat",
     "view": "Voir",
+    "entriesTitle": "Entrées {{id}}",
+    "columns": {
+      "test": "Test",
+      "title": "Titre",
+      "requirement": "Exigence",
+      "carried": "Reportée depuis",
+      "params": "Paramètres",
+      "status": "Statut",
+      "actions": "Actions"
+    },
     "executeThisTest": "Exécuter ce test",
     "execute": "Exécuter",
     "newInstanceOf": "Nouvelle instance de {{tcId}} — valeurs des paramètres :",
@@ -1168,6 +1186,7 @@
       "tabCampaign": "Depuis une campagne"
     },
     "carry": {
+      "gridTitle": "Report depuis une campagne",
       "sources": "Campagnes source",
       "noCampaign": "Aucune autre campagne",
       "statusFilter": "Statut des entrées :",
@@ -1418,6 +1437,7 @@
       "chooseMatrixFields": "Choisissez les lignes, les colonnes et la valeur."
     },
     "resultTable": {
+      "gridTitle": "Résultat",
       "booleanTrue": "oui",
       "booleanFalse": "non",
       "executeQueryHint": "Exécutez une requête pour voir un résultat.",
@@ -2413,8 +2433,6 @@
   "executionHistory": {
     "title": "Exécutions",
     "empty": "Aucune exécution.",
-    "columns": "Colonnes",
-    "configure": "Choisir les colonnes",
     "toggleSteps": "Afficher les étapes",
     "removed": "entrée retirée",
     "isolated": "exécution isolée",
@@ -2506,7 +2524,9 @@
       "importTitle_other": "{{count}} exécutions en échec :",
       "decisionTitle": "Décision à tracer",
       "decisionHint": "{{id}} : « {{decision}} ». Voulez-vous tracer ce constat dans une issue ?",
-      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}"
+      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}",
+      "decisionHintMany": "{{count}} exigences : « {{decision}} ». Voulez-vous tracer ce constat dans une issue ?",
+      "decisionDefaultTitleMany": "{{decision}} — {{count}} exigences"
     }
   },
   "versions": {
@@ -2566,7 +2586,9 @@
       "type": "Type",
       "id": "ID",
       "label": "Label",
-      "diff": "Diff"
+      "diff": "Diff",
+      "requirements": "Exigences",
+      "actions": "Actions"
     },
     "page": {
       "changes": "Changements",
@@ -2706,7 +2728,8 @@
       "status": "Rédaction",
       "design": "Design",
       "coverage": "Vérification",
-      "impact": "Impact"
+      "impact": "Impact",
+      "mentions": "Mentions"
     },
     "impact": {
       "changed": "changée",
@@ -2780,7 +2803,12 @@
       "TITLE_EMPTY": "Le titre est obligatoire."
     },
     "noTest": "Aucun test lié à cette exigence.",
-    "otherComponent": "Exécutions dans un autre composant"
+    "otherComponent": "Exécutions dans un autre composant",
+    "group": {
+      "decision": "Décision",
+      "requirement": "Exigence"
+    },
+    "remainingShort": "reste à décider : {{count}}"
   },
   "transitions": {
     "notice": {
@@ -2946,5 +2974,17 @@
     "reload": "Recharger",
     "keep": "Garder ma saisie",
     "status": "Statut"
+  },
+  "grid": {
+    "columns": "Colonnes",
+    "toggleRow": "Déplier / replier la ligne",
+    "count": "{{shown}} / {{total}}",
+    "lockedColumn": "Colonne toujours affichée",
+    "bulkFailed_one": "{{count}} ligne non écrite :",
+    "bulkFailed_other": "{{count}} lignes non écrites :",
+    "confirmSelection": "Confirmer la sélection",
+    "rejectSelection": "Rejeter la sélection",
+    "collapseHeader": "Replier l'en-tête",
+    "expandHeader": "Déplier l'en-tête"
   }
 }

@@ -97,7 +97,12 @@ ici en un seul, chaque entrée étant une paire (`SystemNode`, type).
   - La vue document n'affiche que les résultats filtrés.
 - **État vide** : si aucun élément ne correspond, afficher `Aucun élément`.
 
-### Filtre par colonne (vue Tableau uniquement — T51)
+### Filtre par colonne (vue Tableau — T51 ; toutes les grilles — GH389)
+
+Le même filtre équipe toutes les grilles de l'application (§ Grilles communes) : il porte sur le
+**texte affiché** de la cellule (libellé d'un statut, d'une décision, d'un badge ; ID affiché d'un
+lien) et se combine en ET avec les filtres propres à l'écran.
+
 
 - Chaque colonne filtrable de la vue Tableau (toutes sauf `Étapes`) porte une icône
   discrète dans son en-tête. Cliquer dessus ouvre un popover ancré sous l'en-tête,
@@ -239,6 +244,8 @@ Recherche** au clic simple sur un résultat (`SPEC-ELECTRON-DESKTOP` §19.17, T1
 | Ctrl+Z/Y | Annuler / Rétablir (Ctrl+Z natif prioritaire dans les champs) |
 | Echap | Annuler l'opération en cours |
 
+Navigation clavier de la vue Tableau (grille) : § Grilles communes — Clavier (GH389).
+
 ---
 
 ## Toolbar de la vue document
@@ -306,6 +313,75 @@ introuvable (texte simple, marqueur « introuvable » dans les puces).
 - Exception de geste : listes internes à un écran (constellation : recentrer le graphe ; analyse
   d'impact : fiche de l'élément) — le clic simple garde le geste de l'écran, Ctrl+clic et
   l'aperçu suivent la règle commune.
+
+---
+
+## Grilles communes (GH389)
+
+Toute grille de l'application se comporte comme la vue Tableau. Briques dans
+`renderer/components/grid/` : `DataGrid` (grille plate générique, colonnes `GridColumn`), filtres
+(`useColumnFilters`), largeurs / gel / ordre (`useColumnLayout`, `GridHeaderCell`), hauteur des lignes
+(`RowClamp`), clavier (`gridKeyboard`, `useGridKeyboard`), sélection (`rowSelection`,
+`useRowSelection`), préférences (`useGridPrefs`), panneau 👁 (`ColumnPickerPanel`, `ColumnChecklist`),
+barre d'outils (`GridToolbar`), export (`exportTable`). La vue Tableau (`ExcelView`) garde son arbre et
+ses éditeurs et consomme les mêmes hooks. Une grille peut ne pas proposer une fonction sans objet ;
+quand elle la propose, c'est à l'identique (icône, geste, texte). **Aucun tri** nulle part.
+
+- **Barre d'outils**, dans cet ordre : filtres et actions de l'écran, 👁 Colonnes, vues enregistrées
+  (grilles rattachées à un type : vue Tableau, Validation), ↕▯ hauteur des lignes (valeur unique du
+  poste `polenta:excelRowMaxLines`), Exporter, puis à droite « affichées / total ».
+- **Colonnes** : filtre par colonne (§ Filtre par colonne) ; largeur par la poignée (auto avant tout
+  réglage, la dernière remplit) ; clic droit sur un en-tête : « Figer jusqu'à cette colonne » /
+  « Libérer » ; glisser un en-tête : ordre. Colonnes de tête techniques (chevron de dépli, case) ni
+  déplaçables ni redimensionnables, toujours figées.
+- **Panneau 👁** : colonnes par groupes, colonnes verrouillées (case grisée), Réinitialiser (colonnes
+  seulement) ; cocher / décocher ne déplace que cette colonne (GH235).
+- **Préférences** : colonnes visibles et ordre, largeurs, colonnes figées, par utilisateur dans le
+  `.pref` du repo affiché, écriture partielle (GH176). Grille rattachée à un type : clé du type
+  (Validation : vue `excel` ; historique des exécutions : `executions`). Grille sans type :
+  `grid::<gridId>`, vue `columns` (`version-changes`, `version-tests`, `version-analysis`, `backlog`,
+  `campaign-entries`, `campaign-carry`, `campaign-list`, `query-result`, `drilldown`, `parameters`
+  — `.pref` de chaque repo —, `compliance`). Les filtres ne sont jamais mémorisés.
+- **Clavier** (focus dans la grille, jamais dans un champ ou un éditeur ouvert) : cellule active
+  (contour bleu) dès le premier clic ; ↑ / ↓ ligne au-dessus / en dessous (la ligne devient la
+  sélection) ; ← / → cellule précédente / suivante, sur un dossier de la vue Tableau ou sur la colonne
+  de dépli : replier / déplier ; Tab / Maj+Tab cellule suivante / précédente avec passage de ligne,
+  et dans un éditeur ouvert (sauf richtext) valide puis passe ; Maj+↑ / ↓ étend la sélection ;
+  Entrée / F2 ouvre l'éditeur d'une cellule éditable, sinon suit le lien de la cellule, sinon l'action
+  de la ligne (ouvrir, déplier) ; Espace coche / décoche dans une grille à cases ; Échap : popover de
+  filtre, éditeur, cellule active, sélection, puis la modale qui héberge la grille (GH33). La cellule
+  active est ramenée dans la zone visible.
+- **Sélection** : clic, Maj+clic (plage), Ctrl+clic ; un clic dans une sélection multiple ne la
+  réduit pas. Double-clic ou Entrée : action de la ligne (ouvrir l'entrée, le paramètre, le détail
+  d'un widget…) ; le simple clic ne fait que sélectionner. Grille à cases : le clic sur la ligne
+  coche, la sélection survit aux filtres (GH33). Édition d'une cellule d'une ligne de la sélection :
+  appliquée à toute la sélection (T149), échecs listés par ligne.
+- **Liens** : tout ID d'un autre élément est un lien d'élément (§ Liens d'élément) ; version et
+  validation d'un repo : lien de page (`PageLink`, popup d'en-tête seul) quand l'index les connaît
+  dans ce repo, sinon bouton vers la page.
+- **Export** (xlsx, `ExportButton` kind `table`) : ce qui est affiché — lignes filtrées dans l'ordre,
+  colonnes visibles dans l'ordre avec leur titre, texte affiché (liens = ID séparés par « , » ; une
+  valeur `link` reste un hyperlien), colonnes figées figées, largeurs approchées ; nom de feuille /
+  fichier = titre de la grille. Lignes dépliées et lignes de groupe non exportées.
+- **Défilement** : mémoire GH300 par onglet + page + grille (`useGridScrollKey`) ; retour par
+  l'onglet, Précédent / Suivant ou la barre d'activité sans peindre d'abord le haut. Une grille de
+  page qui change d'entité sur la même route est remontée (`key`).
+
+| Grille | Écran | Particularités |
+|--------|-------|----------------|
+| Validation | Page d'une validation | Vues enregistrées, édition décision / commentaire, lot (`specs/GH204.md` §7, SPEC-REQ §13) |
+| Historique des exécutions | Section « Exécutions » | Groupes du panneau 👁, étapes en ligne dépliée, tri retiré |
+| Changements, tests à exécuter, analyse figée | Page d'une version | Cases ; analyse : statut / commentaire éditables (SPEC-REQ §11.3) |
+| Backlog | Backlog d'un composant | Cases, inclusion (SPEC-REQ §11.4) |
+| Entrées d'une campagne | Page d'une campagne | Pastilles de statut en barre d'outils, actions en dernière colonne, paramètres / duplicata en ligne dépliée (SPEC-TESTS §4) |
+| Report depuis une campagne | Sélecteur de tests | Cases, filtre texte de l'écran, entrée indisponible sans case |
+| Liste des campagnes | Barre d'activité « Campagnes » | Filtre global de la vue système, « + Nouvelle campagne » |
+| Résultat de requête | Page Requête | Colonnes du script (pas de 👁) ; widget table : mode compact (liens et clavier seulement) ; impression : tableau statique (SPEC-DASHBOARDS) |
+| Détail d'un widget | Modale | Filtre, largeurs, clavier, liens ; ni 👁, ni export, ni gel |
+| Paramètres | Page Paramètres | Une grille par repo, recherche globale, double-clic / Entrée → dialogue |
+| Matrice de conformité | Page Conformité | Pas de 👁 ni d'ordre ; lignes de groupe par rôle ; première colonne figée par défaut |
+
+---
 
 ## Vue document (zone principale)
 
@@ -445,6 +521,13 @@ Système › Arbre › Sélection).
     une ligne de dossier le replie/déplie (pas de sélection).
   - Repli, colonnes figées et filtres sont locaux à la vue hôte, jamais persistés.
 
+- **Grille commune (GH389)** : clavier (flèches, Tab, Maj+flèches, Entrée = F2 sauf boîte de
+  suppression ouverte, dossier : ←/→ replient / déplient) — § Grilles communes ; mode sélection :
+  flèches et Espace seulement. **Export Tableau** (xlsx) : lignes affichées (filtres de colonne,
+  options du filtre global, dossiers comme à l'écran), colonnes visibles dans l'ordre, texte affiché ;
+  colonnes de lien et `Vérification` incluses en texte (ID, libellé). Gabarits GH34 : restreints aux
+  éléments affichés. Exports Document / PDF inchangés.
+
 ### Vue Word
 
 - Document continu : éléments affichés les uns à la suite des autres.
@@ -490,9 +573,11 @@ essai, campagne introuvable marqués. Colonnes (bouton ⚙️ de la grille) par 
 date, testeur, durée, origine, notes, équipement, champs d'exécution), Campagne (ID / titre, statut,
 baseline, champs), Entrée (`entryId`, exigence de l'instance, paramètres, version du test, report),
 Test (grille d'exigence) ; préférence `fieldVisibility[<type>].executions`, défaut verdict / date /
-testeur / campagne / entrée + champs d'exécution `defaultVisible`, Réinitialiser. Tri par en-tête
-(nombres comparés numériquement), étapes dépliables (verdict, commentaire, champs d'étape). L'ID
-d'entrée ouvre la page d'exécution si la campagne est ouverte, la consultation du run sinon. Données :
+testeur / campagne / entrée + champs d'exécution `defaultVisible`, Réinitialiser. Grille commune
+(GH389, § Grilles communes) : panneau 👁 commun à la place du ⚙️, **sans tri**, filtre par colonne,
+largeurs, gel, ordre, clavier, export ; test et campagne en liens d'élément ; étapes dépliables
+(verdict, commentaire, champs d'étape). L'ID d'entrée ouvre la page d'exécution si la campagne est
+ouverte, la consultation du run sinon (Entrée sur la cellule aussi). Données :
 canal `executions:history` (lecture seule), rafraîchi sur tout changement de `tests/`, `test-runs/`,
 `links/`, `campaigns/`. Limite : une exigence couverte par un test d'un autre repo du workspace n'en
 liste pas les exécutions (portée du repo ouvert).
@@ -616,6 +701,8 @@ validation, d'exigence ou de schéma. Les trois colonnes calculées s'appellent 
 | Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162 ; colonnes calculées `query::<ID>` — GH70 ; sous-colonnes `query::<ID>::<valeur>` — GH126) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord?, collapsedFolders*?, freezeColCountExcel?, picker?, showFoldersPicker? }`, par type + par utilisateur (`picker` / `showFoldersPicker` : sélecteur de tests, GH176) |
 | Vues enregistrées du ⚙️ (GH203) | `.{githubaccount}.pref` (personnelles, vue active) ; `.polenta/views/<nœud>/<type>.yaml`, versionné (équipe) | `fieldVisibility["<nœud>::<type>"].savedViews`, `.activeView` |
 | Dernier repo/composant/élément consulté (T52) | `localStorage`, par projet | `polenta:lastSelection:${projectId}` |
+| Colonnes, ordre, largeurs, colonnes figées d'une grille sans type (GH389) | `.{githubaccount}.pref` du repo affiché | `fieldVisibility["grid::<gridId>"]` = `{ columns?, colWidthsColumns?, freezeColCountColumns? }` ; historique des exécutions : `colWidthsExecutions?`, `freezeColCountExecutions?` sur la clé du type |
+| En-tête replié de la page d'une validation / d'une version (GH389) | `localStorage`, par poste | `polenta.headerCollapsed.validation`, `polenta.headerCollapsed.version` |
 
 **Écriture partielle (GH176)** : `pref:set-field-visibility` fusionne les clés reçues dans
 l'entrée existante — une clé absente est conservée, une clé à `null` est supprimée, une entrée

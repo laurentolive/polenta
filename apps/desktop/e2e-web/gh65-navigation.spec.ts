@@ -56,7 +56,8 @@ test('2.1 — clic sur le segment « Échoué » de la campagne → ses entrées
 test('2.6 — ligne d\'une entrée exécutée → résultat d\'exécution', async () => {
   // Popup ouverte par le test précédent (fichier en série).
   const failed = campaign.runs[1].entryId
-  await dialog().locator('tbody tr').filter({ hasText: failed }).click()
+  // GH389 — grille commune : clic = sélection, double-clic = ouverture de la ligne.
+  await dialog().locator('tbody tr').filter({ hasText: failed }).dblclick()
   await expect(s.page).toHaveURL(new RegExp(`/campaign/${campaign.id}/run/${failed}`))
 })
 
@@ -74,7 +75,7 @@ test('2.4 / 2.7 — KPI « % exécuté » → entrées exécutées ; entrée en 
     .click()
   const row = dialog().locator('tbody tr').filter({ hasText: `${campaign.id}/${pending}` })
   await expect(row).toHaveCount(1)
-  await row.click()
+  await row.dblclick()
   await expect(s.page).toHaveURL(new RegExp(`/campaign/${campaign.id}\\?.*status=pending`))
 })
 

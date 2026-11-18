@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { Lock } from 'lucide-react'
+import { ChevronsDown, ChevronsUp, Lock } from 'lucide-react'
 import type { ValidationProblem } from '@polenta/types'
 import { fieldValueToText } from '@polenta/types'
 import { api } from '../api'
@@ -15,6 +15,8 @@ import { ValidationGrid } from '../components/validation/ValidationGrid'
 import { useInvalidateValidations, useValidationPage, validationErrorText, VALIDATION_STATE_BADGE } from '../components/validation/useValidations'
 import { STATE_BADGE, useInvalidateVersions } from '../components/versions/useVersions'
 import { backdropDismiss } from '../lib/backdropDismiss'
+import { PageLink } from '../components/element/PageLink'
+import { useHeaderCollapsed } from '../components/grid/useHeaderCollapsed'
 
 /** GH204 §7 — page d'une validation. URL : /validation/<ID>?projectId=…&repoPath=… */
 export const Route = createFileRoute('/validation/$validationId')({
@@ -42,6 +44,8 @@ function ValidationView() {
   const [fields, setFields] = useState<Record<string, unknown>>({})
   const [error, setError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<Confirming>(null)
+  // GH389 §2.1 — en-tête repliable, mémorisé par poste pour toutes les validations.
+  const [headerCollapsed, toggleHeader] = useHeaderCollapsed('validation')
   // Sur les valeurs enregistrées, pas sur la page : une relecture (autre décision, watcher) garde la saisie.
   const savedTitle = page?.validation.title
   const savedFields = JSON.stringify(page?.validation.fields ?? null)
@@ -90,9 +94,20 @@ function ValidationView() {
       <ViewHeader
         currentProjectId={projectId}
         title={validation.title}
-        subtitle={validation.id}
+        subtitle={headerCollapsed ? (
+          <span className="flex items-center gap-2">
+            {validation.id}
+            <span className={`px-1.5 rounded text-[10px] ${VALIDATION_STATE_BADGE[state]}`} data-testid="validation-state-short">{statusLabel}</span>
+            {open && <span className="text-ink" data-testid="validation-remaining-short">{t('validation.remainingShort', { count: page.pendingCount })}</span>}
+          </span>
+        ) : validation.id}
         actions={
           <>
+            <button type="button" className="btn-icon" onClick={toggleHeader} aria-expanded={!headerCollapsed}
+              title={t(headerCollapsed ? 'grid.expandHeader' : 'grid.collapseHeader')} aria-label={t(headerCollapsed ? 'grid.expandHeader' : 'grid.collapseHeader')}
+              data-testid="validation-header-toggle">
+              {headerCollapsed ? <ChevronsDown size={14} /> : <ChevronsUp size={14} />}
+            </button>
             {page.readonly && <span title={t('validation.readonly')}><Lock size={13} className="text-status-warning" /></span>}
             {editable && <button type="button" className="btn-primary-sm" onClick={() => setConfirming('sign')} data-testid="validation-sign">{t('validation.sign')}</button>}
             {!page.readonly && state !== 'cancelled' && <button type="button" className="btn-secondary-sm" onClick={() => setConfirming('cancel')} data-testid="validation-cancel">{t('validation.cancel')}</button>}
@@ -100,11 +115,12 @@ function ValidationView() {
           </>
         }
       />
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+      <div className="flex-1 min-h-0 p-4 flex flex-col gap-4">
         {error && <p className="text-xs text-status-danger whitespace-pre-wrap" role="alert">{error}</p>}
         {page.readonly && <p className="text-xs text-status-warning" data-testid="validation-readonly">{t('validation.readonlyHelp')}</p>}
         {version.state === 'abandoned' && <p className="text-xs text-status-warning" data-testid="validation-version-abandoned">{t('validation.versionAbandoned')}</p>}
 
+        {!headerCollapsed && <div className="shrink-0 max-h-[45vh] overflow-y-auto flex flex-col gap-4" data-testid="validation-header">
         <section className="grid grid-cols-[10rem_1fr] gap-x-4 gap-y-2 text-xs items-center max-w-3xl">
           <span className="text-ink-3">{t('validation.titleLabel')}</span>
           {editable ? (
@@ -120,7 +136,9 @@ function ValidationView() {
 
           <span className="text-ink-3">{t('validation.version')}</span>
           <span className="flex items-center gap-2">
-            <button type="button" className="text-prim hover:underline" onClick={() => void navigate({ to: '/version/$versionId', params: { versionId: version.id }, search: { projectId, repoPath } })}>{version.title} ({version.id})</button>
+            <PageLink id={version.id} repoPath={repoPath} className="text-prim" onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: version.id }, search: { projectId, repoPath } })}>
+              {version.title} ({version.id})
+            </PageLink>
             <span className={`px-1.5 rounded text-[10px] ${STATE_BADGE[version.state]}`} data-testid="validation-version-state">{t(`versions.state.${version.state}`)}</span>
           </span>
 
@@ -140,13 +158,17 @@ function ValidationView() {
                 {page.components.map(c => (
                   <tr key={c.name} className="border-b border-edge-subtle">
                     <td className="py-1 pr-4 text-ink-2 w-48">{c.label}</td>
-                    <td className="py-1 pr-4 text-ink-2">{c.version ? `${c.version.title} (${c.version.id})` : '—'}</td>
+                    <td className="py-1 pr-4 text-ink-2">
+                      {c.version
+                        ? <PageLink id={c.version.id} repoPath={c.repoPath} onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: c.version!.id }, search: { projectId, repoPath: c.repoPath } })}>{c.version.title} ({c.version.id})</PageLink>
+                        : '—'}
+                    </td>
                     <td className="py-1">
                       {c.validation ? (
-                        <button type="button" className={`px-1.5 rounded text-[10px] ${VALIDATION_STATE_BADGE[c.validation.state]}`}
-                          onClick={() => void navigate({ to: '/validation/$validationId', params: { validationId: c.validation!.id }, search: { projectId, repoPath: c.repoPath } })}>
+                        <PageLink id={c.validation.id} repoPath={c.repoPath} className={`px-1.5 rounded text-[10px] ${VALIDATION_STATE_BADGE[c.validation.state]}`}
+                          onFallback={() => void navigate({ to: '/validation/$validationId', params: { validationId: c.validation!.id }, search: { projectId, repoPath: c.repoPath } })}>
                           {t(`validation.state.${c.validation.state}`)}
-                        </button>
+                        </PageLink>
                       ) : <span className="text-ink-3">{t('validation.noValidation')}</span>}
                     </td>
                   </tr>
@@ -170,8 +192,9 @@ function ValidationView() {
             )}
           </section>
         )}
+        </div>}
 
-        <ValidationGrid page={page} repoPath={repoPath} projectId={projectId} workspaceDir={workspaceDir} />
+        <ValidationGrid key={validation.id} page={page} repoPath={repoPath} projectId={projectId} workspaceDir={workspaceDir} />
       </div>
       {confirming && (
         <ConfirmDialog

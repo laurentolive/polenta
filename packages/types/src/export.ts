@@ -15,6 +15,8 @@ export type ExportKind =
   | 'campaign-report'
   | 'query-result'
   | 'dashboard'
+  /** GH389 — grille générique (`DataGrid`) : ce qui est affiché. */
+  | 'table'
 
 export type ExportResult =
   | { status: 'ok'; filePath: string }
@@ -54,6 +56,20 @@ export interface ExportColumn {
   key: string
   label: string
   type?: SchemaFieldType
+}
+
+/**
+ * GH389 — export xlsx d'une grille (`DataGrid`, spec §1.10) : lignes filtrées dans l'ordre affiché,
+ * colonnes visibles dans l'ordre, texte tel qu'affiché, déjà résolus côté renderer. `width` en px
+ * (largeur à l'écran) ; `hyperlinks[rowIndex][key]` : URL d'une valeur `link`.
+ */
+export interface TableExportPayload {
+  sheetName: string
+  columns: { key: string; label: string; width?: number }[]
+  rows: Record<string, string>[]
+  hyperlinks?: Record<string, Record<string, string>>
+  /** Colonnes figées (depuis la gauche) dans le classeur. */
+  freezeColCount?: number
 }
 
 /** GH34 — entrée de l'arbre (dossier ou élément) dans l'ordre visuel, pour les gabarits d'export :

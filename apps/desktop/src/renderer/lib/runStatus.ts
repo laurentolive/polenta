@@ -32,3 +32,11 @@ export function isTestRunStatus(v: unknown): v is TestRunStatus {
 export function worstRunStatus(statuses: TestRunStatus[]): TestRunStatus {
   return statuses.reduce<TestRunStatus>((worst, s) => (RUN_STATUS_SEVERITY[s] > RUN_STATUS_SEVERITY[worst] ? s : worst), 'PASS')
 }
+
+/** Pastille de statut d'une campagne (liste des campagnes, sélecteur de report GH64). */
+export const CAMPAIGN_STATUS_CLASS: Record<string, string> = {
+  planned:     'bg-status-neutral-bg text-status-neutral',
+  in_progress: 'bg-status-info-bg text-status-info',
+  completed:   'bg-status-success-bg text-status-success',
+  abandoned:   'bg-status-danger-bg text-status-danger',
+}

@@ -1,7 +1,7 @@
-import type { ExecutionHistory, ExecutionHistoryRow, SchemaField } from '@polenta/types'
+import type { ExecutionHistory, SchemaField } from '@polenta/types'
 
 // GH197 — colonnes de la grille d'historique des exécutions (specs/GH197.md §2). Une colonne a une clé
-// stable (préférence `executions`), un groupe (panneau ⚙️) et un libellé (clé i18n, ou libellé du champ
+// stable (préférence `executions`), un groupe (panneau 👁 Colonnes) et un libellé (clé i18n, ou libellé du champ
 // pour un champ d'exécution `run:<nom>` / un champ de campagne `campaign:<nom>`).
 
 export type ExecutionColumnGroup = 'execution' | 'campaign' | 'entry' | 'test'
@@ -63,34 +63,4 @@ export function defaultExecutionColumns(history: ExecutionHistory, withTestColum
     'verdict', 'date', 'tester', 'testedVersion', 'campaign', 'entry',
     ...unionRunFields(history.runFieldDefs, 'runFields').filter(f => f.defaultVisible).map(f => `run:${f.name}`),
   ]
-}
-
-const UNSORTABLE = new Set(['notes', 'equipment', 'params', 'carriedFrom', 'testedStructure', 'testedDeviations'])
-
-/** En-tête triable (texte libre ou valeurs composées : non). */
-export function isSortable(key: string): boolean {
-  return !UNSORTABLE.has(key)
-}
-
-/** Valeur triable d'une colonne (texte, ou date ISO ; nombres comparés numériquement par la grille). */
-export function sortValue(row: ExecutionHistoryRow, key: string): string {
-  switch (key) {
-    case 'verdict': return row.run?.result ?? 'pending'
-    case 'date': return row.run?.executedAt ?? ''
-    case 'tester': return row.run?.executedBy ?? ''
-    case 'duration': return String(row.run?.duration ?? '')
-    case 'origin': return row.run?.origin ?? ''
-    case 'campaign': return row.campaign?.id ?? ''
-    case 'campaignStatus': return row.campaign?.status ?? ''
-    case 'entry': return row.entry?.entryId ?? ''
-    case 'entryRequirement': return row.entry?.requirementId ?? ''
-    case 'testVersion': return String(row.entry?.testVersion ?? '')
-    case 'testedVersion': return row.run?.testedConfig?.label ?? row.run?.testedConfig?.undocumented ?? ''
-    case 'testedCommit': return row.run?.testedConfig?.commit ?? ''
-    case 'test': return row.testCaseId
-    default:
-      if (key.startsWith('run:')) return String(row.run?.fields?.[key.slice(4)] ?? '')
-      if (key.startsWith('campaign:')) return String(row.campaign?.fields[key.slice(9)] ?? '')
-      return ''
-  }
 }

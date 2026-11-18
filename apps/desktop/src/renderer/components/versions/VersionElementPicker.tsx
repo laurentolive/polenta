@@ -30,13 +30,12 @@ export function VersionElementPicker({ repoPath, workspaceDir, excluded, onAdd, 
     ...getObjectTypeRefs(schema, 'test').map(r => ({ ...r, category: 'test' as const })),
     ...getObjectTypeRefs(schema, 'issue').map(r => ({ ...r, category: 'issue' as const })),
   ], [schema])
-  const { data: identityLogin, isPending: identityPending } = useQuery({
+  const { isPending: identityPending } = useQuery({
     queryKey: ['project-username', repoPath],
     queryFn: () => api.auth.projectUsername(repoPath),
     enabled: !!repoPath,
     retry: false,
   })
-  const username = identityLogin ?? 'local'
   const { data: reqs = [] } = useQuery({ queryKey: ['requirements', repoPath], queryFn: () => api.requirements.list(repoPath), enabled: !!repoPath })
   const { data: tests = [] } = useQuery({ queryKey: ['tests', repoPath], queryFn: () => api.tests.list(repoPath), enabled: !!repoPath })
   const { data: issues = [] } = useQuery({ queryKey: ['issues', repoPath], queryFn: () => api.issues.list(repoPath), enabled: !!repoPath })
@@ -116,7 +115,6 @@ export function VersionElementPicker({ repoPath, workspaceDir, excluded, onAdd, 
                     typeDef={currentType.typeDef}
                     tests={candidates}
                     category={currentType.category}
-                    username={username}
                     workspaceDir={workspaceDir}
                     filter={filter}
                     filterOptions={filterOptions}

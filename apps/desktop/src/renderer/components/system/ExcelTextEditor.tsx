@@ -22,6 +22,7 @@ export function ExcelTextEditor({
   onCommit,
   onCancel,
   members,
+  onTab,
 }: {
   initialValue: string
   multiline: boolean
@@ -31,6 +32,8 @@ export function ExcelTextEditor({
   onCancel: () => void
   /** GH45 S4 — membres proposés (champ `user`). */
   members?: ForgeMember[]
+  /** GH389 — Tab / Maj+Tab : valide puis passe à la cellule suivante / précédente (grilles). */
+  onTab?: (shift: boolean) => void
 }) {
   const [draft, setDraft] = useState(initialValue)
   const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null)
@@ -70,6 +73,11 @@ export function ExcelTextEditor({
       e.preventDefault()
       refocusGrid(ref.current)
       commit()
+    } else if (e.key === 'Tab' && onTab) {
+      e.preventDefault()
+      refocusGrid(ref.current)
+      commit()
+      onTab(e.shiftKey)
     }
   }
 

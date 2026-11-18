@@ -24,12 +24,13 @@ import { useSetTabTitle, useTabs } from '../../contexts/TabsContext'
 import { treeFindNode, treeFlatten, computeSectionNumbers } from '../../hooks/useTreeState'
 import { useSystemObjects } from '../../hooks/useSystemObjects'
 import { useWorkspaceLinks, WorkspaceLinksProvider } from '../../hooks/useWorkspaceLinks'
-import { ExcelView } from './ExcelView'
-import { RowMaxHeightButton, ROW_MAX_LINES_ALL, readExcelRowMaxLines } from './RowMaxHeightButton'
+import { ExcelView, type ExcelExportSource } from './ExcelView'
+import { RowMaxHeightButton, ROW_MAX_LINES_ALL, readExcelRowMaxLines, writeExcelRowMaxLines } from './RowMaxHeightButton'
+import { useGridPrefs } from '../grid/useGridPrefs'
 import { WordView } from './WordView'
 import { EditView } from './EditView'
 import { api } from '../../api'
-import type { FieldVisibilityPatch, FieldVisibilityPref } from '@polenta/api-client'
+import type { FieldVisibilityPatch } from '@polenta/api-client'
 import { RichTextProvider } from '../../contexts/RichTextContext'
 import { ParamRefProvider, useParamResolver } from '../../contexts/ParamRefContext'
 import { useStableCallback } from '../../hooks/useStableCallback'
@@ -38,7 +39,7 @@ import { RichTextToolbar } from './RichTextToolbar'
 import { ViewHeader } from '../layout/ViewHeader'
 import { ExportButton } from '../export/ExportButton'
 import { requirementsExportBaseName, testsExportBaseName } from '../export/exportFilenames'
-import { buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep, type ExtraExportColumns } from '../../lib/exportColumns'
+import { buildDisplayedExportRows, buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep, type ExtraExportColumns } from '../../lib/exportColumns'
 import type { SchemaFieldType } from '@polenta/types'
 import { normalizeObject } from '../../lib/normalizeObject'
 import type { ObjectCategory, ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Issue, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell, SavedViewRef } from '@polenta/types'
@@ -58,6 +59,8 @@ import { notifyTransitionError, notifyTransitionResult } from '../../lib/transit
 import { REFLECTION_COLUMNS, reflectionText, type ReflectionsData } from './ReflectionCell'
 import { registerEditFlusher } from '../../lib/pendingEdits'
 
+/** Défaut des colonnes passé à `useGridPrefs` : la vue système calcule ses colonnes elle-même. */
+const NO_COLUMNS: string[] = []
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status', 'originRuns'])
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -175,11 +178,12 @@ export function SystemView() {
 
 
   // Hauteur max des lignes de la vue tableau (en lignes de texte) — préférence d'affichage
-  // de l'utilisateur, persistée en localStorage, commune à tous les projets.
+  // de l'utilisateur, persistée en localStorage, commune à tous les projets et à toutes les grilles (GH389).
   const [excelRowMaxLines, setExcelRowMaxLines] = useState<number>(readExcelRowMaxLines)
-  useEffect(() => {
-    localStorage.setItem('polenta:excelRowMaxLines', String(excelRowMaxLines))
-  }, [excelRowMaxLines])
+  const changeExcelRowMaxLines = useCallback((value: number) => {
+    setExcelRowMaxLines(value)
+    writeExcelRowMaxLines(value)
+  }, [])
 
   // GH228 — the edit mode itself comes from the URL (SystemViewContext).
   useEffect(() => {
@@ -359,7 +363,10 @@ export function SystemView() {
   // gabarit client choisi, on joint l'arbre complet (dossiers, étapes détaillées) que le rendu
   // Standard n'utilise pas.
   const buildDocumentExportPayload = (format: 'xlsx' | 'docx', templated: boolean) => {
-    const fields = format === 'docx' ? shownFieldsWord : shownFieldsExcel
+    // GH389 (spec §1.10) — export Tableau depuis la Vue Excel : ce qui est affiché (filtres de
+    // colonne et global avec ses options, dossiers, colonnes de lien et Vérification en texte).
+    const excelShown = format === 'xlsx' && viewMode === 'excel' ? excelExportRef.current : null
+    const fields = excelShown ? excelShown.fields : format === 'docx' ? shownFieldsWord : shownFieldsExcel
     // GH70 — une colonne calculée encore en cours de calcul s'exporterait vide.
     if (computed.pending && fields.some(isComputedColumnKey)) throw new Error(t('system.computed.exportPending'))
     // GH210 — reflets exportés avec le texte affiché.
@@ -372,12 +379,17 @@ export function SystemView() {
       : displayObjects
     const extra: ExtraExportColumns = new Map<string, { label: string; type?: SchemaFieldType }>([...computed.exportColumns,
       ['designStatus', { label: t('system.fieldConfig.colDesign') }], ['validationStatus', { label: t('system.fieldConfig.colValidation') }]])
-    const { columns, rows } = buildExportRows(fields, root, exportObjects, sectionNumbers, stepsByObjectId, effectiveType, filter, extra)
+    const shownRows = excelShown?.rows
+    const { columns, rows } = excelShown && shownRows
+      ? buildDisplayedExportRows(fields, shownRows, excelShown.text, excelShown.label, effectiveType, sectionNumbers, extra)
+      : buildExportRows(fields, root, exportObjects, sectionNumbers, stepsByObjectId, effectiveType, filter, extra)
     // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
     const substitute = (values: Record<string, string>[]) => substituteExportParams(values, effectiveType, paramResolver.substitute)
     const payload = { componentLabel: effectiveNode?.label || effectiveNodeId || '', columns, rows: substitute(rows) }
     if (!templated) return payload
-    const outline = buildExportOutline(fields, root, exportObjects, sectionNumbers, stepsByObjectId, filter, effectiveType)
+    // GH34 — gabarit : arbre et colonnes du gabarit inchangés ; depuis la Vue Excel, les éléments affichés.
+    const keep = shownRows ? new Set(shownRows.flatMap(r => (r.kind === 'item' && r.objectId ? [r.objectId] : []))) : undefined
+    const outline = buildExportOutline(fields, root, exportObjects, sectionNumbers, stepsByObjectId, filter, effectiveType, keep)
     const values = substitute(outline.map(e => e.values))
     return { ...payload, outline: outline.map((e, i) => ({ ...e, values: values[i] })) }
   }
@@ -431,6 +443,9 @@ export function SystemView() {
     stepsTimers.current.set(objectId, timer)
   }, [repoPath, qc, effectiveType?.category, effectiveNodeId, effectiveTypeId])
 
+  // GH389 — ce qu'affiche la Vue Excel montée (export Tableau).
+  const excelExportRef = useRef<ExcelExportSource | null>(null)
+
   // Field config
   const [showFieldConfig, setShowFieldConfig] = useState(false)
   const [visibleFieldsExcel, setVisibleFieldsExcel] = useState<string[]>(['section', 'name', 'id', 'status'])
@@ -445,8 +460,6 @@ export function SystemView() {
   // persistés avec les colonnes : vivaient en état local des vues, perdus à chaque démontage.
   const [collapsedFoldersExcel, setCollapsedFoldersExcel] = useState<string[]>([])
   const [collapsedFoldersWord, setCollapsedFoldersWord] = useState<string[]>([])
-  const [freezeColCountExcel, setFreezeColCountExcel] = useState(0)
-  const [colWidthsExcel, setColWidthsExcel] = useState<Record<string, number>>({})
   // T162 — miroir synchrone de l'objet de pref complet, pour éviter qu'un enregistrement
   // n'écrase un champ voisin avec une valeur d'état périmée (closures) quand deux réglages
   // changent coup sur coup (ex. « Réinitialiser » = colonnes + titres en deux appels).
@@ -678,11 +691,8 @@ export function SystemView() {
     setShowFoldersWord(showFoldersWordNext)
     const collapsedFoldersExcelNext = savedPrefs?.collapsedFoldersExcel ?? []
     const collapsedFoldersWordNext = savedPrefs?.collapsedFoldersWord ?? []
-    const freezeColCountExcelNext = savedPrefs?.freezeColCountExcel ?? 0
     setCollapsedFoldersExcel(collapsedFoldersExcelNext)
     setCollapsedFoldersWord(collapsedFoldersWordNext)
-    setFreezeColCountExcel(freezeColCountExcelNext)
-    setColWidthsExcel(savedPrefs?.colWidthsExcel ?? {})
   }
 
   const autoSaveMutation = useMutation({
@@ -941,30 +951,20 @@ export function SystemView() {
     return true
   }, [editingObjectId, editingNodeId, editingTreeNode, effectiveType, repoPath, objectData, effectiveNodeId, effectiveTypeId, qc, root, setRoot, invalidateCandidateObjects])
 
-  const savePrefsMutation = useMutation({
-    mutationFn: async (patch: FieldVisibilityPatch) => {
-      if (!repoPath || !username || !typeKey) return
-      await api.pref.setFieldVisibility(repoPath, username, typeKey, patch)
-      return patch
-    },
-    // Sans ceci, la query ['pref-visibility', ...] garde en cache la valeur d'avant
-    // modification (staleTime 60s) : un aller-retour de vue dans ce délai fait rejouer
-    // le useEffect ci-dessus avec l'ancien savedPrefs et écrase silencieusement le choix
-    // de visibilité qu'on vient pourtant d'enregistrer sur disque. GH176 — fusionné dans
-    // l'entrée en cache, partagée avec le sélecteur de tests (`picker`…), sans la remplacer.
-    onSuccess: (patch) => {
-      if (!patch) return
-      qc.setQueryData<FieldVisibilityPref | null>(['pref-visibility', repoPath, username, typeKey],
-        prev => ({ ...prev, ...patch }) as FieldVisibilityPref)
-    },
-  })
+  // GH389 — écriture des préférences du type par la brique commune (`useGridPrefs`) : écriture
+  // partielle, appliquée d'abord à l'entrée en cache (partagée avec le sélecteur de tests GH176) puis
+  // relue — sans quoi un aller-retour de vue rejouerait l'ancienne valeur. Largeurs (GH288) et colonnes
+  // figées (T151) de la vue Tableau sont lues dans cette entrée (clés `colWidthsExcel`,
+  // `freezeColCountExcel`).
+  const typeGridPrefs = useGridPrefs(useMemo(() => ({ repoPath, prefKey: typeKey ?? '', view: 'excel', defaults: NO_COLUMNS }), [repoPath, typeKey]))
+  const { patch: savePrefsAsync, widths: colWidthsExcel, freezeCount: freezeColCountExcel } = typeGridPrefs
 
   // T162 — un seul objet de pref porte les colonnes des 3 vues + les booléens « titres de
   // dossiers ». GH176 — chaque handler n'envoie que sa clé : le main fusionne dans l'entrée
   // (plus besoin de renvoyer l'objet complet, qui effaçait les clés écrites ailleurs).
   const persistPrefs = useCallback((override: FieldVisibilityPatch) => {
-    savePrefsMutation.mutate(override)
-  }, [savePrefsMutation])
+    void savePrefsAsync(override)
+  }, [savePrefsAsync])
 
   const handleChangeExcel = useCallback((fields: string[]) => {
     setVisibleFieldsExcel(fields)
@@ -1024,16 +1024,9 @@ export function SystemView() {
     persistPrefs({ collapsedFoldersWord: ids })
   }, [persistPrefs])
 
-  const handleFreezeColCountExcelChange = useCallback((count: number) => {
-    setFreezeColCountExcel(count)
-    persistPrefs({ freezeColCountExcel: count })
-  }, [persistPrefs])
-
+  const { setFreezeCount: handleFreezeColCountExcelChange } = typeGridPrefs
   // GH288 — hors des vues enregistrées (GH203) : redimensionner ne marque pas la vue « modifiée ».
-  const handleColWidthsExcelChange = useCallback((widths: Record<string, number>) => {
-    setColWidthsExcel(widths)
-    persistPrefs({ colWidthsExcel: widths })
-  }, [persistPrefs])
+  const { setWidths: handleColWidthsExcelChange } = typeGridPrefs
 
   // GH203 — vues enregistrées : la mise en page courante, copiée depuis ou vers une vue.
   const currentLayout = useMemo<ViewLayout>(() => ({
@@ -1049,12 +1042,11 @@ export function SystemView() {
     setVisibleFieldsPopup(layout.popup)
     setShowFoldersExcel(layout.showFoldersExcel)
     setShowFoldersWord(layout.showFoldersWord)
-    setFreezeColCountExcel(layout.freezeColCountExcel)
+    // Colonnes figées : lues dans l'entrée en cache, mise à jour par l'écriture ci-dessous.
     persistPrefs({ ...layoutPatch(settings), activeView })
   }, [resolveSavedLayout, persistPrefs])
   const isSavedViewModified = useCallback((settings: Record<string, unknown>) =>
     !sameLayout(currentLayout, resolveSavedLayout(settings)), [currentLayout, resolveSavedLayout])
-  const { mutateAsync: savePrefsAsync } = savePrefsMutation
   const handleActiveViewChange = useCallback(async (activeView: SavedViewRef | null) => {
     await savePrefsAsync({ activeView })
   }, [savePrefsAsync])
@@ -1251,7 +1243,7 @@ export function SystemView() {
 
             {/* Hauteur max des lignes — vue tableau uniquement */}
             {effectiveType?.category !== 'campaign' && viewMode === 'excel' && (
-              <RowMaxHeightButton value={excelRowMaxLines} onChange={setExcelRowMaxLines} />
+              <RowMaxHeightButton value={excelRowMaxLines} onChange={changeExcelRowMaxLines} />
             )}
 
             {/* View mode selector — hidden for campaign types */}
@@ -1366,6 +1358,7 @@ export function SystemView() {
             onFreezeColCountChange={stableFreezeColCountExcelChange}
             colWidths={colWidthsExcel}
             onColWidthsChange={stableColWidthsExcelChange}
+            exportRef={excelExportRef}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'word' && viewReady && (

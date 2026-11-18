@@ -19,8 +19,8 @@ export function useHasIssueType(repoPath: string): boolean {
 export type IssueProposalOrigin =
   /** `requirementId` : exigence de l'instance exécutée, le cas échéant. */
   | { kind: 'run'; runId: string; testId: string; requirementId?: string }
-  /** `ref` : `<validation>/<exigence>`. */
-  | { kind: 'decision'; ref: string; requirementId: string; decisionLabel: string }
+  /** Décisions d'une validation (GH389 : une ou plusieurs, décision en lot) ; `ref` : `<validation>/<exigence>`. */
+  | { kind: 'decision'; refs: { ref: string; requirementId: string }[]; decisionLabel: string }
 
 /**
  * GH244 §5 — proposition après une exécution en échec : créer une issue (pré-remplie), lier à une issue
@@ -33,7 +33,8 @@ export function IssueProposalDialog({ repoPath, workspaceDir, origin, onClose }:
   onClose: () => void
 }) {
   const testId = origin.kind === 'run' ? origin.testId : ''
-  const requirementId = origin.requirementId
+  const requirementId = origin.kind === 'run' ? origin.requirementId : undefined
+  const decisionRefs = origin.kind === 'decision' ? origin.refs : []
   const { t } = useTranslation()
   const qc = useQueryClient()
   const { data: schema } = useProjectSchema(repoPath)
@@ -50,12 +51,12 @@ export function IssueProposalDialog({ repoPath, workspaceDir, origin, onClose }:
   // Exigences du test (celle de l'instance si l'exécution en porte une), du composant seulement.
   const requirements = useMemo(() => {
     const linked = new Set(origin.kind === 'decision'
-      ? [origin.requirementId]
+      ? origin.refs.map(r => r.requirementId)
       : links.flatMap(l => (l.sourceId === testId ? [l.targetId] : l.targetId === testId ? [l.sourceId] : [])))
     return objects.filter(o => o.category === 'requirement' && linked.has(o.id) && ownReqTypes.has(o.objectTypeRef)
       && (!requirementId || o.id === requirementId) && o.repoPath === repoPath)
   }, [links, objects, testId, requirementId, ownReqTypes, repoPath, origin])
-  const sourceId = origin.kind === 'run' ? origin.testId : origin.requirementId
+  const sourceId = origin.kind === 'run' ? origin.testId : decisionRefs.length === 1 ? decisionRefs[0].requirementId : ''
   const sourceTitle = objects.find(o => o.id === sourceId)?.title ?? ''
 
   const [mode, setMode] = useState<'create' | 'link'>('create')
@@ -64,7 +65,9 @@ export function IssueProposalDialog({ repoPath, workspaceDir, origin, onClose }:
   const [title, setTitle] = useState<string | null>(null)
   const shownTitle = title ?? (origin.kind === 'run'
     ? t('issues.proposal.defaultTitle', { id: testId, title: sourceTitle })
-    : t('issues.proposal.decisionDefaultTitle', { decision: origin.decisionLabel, id: sourceId, title: sourceTitle }))
+    : decisionRefs.length === 1
+      ? t('issues.proposal.decisionDefaultTitle', { decision: origin.decisionLabel, id: sourceId, title: sourceTitle })
+      : t('issues.proposal.decisionDefaultTitleMany', { decision: origin.decisionLabel, count: decisionRefs.length }))
   const [unchecked, setUnchecked] = useState<Set<string>>(new Set())
   const [existing, setExisting] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -81,14 +84,18 @@ export function IssueProposalDialog({ repoPath, workspaceDir, origin, onClose }:
     setSaving(true)
     setError(null)
     try {
-      const issueId = mode === 'link'
-        ? (origin.kind === 'run'
-          ? await api.issues.addRun(repoPath, existing, origin.runId, workspaceDir)
-          : await api.issues.addDecision(repoPath, existing, origin.ref, workspaceDir)).id
-        : created.current ?? (await api.issues.create(repoPath, {
+      let issueId: string
+      if (mode === 'link') {
+        if (origin.kind === 'run') await api.issues.addRun(repoPath, existing, origin.runId, workspaceDir)
+        // Une décision déjà présente n'est pas réécrite : la relance après un échec reprend où elle s'est arrêtée.
+        else for (const r of origin.refs) await api.issues.addDecision(repoPath, existing, r.ref, workspaceDir)
+        issueId = existing
+      } else {
+        issueId = created.current ?? (await api.issues.create(repoPath, {
           objectTypeRef: typeRef!, title: shownTitle.trim(), fields: {},
-          origin: origin.kind === 'run' ? { runs: [origin.runId] } : { decisions: [origin.ref] },
+          origin: origin.kind === 'run' ? { runs: [origin.runId] } : { decisions: origin.refs.map(r => r.ref) },
         }, workspaceDir)).id
+      }
       if (mode === 'create') created.current = issueId
       const already = new Set(links.filter(l => l.type === ISSUE_IMPACT_LINK && (l.sourceId === issueId || l.targetId === issueId))
         .flatMap(l => [l.sourceId, l.targetId]))
@@ -117,7 +124,9 @@ export function IssueProposalDialog({ repoPath, workspaceDir, origin, onClose }:
           <h2 className="text-sm font-semibold text-ink">{origin.kind === 'run' ? t('issues.proposal.title') : t('issues.proposal.decisionTitle')}</h2>
           <p className="text-xs text-ink-3">{origin.kind === 'run'
             ? t('issues.proposal.hint', { id: testId })
-            : t('issues.proposal.decisionHint', { id: sourceId, decision: origin.decisionLabel })}</p>
+            : decisionRefs.length === 1
+              ? t('issues.proposal.decisionHint', { id: sourceId, decision: origin.decisionLabel })
+              : t('issues.proposal.decisionHintMany', { count: decisionRefs.length, decision: origin.decisionLabel })}</p>
         </div>
         <div className="flex gap-3 text-xs">
           <label className="flex items-center gap-1.5 text-ink-2">

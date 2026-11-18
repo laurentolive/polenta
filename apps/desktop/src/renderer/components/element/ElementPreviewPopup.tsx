@@ -82,6 +82,8 @@ function PreviewBody({ target }: { target: ElementRef }) {
   const { t } = useTranslation()
   const nav = useElementNav()!
   const { repoPath, id, category } = target
+  // GH389 — version, validation : en-tête seul (ID, titre, état), rien à relire.
+  const headerOnly = category === 'version' || category === 'validation'
   const { data: obj, isPending, isError } = useQuery({
     queryKey: ['element-preview', repoPath, id],
     queryFn: (): Promise<AnyObject> =>
@@ -90,12 +92,17 @@ function PreviewBody({ target }: { target: ElementRef }) {
         : category === 'issue' ? api.issues.get(repoPath, id)
         : api.requirements.get(repoPath, id),
     staleTime: 5_000,
+    enabled: !headerOnly,
   })
   const { data: schema } = useProjectSchema(repoPath)
   const [nodeName, typeName] = target.objectTypeRef.split('::')
   const typeDef = schema ? findSystemNode(schema.nodes, nodeName)?.objectTypes?.find(t => t.name === typeName) : undefined
-  const fields = usePopupFields(repoPath, target.objectTypeRef, category !== 'campaign')
-  const statusLabel = typeDef?.statuses?.find(s => s.name === target.status)?.label ?? target.status
+  const fields = usePopupFields(repoPath, target.objectTypeRef, category !== 'campaign' && !headerOnly)
+  const statusLabel = category === 'version' ? t(`versions.state.${target.status}`)
+    : category === 'validation' ? t(`validation.state.${target.status}`)
+    : typeDef?.statuses?.find(s => s.name === target.status)?.label ?? target.status
+  const typeLabel = category === 'version' ? t('validation.version') : category === 'validation' ? t('validation.title')
+    : typeDef?.label ?? typeDef?.name ?? target.objectTypeRef
   const otherRepo = !!target.repoLabel && target.repoPath !== nav.workspace.rootRepoPath
 
   return (
@@ -104,13 +111,13 @@ function PreviewBody({ target }: { target: ElementRef }) {
         <span className={`inline-block w-2 h-2 rounded-full ${CATEGORY_CHART_BG[category]}`} style={typeDef?.color ? { background: typeDef.color } : undefined} />
         <span className="font-mono font-semibold" data-testid="element-preview-id">{id}</span>
         {target.displayId !== id && <span className="font-mono text-ink-2">{target.displayId}</span>}
-        <span className="text-ink-3">{typeDef?.label ?? typeDef?.name ?? target.objectTypeRef}</span>
+        <span className="text-ink-3">{typeLabel}</span>
         <span className="px-1 rounded bg-status-neutral-bg text-status-neutral">{statusLabel}</span>
         {otherRepo && <span className="text-[10px] text-ink-3 border border-edge rounded px-1">{target.repoLabel}</span>}
         <RevalidationFlag show={!!(obj as Requirement | undefined)?.needsRevalidation} />
       </div>
       <p className="text-sm font-medium leading-snug" data-testid="element-preview-title">{obj?.title ?? target.title}</p>
-      {isPending && <div className="space-y-1" aria-busy="true"><div className="h-2 bg-hover rounded w-3/4" /><div className="h-2 bg-hover rounded w-1/2" /></div>}
+      {isPending && !headerOnly && <div className="space-y-1" aria-busy="true"><div className="h-2 bg-hover rounded w-3/4" /><div className="h-2 bg-hover rounded w-1/2" /></div>}
       {isError && <p className="text-xs text-status-danger">{t('system.preview.notFound')}</p>}
       {obj && category === 'campaign' && (
         <p className="text-xs text-ink-2">{t('system.preview.campaignTests', { count: (obj as TestCampaign).testCaseIds?.length ?? 0 })}</p>

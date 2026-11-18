@@ -1429,7 +1429,12 @@ validation — pas l'état de la version (GH306). Routes
 `/validations` et `/validation/$validationId` : en-tête (statut, version, reste à décider, validations des
 composants, champs, Signer, Annuler, Supprimer), grille d'une ligne par exigence (décision et commentaire en écriture,
 colonnes au choix, filtres, vues enregistrées), dépliée sur les `entryFields`, les tests liés et leurs exécutions
-(mentions : autre version, version non renseignée, a évolué, après la signature). Les exécutions lues sont celles du
+(mentions : autre version, version non renseignée, a évolué, après la signature). GH389 : l'en-tête se replie par
+un bouton de la barre de titre (statut et reste à décider passent dans le sous-titre ; état par poste,
+`localStorage`), la grille défile seule et suit le contrat des grilles communes (SPEC-SYSTEM-VIEW § Grilles
+communes) : filtre par colonne, panneau 👁 (groupes Décision / Exigence), largeurs, gel, ordre, clavier,
+décision / commentaire édités dans la cellule et en lot sur la sélection, Confirmer / Rejeter la sélection,
+export de ce qui est affiché, liens d'élément (exigence, versions, validations des composants). Les exécutions lues sont celles du
 repo de la validation : un test d'un autre composant s'affiche « Exécutions dans un autre composant ».
 
 ### 19.3 Main frame — table des routes
@@ -2077,7 +2082,9 @@ Toutes les vues principales (routes + `SystemView`) partagent un unique composan
   retirés) — tout nouvel export de vue doit passer par ce mécanisme partagé (canal IPC générique
   `export:save`, `ExportService` côté main process), pas par un bouton/canal spécifique à la vue.
   Pour les kinds/formats acceptant un gabarit client (GH34, `renderer/lib/exportTemplates.ts`), le
-  popover affiche au-dessus des formats une liste « Gabarit Word » — cf. §19.15a.
+  popover affiche au-dessus des formats une liste « Gabarit Word » — cf. §19.15a. GH389 : kind
+  `table` (xlsx, `TableExportPayload`, générateur `table.xlsx`) — export de ce qu'affiche une grille
+  commune, depuis sa barre d'outils (SPEC-SYSTEM-VIEW § Grilles communes).
 
 #### 19.15a Export à partir d'un gabarit client (GH34)
 

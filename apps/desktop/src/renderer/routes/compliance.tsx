@@ -158,7 +158,7 @@ function CompliancePage() {
                   {t('compliancePage.matrixSummaryComp', { count: currentMatrix.components.length })}
                 </span>
               </div>
-              <ComplianceMatrixComponent matrix={currentMatrix} />
+              <ComplianceMatrixComponent key={currentMatrix.interfaceName} matrix={currentMatrix} repoPath={repoPath} />
             </div>
           )}
         </div>

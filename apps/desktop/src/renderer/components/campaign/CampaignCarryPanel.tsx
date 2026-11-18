@@ -1,12 +1,22 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ElementLink } from '../element/ElementLink'
+import { ElementLinks } from '../element/ElementLinks'
+import { DataGrid } from '../grid/DataGrid'
+import type { GridColumn } from '../grid/gridTypes'
+import { useGridScrollKey } from '../grid/useGridScrollKey'
 import type { ProjectSchema, TestCampaign, TestCase, TestRunStatus } from '@polenta/types'
 import { CARRY_STATUSES, versionChanged, type CarryRow } from '../../lib/carryOver'
-import { RUN_CLASS, STATUS_CLASS as CAMPAIGN_STATUS_CLASS } from '../system/CampaignListView'
+import { CAMPAIGN_STATUS_CLASS, RUN_STATUS_CLASS, RUN_STATUS_LABEL_KEY } from '../../lib/runStatus'
 import { isTestApproved } from '../../hooks/useProjectSchema'
 import { NotApprovedBadge } from './NotApproved'
 import { unapprovedCarriedTest } from '../../lib/campaignApproval'
+
+const DEFAULTS = ['test', 'title', 'requirement', 'params', 'status', 'execution', 'source', 'remark']
+/** Ligne d'une entrée source : une seule ligne par entrée (les doublons sont regroupés par clé). */
+const carryRowId = (r: CarryRow) => `${r.campaignId}/${r.entryId}`
+const isAvailable = (r: CarryRow) => !r.unavailable
+const rowClassName = (r: CarryRow) => (r.unavailable ? 'opacity-50' : undefined)
 
 /**
  * GH64 — onglet « Depuis une campagne » du sélecteur de tests : campagnes source, filtre par statut
@@ -14,6 +24,7 @@ import { unapprovedCarriedTest } from '../../lib/campaignApproval'
  * le calcul des lignes, qui dépend de la résolution des paramètres) vit dans `TestPickerModal`.
  */
 export function CampaignCarryPanel({
+  repoPath,
   campaigns,
   isLoading,
   sources,
@@ -26,6 +37,8 @@ export function CampaignCarryPanel({
   testsById,
   schema,
 }: {
+  /** Repo des préférences de colonnes de la grille (`grid::campaign-carry`). */
+  repoPath: string
   /** Campagnes proposées (sans la cible), plus récente d'abord. */
   campaigns: TestCampaign[]
   isLoading: boolean
@@ -42,16 +55,24 @@ export function CampaignCarryPanel({
 }) {
   const { t } = useTranslation()
   const [filter, setFilter] = useState('')
+  const scrollKey = useGridScrollKey('campaign-carry')
 
-  const shown = useMemo(() => {
+  const rowFilter = useMemo(() => {
     const q = filter.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter(r =>
+    if (!q) return undefined
+    return (r: CarryRow) =>
       [r.testCaseId, testsById.get(r.testCaseId)?.title ?? '', r.requirementId ?? '', r.campaignId]
-        .some(v => v.toLowerCase().includes(q)))
-  }, [rows, filter, testsById])
-  const available = shown.filter(r => !r.unavailable)
-  const allChecked = available.length > 0 && available.every(r => checked.has(r.key))
+        .some(v => v.toLowerCase().includes(q))
+  }, [filter, testsById])
+
+  // Sélection de la grille = ID de ligne (`campagne/entrée`) ; cases du sélecteur = clé de doublon.
+  // Une clé cochée absente des lignes (statut filtré) reste cochée.
+  const selected = useMemo(() => new Set(rows.filter(r => !r.unavailable && checked.has(r.key)).map(carryRowId)), [rows, checked])
+  const changeSelected = (next: Set<string>) => {
+    const keys = new Set([...checked].filter(k => !rows.some(r => r.key === k)))
+    for (const r of rows) if (!r.unavailable && next.has(carryRowId(r))) keys.add(r.key)
+    onCheckedChange(keys)
+  }
 
   const toggle = <T,>(set: Set<T>, value: T): Set<T> => {
     const next = new Set(set)
@@ -60,22 +81,98 @@ export function CampaignCarryPanel({
     return next
   }
 
-  function toggleAll() {
-    const next = new Set(checked)
-    for (const r of available) {
-      if (allChecked) next.delete(r.key)
-      else next.add(r.key)
-    }
-    onCheckedChange(next)
-  }
+  const columns = useMemo<GridColumn<CarryRow>[]>(() => {
+    const unapprovedOf = (r: CarryRow) => unapprovedCarriedTest(testsById.get(r.testCaseId), tc => isTestApproved(tc, schema))
+    const execution = (r: CarryRow) => [r.executedAt?.slice(0, 10), r.executedBy].filter(Boolean).join(' · ')
+    const params = (r: CarryRow) => Object.entries(r.paramValues).filter(([, v]) => v.trim()).map(([k, v]) => `${k}=${v}`).join(', ')
+    const remarkParts = (r: CarryRow) => [
+      r.unavailable ? t(`campaignPage.carry.unavailable.${r.unavailable}`) : '',
+      versionChanged(r) ? t('campaignPage.carry.versionChanged', { from: r.sourceVersion, to: r.liveVersion }) : '',
+    ].filter(Boolean).join(' · ')
+    const remark = (r: CarryRow) => [
+      remarkParts(r),
+      r.otherSources.length > 0 ? t('campaignPage.carry.alsoIn', { ids: r.otherSources.join(', ') }) : '',
+    ].filter(Boolean).join(' · ')
+    return [
+      {
+        key: 'test', label: t('campaignPage.carry.colTest'), locked: true,
+        getText: r => r.testCaseId,
+        render: r => <ElementLink id={r.testCaseId} className="font-mono text-prim" />,
+        elementId: r => r.testCaseId,
+      },
+      {
+        key: 'title', label: t('campaignPage.columns.title'),
+        getText: r => [testsById.get(r.testCaseId)?.title ?? '', unapprovedOf(r) ? t('campaignPage.notApproved') : ''].filter(Boolean).join(' '),
+        render: r => {
+          const unapproved = unapprovedOf(r)
+          return <>{testsById.get(r.testCaseId)?.title ?? ''}{unapproved && <NotApprovedBadge test={unapproved} schema={schema} />}</>
+        },
+      },
+      {
+        key: 'requirement', label: t('campaignPage.carry.colRequirement'),
+        getText: r => r.requirementId ?? '',
+        render: r => r.requirementId && <ElementLink id={r.requirementId} className="font-mono text-prim" />,
+        elementId: r => r.requirementId,
+      },
+      {
+        key: 'params', label: t('campaignPage.carry.colParams'),
+        getText: params,
+        render: r => <span className="font-mono text-[10px] text-ink-3">{params(r)}</span>,
+      },
+      {
+        key: 'status', label: t('campaignPage.carry.colStatus'),
+        getText: r => t(RUN_STATUS_LABEL_KEY[r.status]),
+        render: r => <span className={`px-1.5 py-0.5 rounded-full text-[10px] whitespace-nowrap ${RUN_STATUS_CLASS[r.status]}`}>{t(RUN_STATUS_LABEL_KEY[r.status])}</span>,
+      },
+      {
+        key: 'execution', label: t('campaignPage.carry.colExecution'),
+        getText: execution,
+        render: r => <span className="text-[10px] text-ink-3 whitespace-nowrap">{execution(r)}</span>,
+      },
+      {
+        key: 'source', label: t('campaignPage.carry.colSource'),
+        getText: r => r.campaignId,
+        render: r => <ElementLink id={r.campaignId} className="font-mono text-prim" />,
+        elementId: r => r.campaignId,
+      },
+      {
+        key: 'remark', label: t('campaignPage.carry.colRemark'),
+        getText: remark,
+        render: r => {
+          // « aussi dans » : ID des autres campagnes source en liens d'élément.
+          const [before, after = ''] = t('campaignPage.carry.alsoIn', { ids: '\u0000' }).split('\u0000')
+          const parts = remarkParts(r)
+          return (
+            <span className={`text-[10px] ${r.unavailable ? 'text-ink-3' : 'text-status-warning'}`}>
+              {parts}
+              {r.otherSources.length > 0 && <>{parts && ' · '}{before}<ElementLinks ids={r.otherSources} className="font-mono" />{after}</>}
+            </span>
+          )
+        },
+      },
+    ]
+  }, [t, testsById, schema])
+  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::campaign-carry', view: 'columns', defaults: DEFAULTS }), [repoPath])
 
-  function remark(r: CarryRow): string {
-    const parts: string[] = []
-    if (r.unavailable) parts.push(t(`campaignPage.carry.unavailable.${r.unavailable}`))
-    if (versionChanged(r)) parts.push(t('campaignPage.carry.versionChanged', { from: r.sourceVersion, to: r.liveVersion }))
-    if (r.otherSources.length > 0) parts.push(t('campaignPage.carry.alsoIn', { ids: r.otherSources.join(', ') }))
-    return parts.join(' · ')
-  }
+  const statusBar = (
+    <>
+      <span className="text-xs text-ink-2">{t('campaignPage.carry.statusFilter')}</span>
+      {CARRY_STATUSES.map(s => (
+        <label key={s} className="flex items-center gap-1 text-xs text-ink-2">
+          <input type="checkbox" checked={statuses.has(s)} onChange={() => onStatusesChange(toggle(statuses, s))} />
+          {t(`campaignPage.runStatus.${s.toLowerCase()}`)}
+        </label>
+      ))}
+      <input
+        type="text"
+        value={filter}
+        onChange={e => setFilter(e.target.value)}
+        placeholder={t('common.filterPlaceholder')}
+        className="input-field text-xs min-w-[10rem]"
+        data-testid="carry-filter"
+      />
+    </>
+  )
 
   return (
     <div className="flex-1 min-h-0 flex">
@@ -111,7 +208,7 @@ export function CampaignCarryPanel({
                   <span className="flex gap-1 mt-0.5 text-[10px]">
                     {CARRY_STATUSES.map(s => {
                       const n = c.runs.filter(r => r.status === s).length
-                      return n ? <span key={s} className={`px-1.5 rounded-full ${RUN_CLASS[s] ?? ''}`}>{n}</span> : null
+                      return n ? <span key={s} className={`px-1.5 rounded-full ${RUN_STATUS_CLASS[s]}`}>{n}</span> : null
                     })}
                   </span>
                 )}
@@ -121,85 +218,33 @@ export function CampaignCarryPanel({
         </div>
       </div>
 
-      {/* Entrées */}
-      <div className="flex-1 min-w-0 flex flex-col min-h-0">
-        <div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b border-edge">
-          <span className="text-xs text-ink-2">{t('campaignPage.carry.statusFilter')}</span>
-          {CARRY_STATUSES.map(s => (
-            <label key={s} className="flex items-center gap-1 text-xs text-ink-2">
-              <input type="checkbox" checked={statuses.has(s)} onChange={() => onStatusesChange(toggle(statuses, s))} />
-              {t(`campaignPage.runStatus.${s.toLowerCase()}`)}
-            </label>
-          ))}
-          <input
-            type="text"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            placeholder={t('common.filterPlaceholder')}
-            className="input-field text-xs flex-1 min-w-[10rem]"
-          />
-        </div>
-        <div className="flex-1 min-h-0 overflow-auto">
-          {shown.length === 0 ? (
+      {/* Entrées — GH389 §4 : grille commune à cases ; le filtre texte de l'écran reste. */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-0 px-4 py-2">
+        {rows.length === 0 ? (
+          <>
+            {statusBar}
             <p className="p-4 text-xs text-ink-3 italic">
               {sources.size === 0 ? t('campaignPage.carry.pickSource') : t('campaignPage.carry.noEntry')}
             </p>
-          ) : (
-            <table className="w-full text-xs" data-testid="carry-rows">
-              <thead className="sticky top-0 bg-surface">
-                <tr className="text-left text-ink-3 border-b border-edge">
-                  <th className="px-3 py-1.5 w-8">
-                    <input type="checkbox" checked={allChecked} disabled={available.length === 0} onChange={toggleAll} aria-label={t('campaignPage.carry.checkAll')} />
-                  </th>
-                  <th className="px-2 py-1.5 font-medium">{t('campaignPage.carry.colTest')}</th>
-                  <th className="px-2 py-1.5 font-medium">{t('campaignPage.carry.colRequirement')}</th>
-                  <th className="px-2 py-1.5 font-medium">{t('campaignPage.carry.colParams')}</th>
-                  <th className="px-2 py-1.5 font-medium">{t('campaignPage.carry.colStatus')}</th>
-                  <th className="px-2 py-1.5 font-medium">{t('campaignPage.carry.colExecution')}</th>
-                  <th className="px-2 py-1.5 font-medium">{t('campaignPage.carry.colSource')}</th>
-                  <th className="px-2 py-1.5 font-medium">{t('campaignPage.carry.colRemark')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-edge">
-                {shown.map(r => {
-                  const values = Object.entries(r.paramValues).filter(([, v]) => v.trim())
-                  const live = testsById.get(r.testCaseId)
-                  const unapproved = unapprovedCarriedTest(live, tc => isTestApproved(tc, schema))
-                  return (
-                    <tr key={r.key} className={r.unavailable ? 'opacity-50' : 'hover:bg-hover/50'} data-entry={`${r.campaignId}/${r.entryId}`}>
-                      <td className="px-3 py-1.5">
-                        <input
-                          type="checkbox"
-                          disabled={!!r.unavailable}
-                          checked={!r.unavailable && checked.has(r.key)}
-                          onChange={() => onCheckedChange(toggle(checked, r.key))}
-                          aria-label={`${r.campaignId}/${r.entryId}`}
-                        />
-                      </td>
-                      <td className="px-2 py-1.5 max-w-[18rem]">
-                        <span className="font-mono text-ink-3">{r.testCaseId}</span>
-                        <span className="ml-2 text-ink truncate">{live?.title ?? ''}</span>
-                        {unapproved && <NotApprovedBadge test={unapproved} schema={schema} />}
-                      </td>
-                      <td className="px-2 py-1.5 font-mono text-ink-3">{r.requirementId ?? ''}</td>
-                      <td className="px-2 py-1.5 font-mono text-[10px] text-ink-3 max-w-[12rem] truncate">
-                        {values.map(([k, v]) => `${k}=${v}`).join(', ')}
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${RUN_CLASS[r.status] ?? ''}`}>{t(`campaignPage.runStatus.${r.status.toLowerCase()}`)}</span>
-                      </td>
-                      <td className="px-2 py-1.5 text-[10px] text-ink-3 whitespace-nowrap">
-                        {[r.executedAt?.slice(0, 10), r.executedBy].filter(Boolean).join(' · ')}
-                      </td>
-                      <td className="px-2 py-1.5 font-mono text-ink-3"><ElementLink id={r.campaignId} /></td>
-                      <td className={`px-2 py-1.5 text-[10px] ${r.unavailable ? 'text-ink-3' : 'text-status-warning'}`}>{remark(r)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+          </>
+        ) : (
+          <div className="flex flex-col flex-1 min-h-0" data-testid="carry-rows">
+            <DataGrid
+              gridId="campaign-carry"
+              title={t('campaignPage.carry.gridTitle')}
+              rows={rows}
+              getRowId={carryRowId}
+              columns={columns}
+              prefs={prefs}
+              toolbarStart={statusBar}
+              rowFilter={rowFilter}
+              selection={{ mode: 'checkbox', selected, onChange: changeSelected, isSelectable: isAvailable }}
+              rowClassName={rowClassName}
+              scrollMemoryKey={scrollKey}
+              layer="modal"
+            />
+          </div>
+        )}
       </div>
     </div>
   )

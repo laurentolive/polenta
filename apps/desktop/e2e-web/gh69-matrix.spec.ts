@@ -77,7 +77,8 @@ test('N10 — clic sur une cellule → détail de l\'entrée, puis résultat d\'
   const rows = dialog().locator('tbody tr')
   await expect(rows).toHaveCount(1)
   await expect(rows).toContainText(`${first.id}/${first.runs[1].entryId}`)
-  await rows.click()
+  // GH389 — grille commune : clic = sélection, double-clic = ouverture de la ligne.
+  await rows.dblclick()
   await expect(s.page).toHaveURL(new RegExp(`/campaign/${first.id}/run/${first.runs[1].entryId}`))
 })
 

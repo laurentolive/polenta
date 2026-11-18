@@ -529,6 +529,10 @@
         "legacy-sql": "SQL query from before GH74, no longer supported: rewrite it as a script or delete it.",
         "newer-format": "Created by a newer version of Polenta: read-only."
       }
+    },
+    "campaignsNav": {
+      "campaigns": "Campaigns",
+      "executions": "Executions"
     }
   },
   "schema": {
@@ -2986,5 +2990,19 @@
     "rejectSelection": "Reject selection",
     "collapseHeader": "Collapse header",
     "expandHeader": "Expand header"
+  },
+  "executionsView": {
+    "title": "Executions",
+    "noTestType": "No test type in this component.",
+    "panelHint": "Executions of every test of the selected type. To filter a campaign: Campaign column.",
+    "fromCampaign": "View executions",
+    "steps": "Steps",
+    "documentEmpty": "No execution to display.",
+    "config": {
+      "excel": "Table",
+      "word": "Document",
+      "popup": "Popup"
+    },
+    "stepComment": "Comment"
   }
 }

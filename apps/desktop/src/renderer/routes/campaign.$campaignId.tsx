@@ -31,6 +31,8 @@ import { useModalHotkeys } from '../hooks/useModalHotkeys'
 import { isTestRunStatus } from '../lib/runStatus'
 import type { TestRunStatus, TestCase, ReqInstanceSelection, ParamResolutionPreview, CarriedEntrySelection } from '@polenta/types'
 import { HistorySection } from '../components/history/HistorySection'
+import { useSystemView } from '../contexts/SystemViewContext'
+import { EXECUTIONS_PATH } from '../lib/executionsRoute'
 
 export const Route = createFileRoute('/campaign/$campaignId')({
   component: CampaignDetailPage,
@@ -93,6 +95,7 @@ function CampaignDetailPage() {
   )
 
   const { data: schema } = useProjectSchema(repoPath)
+  const { repoNameOf } = useSystemView()
   // GH64 — éligibilité d'un test reporté : même règle que l'ajout normal. GH68 — tout statut est
   // accepté à l'ajout (planification en amont) ; le statut est signalé, pas filtré.
   const isCarryEligible = useCallback((): CarryEligibility => 'ok', [])
@@ -204,6 +207,15 @@ function CampaignDetailPage() {
 
   const testMap = new Map(tests.map(t => [t.id, t]))
   const isActive = campaign.status === 'planned' || campaign.status === 'in_progress'
+  // GH400 — sans test (ou test introuvable) : type par défaut de la vue.
+  const openExecutions = () => {
+    const firstTest = campaign.testCaseIds.map(id => testMap.get(id)).find(Boolean)
+    const [node, type] = firstTest?.objectTypeRef.split('::') ?? []
+    void navigate({
+      to: EXECUTIONS_PATH,
+      search: { projectId, repo: repoNameOf(repoPath), node, type, campaign: campaign.id },
+    } as never)
+  }
   const includedIds = new Set(campaign.testCaseIds)
   // T171 — références à saisir par test, selon la résolution prévisionnelle (base à la source de
   // la campagne). Seules elles comptent pour la complétude et pour la règle d'instance unique.
@@ -426,6 +438,15 @@ function CampaignDetailPage() {
       <UnresolvedParamsBanner runs={campaign.runs} />
       {/* GH68 — instances à exécuter dont le test n'est pas approuvé. */}
       <NotApprovedRunsBanner count={unapprovedPendingRuns(campaign.runs, testMap, isActive, isApproved).length} />
+
+      {/* GH400 — toutes les exécutions de la campagne (remplacées, retirées comprises) : vue Exécutions,
+          colonne Campagne filtrée sur elle, type du premier test de la campagne. */}
+      <div className="flex justify-end mb-1">
+        <button type="button" onClick={openExecutions} data-testid="campaign-view-executions"
+          className="text-xs text-status-info hover:underline">
+          {t('executionsView.fromCampaign')}
+        </button>
+      </div>
 
       {/* GH389 §4 — entrées de la campagne : grille commune (pastilles de statut, liens, actions). */}
       {campaign.runs.length === 0 ? (

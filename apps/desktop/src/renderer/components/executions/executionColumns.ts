@@ -56,11 +56,31 @@ export function availableColumns(history: ExecutionHistory, withTestColumn: bool
   ]
 }
 
+const defaultVisibleRunFields = (history: ExecutionHistory) =>
+  unionRunFields(history.runFieldDefs, 'runFields').filter(f => f.defaultVisible).map(f => `run:${f.name}`)
+
 /** Défaut (Q2) : verdict, date, testeur, campagne, entrée (+ test pour une exigence) et champs `defaultVisible`. */
 export function defaultExecutionColumns(history: ExecutionHistory, withTestColumn: boolean): string[] {
   return [
     ...(withTestColumn ? ['test'] : []),
     'verdict', 'date', 'tester', 'testedVersion', 'campaign', 'entry',
-    ...unionRunFields(history.runFieldDefs, 'runFields').filter(f => f.defaultVisible).map(f => `run:${f.name}`),
+    ...defaultVisibleRunFields(history),
   ]
+}
+
+// GH400 — vue Exécutions (specs/GH400-design.md §6, §8).
+
+/** Pseudo-colonne du Document : tableau des étapes de la fiche. */
+export const STEPS_KEY = 'steps'
+/** En-tête d'une fiche du Document : jamais proposé dans l'onglet Document. */
+export const DOC_HEADER_KEYS: readonly string[] = ['test', 'campaign', 'entry', 'verdict', 'date', 'tester']
+
+/** Tableau de la vue (préférence `runExcel`). */
+export function defaultRunExcelColumns(history: ExecutionHistory): string[] {
+  return ['test', 'entryRequirement', 'campaign', 'entry', 'verdict', 'date', 'tester', 'testedVersion', ...defaultVisibleRunFields(history)]
+}
+
+/** Document de la vue (préférence `runWord`). */
+export function defaultRunWordColumns(history: ExecutionHistory): string[] {
+  return ['duration', 'testedVersion', 'origin', ...defaultVisibleRunFields(history), STEPS_KEY]
 }

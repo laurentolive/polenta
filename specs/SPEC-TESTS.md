@@ -376,6 +376,9 @@ equipmentUsed:
 > **Historique des exécutions (GH197)** : tous les runs d'un test (ou des tests reliés à une
 > exigence, règle T179) se consultent dans la section « Exécutions » de l'éditeur
 > (SPEC-SYSTEM-VIEW §Vue Édition), avec campagne, entrée, champs d'exécution et étapes.
+> **Vue Exécutions (GH400)** : tous les runs des tests d'un type, toutes campagnes confondues
+> (remplacés, retirés, isolés compris), en Tableau ou en Document, depuis le panneau Campagnes
+> (SPEC-SYSTEM-VIEW § Vue Exécutions).
 
 ### 3.3 Résultats possibles
 

@@ -27,6 +27,7 @@ import { Route as MergeResolveRouteImport } from './routes/merge-resolve'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LocalImpactRouteImport } from './routes/local-impact'
 import { Route as GraphRouteImport } from './routes/graph'
+import { Route as ExecutionsRouteImport } from './routes/executions'
 import { Route as DiffRouteImport } from './routes/diff'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConstellationRouteImport } from './routes/constellation'
@@ -46,6 +47,7 @@ import { Route as ReqReqIdRouteImport } from './routes/req.$reqId'
 import { Route as PrintTestsRouteImport } from './routes/print.tests'
 import { Route as PrintRequirementsRouteImport } from './routes/print.requirements'
 import { Route as PrintQueryResultRouteImport } from './routes/print.query-result'
+import { Route as PrintExecutionsRouteImport } from './routes/print.executions'
 import { Route as PrintDrawioSnapshotRouteImport } from './routes/print.drawio-snapshot'
 import { Route as PrintDashboardRouteImport } from './routes/print.dashboard'
 import { Route as PrintCampaignReportRouteImport } from './routes/print.campaign-report'
@@ -145,6 +147,11 @@ const GraphRoute = GraphRouteImport.update({
   path: '/graph',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ExecutionsRoute = ExecutionsRouteImport.update({
+  id: '/executions',
+  path: '/executions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DiffRoute = DiffRouteImport.update({
   id: '/diff',
   path: '/diff',
@@ -240,6 +247,11 @@ const PrintQueryResultRoute = PrintQueryResultRouteImport.update({
   path: '/print/query-result',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrintExecutionsRoute = PrintExecutionsRouteImport.update({
+  id: '/print/executions',
+  path: '/print/executions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrintDrawioSnapshotRoute = PrintDrawioSnapshotRouteImport.update({
   id: '/print/drawio-snapshot',
   path: '/print/drawio-snapshot',
@@ -293,6 +305,7 @@ export interface FileRoutesByFullPath {
   '/constellation': typeof ConstellationRoute
   '/dashboard': typeof DashboardRoute
   '/diff': typeof DiffRoute
+  '/executions': typeof ExecutionsRoute
   '/graph': typeof GraphRoute
   '/local-impact': typeof LocalImpactRoute
   '/login': typeof LoginRoute
@@ -317,6 +330,7 @@ export interface FileRoutesByFullPath {
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
   '/print/drawio-snapshot': typeof PrintDrawioSnapshotRoute
+  '/print/executions': typeof PrintExecutionsRoute
   '/print/query-result': typeof PrintQueryResultRoute
   '/print/requirements': typeof PrintRequirementsRoute
   '/print/tests': typeof PrintTestsRoute
@@ -340,6 +354,7 @@ export interface FileRoutesByTo {
   '/constellation': typeof ConstellationRoute
   '/dashboard': typeof DashboardRoute
   '/diff': typeof DiffRoute
+  '/executions': typeof ExecutionsRoute
   '/graph': typeof GraphRoute
   '/local-impact': typeof LocalImpactRoute
   '/login': typeof LoginRoute
@@ -364,6 +379,7 @@ export interface FileRoutesByTo {
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
   '/print/drawio-snapshot': typeof PrintDrawioSnapshotRoute
+  '/print/executions': typeof PrintExecutionsRoute
   '/print/query-result': typeof PrintQueryResultRoute
   '/print/requirements': typeof PrintRequirementsRoute
   '/print/tests': typeof PrintTestsRoute
@@ -388,6 +404,7 @@ export interface FileRoutesById {
   '/constellation': typeof ConstellationRoute
   '/dashboard': typeof DashboardRoute
   '/diff': typeof DiffRoute
+  '/executions': typeof ExecutionsRoute
   '/graph': typeof GraphRoute
   '/local-impact': typeof LocalImpactRoute
   '/login': typeof LoginRoute
@@ -412,6 +429,7 @@ export interface FileRoutesById {
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
   '/print/drawio-snapshot': typeof PrintDrawioSnapshotRoute
+  '/print/executions': typeof PrintExecutionsRoute
   '/print/query-result': typeof PrintQueryResultRoute
   '/print/requirements': typeof PrintRequirementsRoute
   '/print/tests': typeof PrintTestsRoute
@@ -437,6 +455,7 @@ export interface FileRouteTypes {
     | '/constellation'
     | '/dashboard'
     | '/diff'
+    | '/executions'
     | '/graph'
     | '/local-impact'
     | '/login'
@@ -461,6 +480,7 @@ export interface FileRouteTypes {
     | '/print/campaign-report'
     | '/print/dashboard'
     | '/print/drawio-snapshot'
+    | '/print/executions'
     | '/print/query-result'
     | '/print/requirements'
     | '/print/tests'
@@ -484,6 +504,7 @@ export interface FileRouteTypes {
     | '/constellation'
     | '/dashboard'
     | '/diff'
+    | '/executions'
     | '/graph'
     | '/local-impact'
     | '/login'
@@ -508,6 +529,7 @@ export interface FileRouteTypes {
     | '/print/campaign-report'
     | '/print/dashboard'
     | '/print/drawio-snapshot'
+    | '/print/executions'
     | '/print/query-result'
     | '/print/requirements'
     | '/print/tests'
@@ -531,6 +553,7 @@ export interface FileRouteTypes {
     | '/constellation'
     | '/dashboard'
     | '/diff'
+    | '/executions'
     | '/graph'
     | '/local-impact'
     | '/login'
@@ -555,6 +578,7 @@ export interface FileRouteTypes {
     | '/print/campaign-report'
     | '/print/dashboard'
     | '/print/drawio-snapshot'
+    | '/print/executions'
     | '/print/query-result'
     | '/print/requirements'
     | '/print/tests'
@@ -579,6 +603,7 @@ export interface RootRouteChildren {
   ConstellationRoute: typeof ConstellationRoute
   DashboardRoute: typeof DashboardRoute
   DiffRoute: typeof DiffRoute
+  ExecutionsRoute: typeof ExecutionsRoute
   GraphRoute: typeof GraphRoute
   LocalImpactRoute: typeof LocalImpactRoute
   LoginRoute: typeof LoginRoute
@@ -603,6 +628,7 @@ export interface RootRouteChildren {
   PrintCampaignReportRoute: typeof PrintCampaignReportRoute
   PrintDashboardRoute: typeof PrintDashboardRoute
   PrintDrawioSnapshotRoute: typeof PrintDrawioSnapshotRoute
+  PrintExecutionsRoute: typeof PrintExecutionsRoute
   PrintQueryResultRoute: typeof PrintQueryResultRoute
   PrintRequirementsRoute: typeof PrintRequirementsRoute
   PrintTestsRoute: typeof PrintTestsRoute
@@ -745,6 +771,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GraphRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/executions': {
+      id: '/executions'
+      path: '/executions'
+      fullPath: '/executions'
+      preLoaderRoute: typeof ExecutionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/diff': {
       id: '/diff'
       path: '/diff'
@@ -878,6 +911,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrintQueryResultRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/print/executions': {
+      id: '/print/executions'
+      path: '/print/executions'
+      fullPath: '/print/executions'
+      preLoaderRoute: typeof PrintExecutionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/print/drawio-snapshot': {
       id: '/print/drawio-snapshot'
       path: '/print/drawio-snapshot'
@@ -947,6 +987,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConstellationRoute: ConstellationRoute,
   DashboardRoute: DashboardRoute,
   DiffRoute: DiffRoute,
+  ExecutionsRoute: ExecutionsRoute,
   GraphRoute: GraphRoute,
   LocalImpactRoute: LocalImpactRoute,
   LoginRoute: LoginRoute,
@@ -971,6 +1012,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrintCampaignReportRoute: PrintCampaignReportRoute,
   PrintDashboardRoute: PrintDashboardRoute,
   PrintDrawioSnapshotRoute: PrintDrawioSnapshotRoute,
+  PrintExecutionsRoute: PrintExecutionsRoute,
   PrintQueryResultRoute: PrintQueryResultRoute,
   PrintRequirementsRoute: PrintRequirementsRoute,
   PrintTestsRoute: PrintTestsRoute,

@@ -404,6 +404,14 @@ export interface FieldVisibilityPref {
   /** GH389 — largeurs (px) et colonnes figées de la grille d'historique des exécutions. */
   colWidthsExecutions?: Record<string, number>
   freezeColCountExecutions?: number
+  /** GH400 — vue Exécutions (type de test affiché) : colonnes, largeurs et gel du Tableau. */
+  runExcel?: string[]
+  colWidthsRunExcel?: Record<string, number>
+  freezeColCountRunExcel?: number
+  /** GH400 — vue Exécutions : champs des fiches du Document (`steps` : tableau des étapes). */
+  runWord?: string[]
+  /** GH400 — champs de la popup d'aperçu d'une exécution d'un test du type (#399). Absent ⇒ aucun. */
+  runPopup?: string[]
   /** GH389 — grille sans type (`prefKey` = `grid::<gridId>`) : colonnes visibles ordonnées, largeurs, gel. */
   columns?: string[]
   colWidthsColumns?: Record<string, number>

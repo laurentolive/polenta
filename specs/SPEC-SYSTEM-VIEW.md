@@ -338,7 +338,8 @@ quand elle la propose, c'est à l'identique (icône, geste, texte). **Aucun tri*
   seulement) ; cocher / décocher ne déplace que cette colonne (GH235).
 - **Préférences** : colonnes visibles et ordre, largeurs, colonnes figées, par utilisateur dans le
   `.pref` du repo affiché, écriture partielle (GH176). Grille rattachée à un type : clé du type
-  (Validation : vue `excel` ; historique des exécutions : `executions`). Grille sans type :
+  (Validation : vue `excel` ; historique des exécutions : `executions` ; vue Exécutions : `runExcel`,
+  GH400). Grille sans type :
   `grid::<gridId>`, vue `columns` (`version-changes`, `version-tests`, `version-analysis`, `backlog`,
   `campaign-entries`, `campaign-carry`, `campaign-list`, `query-result`, `drilldown`, `parameters`
   — `.pref` de chaque repo —, `compliance`). Les filtres ne sont jamais mémorisés.
@@ -371,6 +372,7 @@ quand elle la propose, c'est à l'identique (icône, geste, texte). **Aucun tri*
 |--------|-------|----------------|
 | Validation | Page d'une validation | Vues enregistrées, édition décision / commentaire, lot (`specs/GH204.md` §7, SPEC-REQ §13) |
 | Historique des exécutions | Section « Exécutions » | Groupes du panneau 👁, étapes en ligne dépliée, tri retiré |
+| Exécutions d'un type de test | Vue Exécutions (GH400) | Même grille ; 👁 de la vue (onglets Tableau / Document / Popup), filtres tenus par la vue, colonne forcée par le lien d'une campagne |
 | Changements, tests à exécuter, analyse figée | Page d'une version | Cases ; analyse : statut / commentaire éditables (SPEC-REQ §11.3) |
 | Backlog | Backlog d'un composant | Cases, inclusion (SPEC-REQ §11.4) |
 | Entrées d'une campagne | Page d'une campagne | Pastilles de statut en barre d'outils, actions en dernière colonne, paramètres / duplicata en ligne dépliée (SPEC-TESTS §4) |
@@ -580,7 +582,46 @@ largeurs, gel, ordre, clavier, export ; test et campagne en liens d'élément ; 
 ouverte, la consultation du run sinon (Entrée sur la cellule aussi). Données :
 canal `executions:history` (lecture seule), rafraîchi sur tout changement de `tests/`, `test-runs/`,
 `links/`, `campaigns/`. Limite : une exigence couverte par un test d'un autre repo du workspace n'en
-liste pas les exécutions (portée du repo ouvert).
+liste pas les exécutions (portée du repo ouvert). Un run antérieur à GH73 (sans `campaignEntry`) est
+rattaché à l'entrée de campagne qui le désigne par `runId` (GH400), sinon isolé.
+
+---
+
+## Vue Exécutions (GH400)
+
+Page `/executions` (`components/executions/ExecutionsView`), panneau latéral **Campagnes** : deux
+icônes en tête du panneau, **Campagnes** (liste des campagnes, `/product?category=campaign`) et
+**Exécutions**, l'icône de la page affichée active. L'icône Campagnes de la barre d'activité rouvre
+la dernière des deux pages (avec son URL). Recherche dans **toutes** les exécutions du repo, lecture
+seule, données brutes (GH79) — `specs/GH400.md`.
+
+- **Panneau** : sélecteur composant × type limité aux **types de test** (`urlCategory = test` sur
+  cette route) ; ni filtre global ni arbre. Un type à la fois : lignes et colonnes `run:<champ>` /
+  champs d'étape sont celles de ce type. Sélection mémorisée à part (`…:executions`), distincte de
+  l'onglet Tests. Type et mode dans l'URL (`repo`, `node`, `type`, `view=word`).
+- **Données** : `executions:history(repoPath, { objectTypeRef })` — tous les runs des tests du type :
+  de campagne, isolés, remplacés (badge), d'entrée retirée (badge), campagne introuvable, plus les
+  entrées en attente des campagnes ouvertes ; ordre GH197, aucun tri.
+- **Tableau** : grille `ExecutionHistoryGrid` (préférence `runExcel` du type), colonne Test toujours
+  proposée ; défaut Test, Exigence, Campagne, Entrée, Verdict, Date, Testeur, Version testée + champs
+  `defaultVisible` ; navigation GH197 ; export xlsx de la grille. **Filtre par campagne = filtre de
+  la colonne Campagne** (filtre commun, non persisté ; « exécution isolée » pour les runs hors
+  campagne). Filtres tenus par la vue (`DataGrid.columnFilters`) : partagés avec le Document, remis à
+  zéro sur un autre type ou repo.
+- **Document** : une fiche par run (pas les entrées en attente) qui passe les filtres du Tableau —
+  en-tête (test, verdict, date, testeur, campagne, entrée), champs de l'onglet Document, notes,
+  étapes (n°, verdict, commentaire, champs d'étape — le texte des étapes n'est pas dans un run).
+  Export docx (`ExportKind` `executions`, textes résolus par le renderer) et PDF
+  (`/print/executions`, filtres transmis en JSON).
+- **Panneau 👁** (`ExecutionConfigPanel`) : onglets **Tableau** (`runExcel`), **Document**
+  (`runWord`, sans l'en-tête de fiche ni les notes, case « Étapes » `steps`, défaut durée / version
+  testée / origine / champs `defaultVisible` / étapes) et **Popup** (`runPopup`, défaut vide —
+  champs de la popup d'aperçu d'une exécution, #399). Clés de `fieldVisibility[<nœud>::<type de
+  test>]` dans le `.pref` du repo, distinctes de `executions` (section de l'éditeur) et des réglages
+  des tests ; « Réinitialiser » retire la clé de l'onglet seulement.
+- **Lien « Voir les exécutions »** de la fiche d'une campagne : vue sur le type du premier test de la
+  campagne, colonne Campagne affichée (sans écrire la préférence, `DataGrid.forceVisible`) et filtrée
+  sur `^<ID> —` (regex, l'ID exact en tête de cellule).
 
 ## Configuration des champs — ⚙️
 

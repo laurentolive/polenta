@@ -121,6 +121,28 @@ describe('GH74 — graphe de données', () => {
     expect(calls.findAll).toBeGreaterThan(before)
   })
 
+  it("GH397 — repli d'historique git gardé pour un commit HEAD : relu seulement quand HEAD change", async () => {
+    const s = fixtureServices({})
+    let head = 'sha-1'
+    const fileHistory = vi.fn(async () => ({ createdAt: '2026-09-01T07:00:00Z', createdBy: 'alice', updatedAt: '2026-10-02T09:30:00Z', updatedBy: 'alice' }))
+    const git = { fileHistory, headSha: async () => head } as unknown as typeof s.git
+    const graph = new GraphService(s.reqIndex, s.testsIndex, s.schema, s.traceability, git, s.workspaceTree, s.campaigns, { now: () => NOW })
+    const first = await graph.build(ROOT, WS)
+    const calls = fileHistory.mock.calls.length
+    expect(calls).toBeGreaterThan(0) // la fixture a des objets sans historique complet (G4)
+    // Écriture dans un repo du périmètre (graphe oublié) sans commit : pas de nouveau `git log`.
+    graph.invalidate(ROOT)
+    const second = await graph.build(ROOT, WS)
+    expect(second.version).toBeGreaterThan(first.version)
+    expect(fileHistory.mock.calls.length).toBe(calls)
+    expect(second.json).toBe(first.json) // même graphe, dates de repli comprises
+    // Commit (HEAD déplacé) : historiques relus.
+    head = 'sha-2'
+    graph.invalidate(ROOT)
+    await graph.build(ROOT, WS)
+    expect(fileHistory.mock.calls.length).toBeGreaterThan(calls)
+  })
+
   it('G11 — constructions simultanées partagées', async () => {
     const { graph, calls } = service()
     const results = await Promise.all([1, 2, 3, 4, 5].map(() => graph.build(ROOT, WS)))

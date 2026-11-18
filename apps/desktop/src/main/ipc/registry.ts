@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- arguments IPC hétérogènes, typés par chaque handler
 export type Handler = (event: unknown, ...args: any[]) => unknown
 
 /**

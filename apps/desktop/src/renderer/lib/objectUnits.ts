@@ -1,4 +1,3 @@
-import { deepEqual, unitValue } from '@polenta/merge-core'
 import { linkPlainText, parseMultiEnumValue, readLinkValues, type ObjectTypeDefinition, type SchemaField } from '@polenta/types'
 
 /**

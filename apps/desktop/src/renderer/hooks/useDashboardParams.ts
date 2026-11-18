@@ -123,6 +123,8 @@ export function useDashboardParams(args: {
     const out = new Map<string, WidgetParams>()
     for (const w of dashboard?.widgets ?? []) out.set(w.id, computeWidget(w))
     return out
+    // GH395 — computeWidget (fonction locale recréée à chaque rendu) dépend exactement de ces valeurs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard, declsOf, storedAll, options, locale, repoPath, username, dashboardId])
   const forWidget = (widget: Pick<Widget, 'id' | 'queryId'>): WidgetParams => {
     const cached = byWidget.get(widget.id)

@@ -23,6 +23,7 @@ export interface HardeningOptions {
 export function disableSymlinks(): void {
   // Le module réel (pas un namespace ES, en lecture seule et parfois copié par le bundler) :
   // isomorphic-git lit `fs.promises.symlink` à chaque opération, le patch s'applique donc partout.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- module CommonJS réel, voir ci-dessus
   const realFs = require('fs') as typeof fs
   const asText = (target: fs.PathLike) => String(target)
   realFs.symlinkSync = ((target: fs.PathLike, linkPath: fs.PathLike) =>

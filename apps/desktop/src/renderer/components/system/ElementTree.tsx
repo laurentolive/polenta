@@ -116,7 +116,7 @@ function BgContextMenu({
 // ── ContextMenu ───────────────────────────────────────────────────────────────
 
 function ContextMenu({
-  x, y, nodeId, node, clipboard, onAction, onClose,
+  x, y, clipboard, onAction, onClose,
 }: {
   x: number; y: number; nodeId: string; node: TypeTreeNode | null
   clipboard: ClipboardData | null
@@ -322,7 +322,6 @@ export function ElementTree({
   onDoubleClick,
   onRootChange,
   generateId,
-  typeName,
   filter,
   filterOptions,
   searchTextByObjectId,
@@ -538,6 +537,9 @@ export function ElementTree({
         document.dispatchEvent(new Event('dragend'))
       }
     }
+    // GH395 — copyToClipboard / initiateDelete / paste sont des fonctions locales recréées à chaque
+    // rendu ; les ajouter rendrait ce useCallback inopérant. Leurs entrées sont dans la liste.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleNodes, selectedIds, root, expandedIds, renamingId, draggingIds, clipboard, readOnly, onSelect, onDoubleClick, deleteConfirm, confirmDelete])
 
   // ── CRUD operations ───────────────────────────────────────────────────────
@@ -806,7 +808,7 @@ export function ElementTree({
     }
   }
 
-  function handleDrop(e: React.DragEvent, nodeId: string) {
+  function handleDrop(e: React.DragEvent, _nodeId: string) {
     e.preventDefault()
     if (!dropIndicator) return
     const ids = e.dataTransfer.getData('text/plain').split(',').filter(Boolean)

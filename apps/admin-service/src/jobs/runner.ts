@@ -437,6 +437,7 @@ export class JobRunner {
       buf[s] = flush ? '' : parts.pop() ?? ''
       // Codes de couleur du kit retirés du journal relayé.
       const lines = parts
+        // eslint-disable-next-line no-control-regex -- séquences ANSI (ESC) retirées volontairement
         .map((m) => m.replace(/\x1b\[[0-9;]*m/g, '').replace(/\r$/, ''))
         .filter((m, i, a) => m !== '' || i < a.length - 1)
         .map((m) => ({ s, m: redact(m, secrets) }))
@@ -538,6 +539,7 @@ export function runInline(
         result = null
       }
       fs.rmSync(resultFile, { force: true })
+      // eslint-disable-next-line no-control-regex -- séquences ANSI (ESC) retirées volontairement
       resolve({ code, result, stderr: redact(stderr.replace(/\x1b\[[0-9;]*m/g, '')) })
     }
     child.on('error', () => done(127))

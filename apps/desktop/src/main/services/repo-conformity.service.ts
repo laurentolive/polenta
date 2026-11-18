@@ -1,7 +1,5 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
-import git from 'isomorphic-git'
 
 import { gitFor } from '../git/git-backend'
 import type { GitService } from './git.service'
@@ -133,9 +131,7 @@ export class RepoConformityService {
     // Arbre propre au départ (hors fichiers locaux) : tout ce qui a changé vient de cette mise à jour.
     await this.sync.stageAll(repoPath)
     // Retirés de l'index seulement : le fichier local (préférences) reste sur le disque.
-    for (const filepath of items.find(i => i.id === 'tracked-local')?.files ?? []) {
-      await git.remove({ fs, dir: repoPath, filepath })
-    }
+    await gitFor(repoPath).remove(items.find(i => i.id === 'tracked-local')?.files ?? [], { cached: true })
     // GH340 — rien d'écrit (ex. dates introuvables dans un dépôt superficiel) : pas de commit vide.
     const pending = await this.sync.status(repoPath)
     if (pending.staged.length === 0) return { sha: null, pushed: true }
@@ -252,4 +248,40 @@ async function normalizeEol(repoPath: string): Promise<void> {
     const inGit = await g.readBlob(entry.oid)
     if (isCrlfOfLfBlob(onDisk, inGit)) await fsP.writeFile(abs, inGit!)
   }
+}
+
+/** Dépôts déjà normalisés à l'ouverture pendant cette session (clé : chemin résolu, casse ignorée sous Windows). */
+const eolNormalizedOnOpen = new Set<string>()
+
+/**
+ * GH337 (design §9, spec §4.3) — normalisation unique, à l'ouverture d'un dépôt qui a déjà le
+ * `.gitattributes` de #336 : un fichier en CRLF sur disque dont le contenu en LF est exactement son
+ * blob de HEAD (ancien clone `autocrlf=true`) est réécrit avec ce blob. Aucun commit ; un fichier
+ * réellement modifié n'est jamais touché. Une fois par dépôt et par session ; un dépôt sans ce
+ * `.gitattributes` est laissé à la mise en conformité (`apply`), qui normalise elle-même.
+ * Candidats : `ls-files --eol` (index en LF, disque en CRLF ou mixte), un seul processus.
+ * Renvoie les chemins réécrits.
+ */
+export async function normalizeEolOnOpen(repoPath: string): Promise<string[]> {
+  const resolved = path.resolve(repoPath)
+  const key = process.platform === 'win32' ? resolved.toLowerCase() : resolved
+  if (eolNormalizedOnOpen.has(key)) return []
+  eolNormalizedOnOpen.add(key)
+  if (!lines(await readText(repoPath, '.gitattributes')).includes(GITATTRIBUTES_LINE)) return []
+  const g = gitFor(repoPath)
+  if ((await g.resolve('HEAD')) === null) return []
+  const candidates = (await g.lsFilesEol())
+    .filter(e => e.index === 'lf' && (e.worktree === 'crlf' || e.worktree === 'mixed'))
+    .map(e => e.path)
+  const rewritten: string[] = []
+  for (const p of candidates) {
+    const abs = path.join(repoPath, p)
+    const onDisk = await fsP.readFile(abs).catch(() => null)
+    const inGit = onDisk ? await g.readBlob(`HEAD:${p}`) : null
+    if (!isCrlfOfLfBlob(onDisk, inGit)) continue
+    await fsP.writeFile(abs, inGit!)
+    rewritten.push(p)
+  }
+  if (rewritten.length > 0) console.log(`[RepoConformity] fins de ligne normalisées (${rewritten.length} fichier(s)) :`, repoPath)
+  return rewritten
 }

@@ -1,9 +1,7 @@
 import * as fsPromises from 'fs/promises'
 import type { Dirent } from 'fs'
-import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
-import git from 'isomorphic-git'
 import { historyTimestamp } from '@polenta/types'
 import { gitFor } from '../git/git-backend'
 import { safeCheckout } from './safe-checkout.util'
@@ -298,20 +296,38 @@ export class GitService {
     return gitFor(repoPath).refNames('refs/heads')
   }
 
+  /**
+   * Branche `branchName` sur HEAD, sans checkout. Comme `git.branch` d'isomorphic-git : refusée si
+   * elle existe ; dépôt vide (HEAD sans commit) : aucune ref créée, sans erreur.
+   */
   async createBranch(repoPath: string, branchName: string): Promise<void> {
-    await git.branch({ fs, dir: repoPath, ref: branchName })
+    const g = gitFor(repoPath)
+    if (await g.resolve(`refs/heads/${branchName}`)) throw new Error(`Failed to create branch "${branchName}" because branch "${branchName}" already exists.`)
+    const head = await g.resolve('HEAD')
+    if (head) await g.createBranch(branchName, head)
   }
 
   async checkout(repoPath: string, branchName: string, create?: boolean): Promise<void> {
     if (create) {
-      await git.branch({ fs, dir: repoPath, ref: branchName, checkout: true })
+      // HEAD passe sur la nouvelle branche (même commit) sans toucher au disque ni à l'index.
+      await this.createBranch(repoPath, branchName)
+      await gitFor(repoPath).setHeadBranch(branchName)
     } else {
       await safeCheckout({ dir: repoPath, ref: branchName })
     }
   }
 
+  /**
+   * Supprime la branche locale, fusionnée ou non (comme isomorphic-git) ; branche courante : HEAD
+   * est d'abord détaché sur son commit (git refuse sinon de la supprimer).
+   */
   async deleteBranch(repoPath: string, name: string): Promise<void> {
-    await git.deleteBranch({ fs, dir: repoPath, ref: name })
+    const g = gitFor(repoPath)
+    if ((await g.currentBranch()) === name) {
+      const oid = await g.resolve(`refs/heads/${name}`)
+      if (oid) await g.detachHead(oid)
+    }
+    await g.deleteBranch(name)
   }
 
   async mergeBase(repoPath: string, a: string, b: string): Promise<string> {

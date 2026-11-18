@@ -1,9 +1,9 @@
 import * as fsPromises from 'fs/promises'
-import * as fs from 'fs'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import * as yaml from 'js-yaml'
 
+import { gitFor } from '../git/git-backend'
+import { normalizeEolOnOpen } from './repo-conformity.service'
 import type { SyncService } from './sync.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { RepoWatcherService } from './repo-watcher.service'
@@ -121,7 +121,9 @@ export class WorkspaceService {
    */
   async initProjectRepo(rootRepoPath: string, options?: { integrationBranch: string; name: string; description: string }): Promise<void> {
     await fsPromises.mkdir(rootRepoPath, { recursive: true })
-    await git.init({ fs, dir: rootRepoPath, defaultBranch: options?.integrationBranch ?? 'main' })
+    const g = gitFor(rootRepoPath)
+    await g.init(options?.integrationBranch ?? 'main')
+    const staged: string[] = []
     if (options) {
       await fsPromises.writeFile(path.join(rootRepoPath, 'README.md'), `# ${options.name}\n\n${options.description.trim()}\n`, 'utf-8')
       await fsPromises.mkdir(path.join(rootRepoPath, 'config'), { recursive: true })
@@ -130,17 +132,15 @@ export class WorkspaceService {
         yaml.dump({ integrationBranch: options.integrationBranch }, { lineWidth: 120 }),
         'utf-8',
       )
-      await git.add({ fs, dir: rootRepoPath, filepath: 'README.md' })
-      await git.add({ fs, dir: rootRepoPath, filepath: 'config/project.yaml' })
+      staged.push('README.md', 'config/project.yaml')
     }
 
     for (const [filepath, content] of Object.entries(this.polentaInitFiles())) {
       await fsPromises.writeFile(path.join(rootRepoPath, filepath), content, 'utf-8')
-      await git.add({ fs, dir: rootRepoPath, filepath })
+      staged.push(filepath)
     }
-    await git.commit({
-      fs,
-      dir: rootRepoPath,
+    await g.add(staged)
+    await g.commit({
       message: 'init: create project',
       author: { name: BRAND.productName, email: `${BRAND.id}@localhost` },
     })
@@ -229,8 +229,8 @@ export class WorkspaceService {
   /** Root repo's `origin` remote URL, if any is configured. */
   private async readRemoteUrl(repoPath: string): Promise<string | undefined> {
     try {
-      const remotes = await git.listRemotes({ fs, dir: repoPath })
-      return remotes.find((r: { remote: string; url: string }) => r.remote === 'origin')?.url ?? undefined
+      const remotes = await gitFor(repoPath).remotes()
+      return remotes.find(r => r.name === 'origin')?.url ?? undefined
     } catch {
       return undefined
     }
@@ -271,8 +271,8 @@ export class WorkspaceService {
     for (const recent of await this.listRecents()) {
       try {
         const info = await this.resolve(recent.workspaceDir)
-        const remotes = await git.listRemotes({ fs, dir: info.localPath })
-        const origin = remotes.find(r => r.remote === 'origin')?.url
+        const remotes = await gitFor(info.localPath).remotes()
+        const origin = remotes.find(r => r.name === 'origin')?.url
         if (origin && norm(origin) === wanted) return recent
       } catch {
         // projet illisible : ignoré
@@ -420,7 +420,7 @@ export class WorkspaceService {
     // Get HEAD SHA of root repo (for cache invalidation)
     let headSha = ''
     try {
-      headSha = await git.resolveRef({ fs, dir: rootRepoPath, ref: 'HEAD' })
+      headSha = (await gitFor(rootRepoPath).resolve('HEAD')) ?? ''
     } catch {
       // Not a valid git repo or empty repo — proceed with empty SHA
     }
@@ -432,7 +432,7 @@ export class WorkspaceService {
         const cached = await this.workspaceTreeService.readCacheFile(workspaceDir)
         if (cached) {
           console.log('[WorkspaceService] using cached tree for', workspaceDir)
-          this.watchTree(cached)
+          await this.openRepos(cached)
           return { status: 'ok', tree: cached }
         }
       }
@@ -456,7 +456,7 @@ export class WorkspaceService {
       }
 
       await this.workspaceTreeService.writeCache(workspaceDir, result.tree)
-      this.watchTree(result.tree)
+      await this.openRepos(result.tree)
       return { status: 'ok', tree: result.tree }
     }
 
@@ -464,7 +464,7 @@ export class WorkspaceService {
     const cachedTree = await this.readCacheTree(workspaceDir)
     if (cachedTree && cachedTree.rootRepoHeadSha === headSha && headSha !== '') {
       console.log('[WorkspaceService] using cached tree for', workspaceDir)
-      this.watchTree(cachedTree)
+      await this.openRepos(cachedTree)
       return { status: 'ok', tree: cachedTree }
     }
 
@@ -485,7 +485,7 @@ export class WorkspaceService {
     }
 
     await this.writeCacheTree(workspaceDir, tree)
-    this.watchTree(tree)
+    await this.openRepos(tree)
     return { status: 'ok', tree }
   }
 
@@ -593,6 +593,18 @@ export class WorkspaceService {
     for (const node of tree.nodes) {
       this.watcherService?.watch(node.repoPath)
     }
+  }
+
+  /**
+   * Ouverture des dépôts de l'arbre : GH337 (design §9) normalisation unique des fins de ligne
+   * (`normalizeEolOnOpen`, une fois par dépôt et par session — sans effet aux ouvertures suivantes),
+   * puis surveillance. Best-effort : une erreur est journalisée et n'empêche pas l'ouverture.
+   */
+  private async openRepos(tree: WorkspaceTree): Promise<void> {
+    await Promise.all(tree.nodes.map(node => normalizeEolOnOpen(node.repoPath).catch((err: unknown) => {
+      console.error('[WorkspaceService] normalisation des fins de ligne impossible :', node.repoPath, err)
+    })))
+    this.watchTree(tree)
   }
 
   /** Root repo path implied by a workspace config, or undefined if not yet linked. */

@@ -1,6 +1,3 @@
-import * as fs from 'fs'
-import git from 'isomorphic-git'
-
 import { gitFor } from '../git/git-backend'
 import { assertNotVersionTag, frozenVersionTags } from './version-tags.util'
 
@@ -116,9 +113,9 @@ export class BaselineService {
   /** Deletes the tag on the main repo and on every component repo it was mirrored to. */
   async delete(repoPath: string, tag: string, components: BaselineComponentRef[] = []): Promise<void> {
     await assertNotVersionTag(repoPath, tag)
-    await git.deleteRef({ fs, dir: repoPath, ref: `refs/tags/${tag}` }).catch(() => {})
+    await gitFor(repoPath).deleteTag(tag).catch(() => {})
     for (const comp of components) {
-      await git.deleteRef({ fs, dir: comp.repoPath, ref: `refs/tags/${tag}` }).catch(() => {})
+      await gitFor(comp.repoPath).deleteTag(tag).catch(() => {})
     }
   }
 }

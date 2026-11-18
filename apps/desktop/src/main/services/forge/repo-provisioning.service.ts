@@ -2,7 +2,6 @@ import * as fs from 'fs'
 import * as fsPromises from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import * as yaml from 'js-yaml'
 import {
   isValidIntegrationSuffix,
@@ -10,6 +9,7 @@ import {
   type RepoInspection, type RepoMemberGrant, type RepoMissing, type WorkspaceOpenResult,
 } from '@polenta/types'
 
+import { gitFor } from '../../git/git-backend'
 import { extractAgentsMdVersion } from '../agents-md.template'
 import type { IntegrationBranchService } from '../integration-branch.service'
 import type { SyncService } from '../sync.service'
@@ -263,7 +263,10 @@ export class RepoProvisioningService {
       // local — contenu d'un nouveau projet, premier commit sur int-x (aucune branche main).
       try {
         await this.workspace.initProjectRepo(dir, { integrationBranch: branch, name: req.name, description })
-        await git.addRemote({ fs, dir, remote: 'origin', url: remote.cloneUrl, force: true })
+        // `force` d'isomorphic-git : un `origin` déjà présent est repointé, pas refusé.
+        const g = gitFor(dir)
+        if ((await g.remotes()).some(r => r.name === 'origin')) await g.setRemoteUrl('origin', remote.cloneUrl)
+        else await g.addRemote('origin', remote.cloneUrl)
         steps.push({ id: 'local', status: 'done' })
       } catch (err) {
         return failed('local', err)

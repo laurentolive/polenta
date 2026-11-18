@@ -1,8 +1,6 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
-import git from 'isomorphic-git'
 import { encodeIntegrationGuard, isValidIntegrationSuffix } from '@polenta/types'
 import type { DesignateOutcome, IntegrationCreateFrom, IntegrationGuardCode, IntegrationState, IntegrationStatus } from '@polenta/types'
 
@@ -158,7 +156,13 @@ export class IntegrationBranchService {
         // Sans tag, la branche a été créée sans toucher au WD (T87) : retour sans réécrire les fichiers.
         await safeCheckout({ dir: repoPath, ref: previous, noCheckout: !rewroteWd })
       }
-      if ((await gitFor(repoPath).refNames('refs/heads')).includes(branch)) await git.deleteBranch({ fs, dir: repoPath, ref: branch })
+      const g = gitFor(repoPath)
+      const oid = await g.resolve(`refs/heads/${branch}`)
+      if (oid) {
+        // Comme isomorphic-git : branche encore courante (retour arrière échoué) → HEAD détaché d'abord.
+        if ((await g.currentBranch()) === branch) await g.detachHead(oid)
+        await g.deleteBranch(branch)
+      }
     } catch {
       // Best-effort : l'erreur d'origine reste celle remontée à l'utilisateur.
     }

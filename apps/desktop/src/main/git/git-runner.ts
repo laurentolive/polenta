@@ -111,9 +111,13 @@ export function trackPending(what: string): () => void {
   return () => { pending.delete(id) }
 }
 
+/** Délai après la fin de git au-delà duquel ses tuyaux, tenus par un autre processus, sont fermés. */
+const EXIT_DRAIN_MS = 500
+
 function spawnGit(cwd: string, args: string[], opts: RunOptions): Promise<RunResult> {
   countGitSpawn(args.find((a, i) => !a.startsWith('-') && args[i - 1] !== '-c') ?? '?')
-  const untrack = trackPending(`processus git ${args.join(' ').slice(0, 120)} (${cwd})`)
+  const label = `processus git ${args.join(' ').slice(0, 120)} (${cwd})`
+  let untrack = trackPending(label)
   const { gitExe } = gitInstall()
   const env = gitEnv({ readOnly: !opts.write, ...opts.env })
   return new Promise<RunResult>((resolve, reject) => {
@@ -137,6 +141,22 @@ function spawnGit(cwd: string, args: string[], opts: RunOptions): Promise<RunRes
       opts.signal?.removeEventListener('abort', onAbort)
       fn()
     }
+    // Sous Windows, un processus lancé au même instant par un autre thread (fichiers de test vitest :
+    // cat-file, serveur MCP, terminal…) hérite de nos tuyaux et les garde ouverts tant qu'il vit : git
+    // a fini, mais la fin de sa sortie n'arrive pas (vu : 14 à 50 s). Ce qu'il a écrit est déjà lu peu
+    // après sa fin : passé ce délai, les tuyaux sont fermés de notre côté, ce qui termine l'appel.
+    child.on('exit', code => {
+      if (settled) return
+      const drain = setTimeout(() => {
+        if (settled) return
+        child.stdout.destroy()
+        child.stderr.destroy()
+      }, EXIT_DRAIN_MS)
+      drain.unref?.()
+      if (!hangLog) return
+      untrack()
+      untrack = trackPending(`${label} — terminé (code ${code}), sorties encore ouvertes`)
+    })
     child.stdout.on('data', (d: Buffer) => out.push(d))
     child.stderr.on('data', (d: Buffer) => {
       err.push(d)

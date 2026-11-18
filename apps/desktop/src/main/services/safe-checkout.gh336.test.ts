@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthService } from './auth.service'
 import { SyncService } from './sync.service'
 import { LocalChangesError, safeCheckout } from './safe-checkout.util'
+import { GitBackend } from '../git/git-backend'
+import { runGit } from '../git/git-runner'
 
 /**
  * GH336 §5 — « si le panneau Version n'affiche aucune modification locale, le changement de branche
@@ -64,8 +66,6 @@ describe('GH336 — checkout sûr', () => {
   it('pref ignorée ici, versionnée sur la cible : le checkout aboutit et la copie locale est restaurée', async () => {
     await write('.local.migrated.pref', 'local: mine\n')
     expect(await nothingToCommit()).toBe(true)
-    // isomorphic-git seul refuse.
-    await expect(git.checkout({ fs, dir: repo, ref: 'int-PH2' })).rejects.toBeInstanceOf(git.Errors.CheckoutConflictError)
 
     await sync.checkoutBranch(repo, 'int-PH2')
 
@@ -114,16 +114,12 @@ describe('GH336 — checkout sûr', () => {
   })
 
   it('erreur après le début de l\'écriture : retour à l\'état de départ, jamais d\'état intermédiaire', async () => {
-    const original = git.checkout
-    let calls = 0
-    vi.spyOn(git, 'checkout').mockImplementation(async (args) => {
-      calls += 1
-      if (calls === 1) {
-        // Écrit l'index de la cible (comme le checkout interrompu de GH335) puis échoue.
-        await original({ ...args, noUpdateHead: true } as Parameters<typeof git.checkout>[0])
-        throw new Error('Too many pending tasks in queue packed-refs')
-      }
-      return original(args)
+    // GH337 — injection sur le backend natif : index et fichiers de la cible écrits, HEAD pas déplacé
+    // (comme le checkout interrompu de GH335), puis échec.
+    vi.spyOn(GitBackend.prototype, 'checkout').mockImplementation(async function (this: GitBackend) {
+      await runGit(this.dir, ['update-index', '-q', '--refresh'], { write: true, okExitCodes: [1] })
+      await runGit(this.dir, ['read-tree', '-m', '-u', 'HEAD', 'int-PH2'], { write: true })
+      throw new Error('Too many pending tasks in queue packed-refs')
     })
 
     await expect(safeCheckout({ dir: repo, ref: 'int-PH2' })).rejects.toThrow(/Too many pending tasks/)
@@ -168,3 +164,18 @@ describe('GH336 — checkout sûr', () => {
     expect(await nothingToCommit()).toBe(true)
   })
 })
+
+/**
+ * GH336 — « Too many pending tasks in queue packed-refs » : au-delà de 1000 lectures de refs en
+ * attente (tous repos confondus), isomorphic-git rejetait la suivante, y compris celle d'un checkout.
+ * GH337 — l'ancien test visait `git-lock-limits` (supprimé) ; même comportement vérifié par les
+ * services sur le backend natif.
+ */
+it('GH336 — 5000 résolutions de ref simultanées pendant un checkout : aucune n\'est rejetée', async () => {
+  const reads = Promise.allSettled(Array.from({ length: 5000 }, () => sync.resolveHead(repo)))
+  await sync.checkoutBranch(repo, 'int-PH2')
+  const results = await reads
+  expect(results.filter(r => r.status === 'rejected')).toEqual([])
+  expect(results.every(r => r.status === 'fulfilled' && typeof r.value === 'string')).toBe(true)
+  expect(await git.currentBranch({ fs, dir: repo })).toBe('int-PH2')
+}, 120_000)

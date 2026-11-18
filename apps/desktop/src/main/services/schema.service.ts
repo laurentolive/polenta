@@ -1,8 +1,7 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
-import git from 'isomorphic-git'
+import { gitFor } from '../git/git-backend'
 import { DEFAULT_VALIDATION_DECISIONS, DEFAULT_VALIDATION_STATUSES, DEFAULT_VERSION_STATUSES, entryFieldsError, validationTypeError } from '@polenta/types'
 import type {
   LinkTypeDefinition,
@@ -670,7 +669,7 @@ export class SchemaService {
           if (!hasGit) {
             console.log('[SchemaService] initialising empty git repo for workspace component:', nodeName)
             await fsP.mkdir(node.repoPath, { recursive: true })
-            await git.init({ fs, dir: node.repoPath, defaultBranch: 'main' })
+            await gitFor(node.repoPath).init('main')
             await fsP.writeFile(path.join(node.repoPath, '.gitignore'), GITIGNORE_CONTENT, 'utf-8')
             await fsP.writeFile(path.join(node.repoPath, '.gitattributes'), GITATTRIBUTES_CONTENT, 'utf-8')
           }

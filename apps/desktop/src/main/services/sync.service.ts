@@ -3,7 +3,8 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import git, { type TreeEntry } from 'isomorphic-git'
+// GH337 — isomorphic-git ne sert plus qu'au réseau et aux fusions (sprint 3).
+import git from 'isomorphic-git'
 
 import http from './git-http'
 import { isNetworkUnreachable } from './net-proxy'
@@ -13,12 +14,11 @@ import { AUTO_BRANCH_PREFIX, isAutoBranch } from '@polenta/types'
 
 import { extractHost, type AuthService } from './auth.service'
 import type { GitAuthor } from './git.service'
-import { addKeepingEol } from './eol-status.util'
 import { safeCheckout } from './safe-checkout.util'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
 import { assertNotVersionTag } from './version-tags.util'
 import { mergeRecursive } from './recursive-merge.util'
-import { gitFor, type CommitInfo, type GitBackend, type NameStatus, type StatusEntry } from '../git/git-backend'
+import { gitFor, type CommitInfo, type GitBackend, type NameStatus, type StatusEntry, type TreeEntry } from '../git/git-backend'
 import { GitError } from '../git/git-errors'
 
 const execFileAsync = promisify(execFile)
@@ -310,7 +310,7 @@ export class SyncService {
    * first (kept separate so "Publier" can do its early network-reachability check while still on
    * the integration branch, before this ref-rewrite runs — see below). Never touches the working
    * directory or index — safe to call regardless of which branch is currently checked out,
-   * PROVIDED it isn't `branchName` itself. `git.writeRef` only rewrites the ref file; if
+   * PROVIDED it isn't `branchName` itself. Only the ref is rewritten (`update-ref`); if
    * `branchName` were HEAD's target, the working tree/index would silently desync from the new
    * HEAD. Callers (see "Publier" in `ModificationControl.tsx`) always invoke this only after
    * moving off the integration branch onto a work branch.
@@ -337,7 +337,7 @@ export class SyncService {
     const canFastForward = await g.isAncestor(localOid, remoteOid).catch(() => false)
     if (!canFastForward) return 'diverged'
 
-    await git.writeRef({ fs, dir: repoPath, ref: localRef, value: remoteOid, force: true })
+    await g.updateRefs([{ ref: localRef, newOid: remoteOid, oldOid: localOid }])
     return 'fast-forwarded'
   }
 
@@ -407,14 +407,11 @@ export class SyncService {
   async commit(repoPath: string, message: string, author?: GitAuthor): Promise<CommitResult> {
     const resolvedAuthor = author ?? (await this.auth.getAuthor(repoPath))
 
-    const sha = await git.commit({
-      fs,
-      dir: repoPath,
+    // GH337 — `allowEmpty` : isomorphic-git commitait aussi un index inchangé ; le comportement reste.
+    const sha = await gitFor(repoPath).commit({
       message,
-      author: {
-        name: resolvedAuthor.name,
-        email: resolvedAuthor.email,
-      },
+      author: { name: resolvedAuthor.name, email: resolvedAuthor.email },
+      allowEmpty: true,
     })
 
     return {
@@ -426,11 +423,13 @@ export class SyncService {
 
   /**
    * GH106 — commits `filepath` alone with `content` on the checked-out branch. The commit tree is
-   * HEAD's tree with that single entry replaced (`git.commit({ tree })` never reads the index), so
+   * HEAD's tree with that single entry replaced (`commit-tree`, the index is never read), so
    * pending changes — staged or not — stay out of the commit and stay pending. The index entry of
    * `filepath` is moved to the committed blob; the working directory is left to the caller.
    * GH201 — `beforeRefUpdate` runs on the new commit before the branch moves to it (e.g. tagging
    * it): if it throws, the branch, the index and the working directory are left untouched.
+   * GH337 — the branch moves only if it is still on `head` (`update-ref` transaction): a commit
+   * written in between is never overwritten.
    */
   async commitSingleFile(
     repoPath: string, filepath: string, content: string, message: string,
@@ -441,24 +440,24 @@ export class SyncService {
     if (!branch) throw new Error('Detached HEAD — cannot commit')
     const head = await g.resolveOrThrow('HEAD')
     const commit = await readCommitOrThrow(g, head)
-    const blob = await git.writeBlob({ fs, dir: repoPath, blob: Buffer.from(content, 'utf8') })
-    const tree = await this.replaceTreeEntry(repoPath, commit.tree, filepath.split('/'), blob)
+    // Contenu stocké tel quel, comme `git.writeBlob` d'isomorphic-git (Polenta écrit en LF).
+    const blob = await g.writeBlob(Buffer.from(content, 'utf8'))
+    const { tree, mode } = await this.replaceTreeEntry(g, commit.tree, filepath.split('/'), blob)
     const author = await this.auth.getAuthor(repoPath)
-    // `ref` must be fully expanded: a bare `int-x` would be written as `.git/int-x`, leaving the
-    // branch itself — and HEAD — on the previous commit.
     const ref = `refs/heads/${branch}`
-    const sha = await git.commit({
-      fs, dir: repoPath, message, tree, parent: [head], ref,
-      author: { name: author.name, email: author.email },
-      noUpdateBranch: !!beforeRefUpdate,
-    })
+    const sha = await g.commitTree(tree, [head], message, { name: author.name, email: author.email })
     if (beforeRefUpdate) {
       await beforeRefUpdate(sha)
       // La branche a pu avancer pendant le rappel : ne pas écraser un commit écrit entre-temps.
       if (await g.resolve(ref) !== head) throw new Error(`${branch} a avancé pendant le commit — réessayer`)
-      await git.writeRef({ fs, dir: repoPath, ref, value: sha, force: true })
     }
-    await git.updateIndex({ fs, dir: repoPath, filepath, oid: blob, add: true })
+    try {
+      await g.updateRefs([{ ref, newOid: sha, oldOid: head }])
+    } catch (err) {
+      if (await g.resolve(ref) !== head) throw new Error(`${branch} a avancé pendant le commit — réessayer`)
+      throw err
+    }
+    await g.setIndexEntries([{ mode, oid: blob, path: filepath }])
     return sha
   }
 
@@ -471,103 +470,84 @@ export class SyncService {
     }
   }
 
-  private async replaceTreeEntry(repoPath: string, treeOid: string | null, parts: string[], blobOid: string): Promise<string> {
-    const entries: TreeEntry[] = treeOid
-      ? (await gitFor(repoPath).lsTree(treeOid, { recursive: false })).map(e => ({ mode: e.mode, path: e.path, oid: e.oid, type: e.type }))
-      : []
+  /** Arbre `treeOid` avec `parts` (chemin découpé) remplacé par le blob `blobOid` ; mode du fichier inclus. */
+  private async replaceTreeEntry(g: GitBackend, treeOid: string | null, parts: string[], blobOid: string): Promise<{ tree: string; mode: string }> {
+    const entries: TreeEntry[] = treeOid ? await g.lsTree(treeOid, { recursive: false }) : []
     const [name, ...rest] = parts
     const existing = entries.find(e => e.path === name)
-    const entry: TreeEntry = rest.length === 0
-      ? { mode: existing?.type === 'blob' ? existing.mode : '100644', path: name, oid: blobOid, type: 'blob' }
-      : { mode: '040000', path: name, type: 'tree', oid: await this.replaceTreeEntry(repoPath, existing?.type === 'tree' ? existing.oid : null, rest, blobOid) }
-    return git.writeTree({ fs, dir: repoPath, tree: [...entries.filter(e => e.path !== name), entry] })
+    let entry: TreeEntry
+    let mode: string
+    if (rest.length === 0) {
+      mode = existing?.type === 'blob' ? existing.mode : '100644'
+      entry = { mode, path: name, oid: blobOid, type: 'blob' }
+    } else {
+      const sub = await this.replaceTreeEntry(g, existing?.type === 'tree' ? existing.oid : null, rest, blobOid)
+      mode = sub.mode
+      entry = { mode: '040000', path: name, type: 'tree', oid: sub.tree }
+    }
+    return { tree: await g.mktree([...entries.filter(e => e.path !== name), entry]), mode }
   }
 
+  /**
+   * GH337 — `add` natif : contenu normalisé selon `.gitattributes` (fins de ligne, #336) ; un fichier
+   * absent du disque est retiré de l'index (suppression indexée).
+   */
   async stage(repoPath: string, filepath: string): Promise<void> {
-    // For deleted files (no longer on disk), git.add() throws ENOENT.
-    // Use git.remove() to stage the deletion instead.
-    const absPath = path.join(repoPath, filepath)
-    try {
-      await fsP.access(absPath)
-      // File exists on disk → normal add
-      await addKeepingEol(repoPath, filepath)
-    } catch {
-      // File absent from disk → stage the deletion
-      await git.remove({ fs, dir: repoPath, filepath })
-    }
+    const g = gitFor(repoPath)
+    if (fs.existsSync(path.join(repoPath, filepath))) await g.add([filepath])
+    else await g.remove([filepath], { cached: true })
   }
 
   async stageAll(repoPath: string): Promise<void> {
-    const entries = await gitFor(repoPath).status()
+    const g = gitFor(repoPath)
+    const entries = await g.status()
     // Un `D.` doublé d'un `??` : fichier retiré de l'index mais présent sur le disque → à ajouter.
     const onDisk = new Set(entries.filter(e => !isDeletedOnDisk(e)).map(e => e.path))
-    const done = new Set<string>()
+    const toAdd = new Set<string>()
+    const toRemove = new Set<string>()
     for (const e of entries) {
-      if (done.has(e.path) || e.index === '!') continue
-      done.add(e.path)
-      if (onDisk.has(e.path)) {
-        // Stage present files (new + modified)
-        await addKeepingEol(repoPath, e.path)
-      } else if (e.index !== 'A') {
-        // Deleted file: exists in HEAD but absent from workdir
-        await git.remove({ fs, dir: repoPath, filepath: e.path })
-      }
+      if (e.index === '!') continue
+      if (onDisk.has(e.path)) toAdd.add(e.path) // nouveaux et modifiés
+      else if (e.index !== 'A') toRemove.add(e.path) // supprimés du disque, encore dans HEAD
     }
+    // Un seul processus par sorte, quel que soit le nombre de fichiers.
+    await g.add([...toAdd])
+    await g.remove([...toRemove].filter(p => !toAdd.has(p)), { cached: true })
   }
 
   async unstage(repoPath: string, filepath: string): Promise<void> {
-    await git.resetIndex({ fs, dir: repoPath, filepath })
+    await gitFor(repoPath).resetPaths([filepath])
   }
 
   async unstageAll(repoPath: string): Promise<void> {
     // Entrées dont l'index diffère de HEAD (un non suivi n'a rien à retirer de l'index).
-    const toUnstage = (await gitFor(repoPath).status())
+    const g = gitFor(repoPath)
+    const toUnstage = (await g.status())
       .filter(e => e.index !== '.' && e.index !== '?' && e.index !== '!')
       .map(e => e.path)
-    for (const f of toUnstage) {
-      await git.resetIndex({ fs, dir: repoPath, filepath: f })
-    }
+    await g.resetPaths([...new Set(toUnstage)])
   }
 
+  /** Ramène `filepath` à HEAD (index et disque, fins de ligne selon `.gitattributes`) ; un fichier absent de HEAD est supprimé. */
   async discard(repoPath: string, filepath: string): Promise<void> {
     const g = gitFor(repoPath)
-    const blob = await g.readBlob(`HEAD:${filepath}`)
-    if (!blob) {
-      // Not in HEAD: nothing to do unless git sees it (staged or untracked — not ignored)
-      if (!(await g.status({ prefixes: [filepath] })).some(e => e.path === filepath && e.index !== '!')) return
-      // New file not in HEAD — delete it from workdir
-      await fsP.unlink(path.join(repoPath, filepath)).catch(() => {})
-    } else {
-      // Restore file content from HEAD commit
-      const absPath = path.join(repoPath, filepath)
-      await fsP.mkdir(path.dirname(absPath), { recursive: true })
-      await fsP.writeFile(absPath, blob)
-    }
-    // Always reset index for this file
-    await git.resetIndex({ fs, dir: repoPath, filepath }).catch(() => {})
+    const inHead = (await g.objectInfo(`HEAD:${filepath}`).catch(() => null)) !== null
+    // Not in HEAD: nothing to do unless git sees it (staged or untracked — not ignored)
+    if (!inHead && !(await g.status({ prefixes: [filepath] })).some(e => e.path === filepath && e.index !== '!')) return
+    await g.restore([filepath])
   }
 
   /**
-   * Discards every staged/unstaged change. GH336 — en une passe : `discard` fichier par fichier
-   * relisait et réécrivait tout l'index à chaque fichier (plusieurs minutes pour quelques centaines
-   * de fichiers, ex. après un checkout interrompu). Un seul checkout forcé, limité aux fichiers
-   * suivis ou indexés concernés, rétablit index et contenu d'après HEAD ; les fichiers nouveaux
-   * jamais indexés (que le checkout ignore) sont supprimés ensuite.
+   * Discards every staged/unstaged change. GH336 — en une passe (un `restore` pour tous les fichiers
+   * suivis, une suppression des nouveaux), jamais fichier par fichier (plusieurs minutes pour
+   * quelques centaines de fichiers, ex. après un checkout interrompu).
    */
   async discardAll(repoPath: string): Promise<void> {
     const g = gitFor(repoPath)
     const changed = (await g.status()).filter(e => e.index !== '!')
     if (changed.length === 0) return
-    const knownSet = new Set(changed.filter(e => e.index !== '?').map(e => e.path))
-    const known = [...knownSet]
-    // Un `??` doublant un `D.` (fichier de HEAD retiré de l'index) est restauré par le checkout, pas supprimé.
-    const untracked = changed.filter(e => e.index === '?' && !knownSet.has(e.path)).map(e => e.path)
-    if (known.length > 0) {
-      const branch = await g.currentBranch()
-      const ref = branch ?? await g.resolveOrThrow('HEAD')
-      await git.checkout({ fs, dir: repoPath, ref, force: true, noUpdateHead: true, filepaths: known })
-    }
-    for (const filepath of untracked) await fsP.unlink(path.join(repoPath, filepath)).catch(() => {})
+    // Un `??` doublant un `D.` (fichier de HEAD retiré de l'index) est restauré, pas supprimé.
+    await g.restore([...new Set(changed.map(e => e.path))])
   }
 
   async push(repoPath: string, remote = 'origin'): Promise<void> {
@@ -620,7 +600,8 @@ export class SyncService {
         author: { name: author.name, email: author.email },
         message: `Merge remote-tracking branch '${remote}/${branch}' into ${branch}`,
       })
-      await git.checkout({ fs, dir: repoPath, ref: branch, force: true })
+      // La fusion n'a déplacé que la ref : index et disque réalignés sur la nouvelle pointe.
+      await g.checkout(branch, { force: true })
       return { success: true, sha: result.oid ?? localOid }
     } catch (err: unknown) {
       const conflicts = conflictFiles(err)
@@ -754,6 +735,8 @@ export class SyncService {
       const { staged, unstaged } = await this.status(repoPath)
       if (staged.length + unstaged.length > 0) throw new Error('integration-dirty')
     }
+    // Commit du working directory avant que la fusion n'avance la branche par référence.
+    const before = await gitFor(repoPath).resolveOrThrow(`refs/heads/${branch}`)
 
     const author = await this.auth.getAuthor(repoPath)
     try {
@@ -769,7 +752,7 @@ export class SyncService {
       if (!conflictFiles(err)) throw err
       return { outcome: 'set-aside', branch: await this.setAside(repoPath, branch, checkedOut, remote) }
     }
-    if (checkedOut) await safeCheckout({ dir: repoPath, ref: branch })
+    if (checkedOut) await safeCheckout({ dir: repoPath, ref: branch, from: before })
     if (state === 'behind') return { outcome: 'fast-forwarded' }
     await this.pushBranch(repoPath, branch, remote)
     return { outcome: 'merged' }
@@ -786,13 +769,13 @@ export class SyncService {
     // the integration) — it already carries them: no second branch, "Publier" merges it.
     const current = await g.currentBranch()
     if (current && isAutoBranch(current) && await this.isMergedInto(repoPath, branch, current).catch(() => false)) {
-      await git.writeRef({ fs, dir: repoPath, ref: `refs/heads/${branch}`, value: remoteOid, force: true })
+      await g.updateRefs([{ ref: `refs/heads/${branch}`, newOid: remoteOid }])
       return current
     }
     const name = await this.nextFreeBranchName(repoPath, RESYNC_BRANCH_PREFIX)
-    await git.branch({ fs, dir: repoPath, ref: name, object: localOid, checkout: false })
-    if (checkedOut) await git.checkout({ fs, dir: repoPath, ref: name, noCheckout: true })
-    await git.writeRef({ fs, dir: repoPath, ref: `refs/heads/${branch}`, value: remoteOid, force: true })
+    await g.createBranch(name, localOid)
+    if (checkedOut) await g.setHeadBranch(name)
+    await g.updateRefs([{ ref: `refs/heads/${branch}`, newOid: remoteOid }])
     return name
   }
 
@@ -890,6 +873,8 @@ export class SyncService {
     if (current && staged.length + unstaged.length === 0) {
       const hasRemoteBranch = await g.resolve(`refs/remotes/${remote}/${current}`).then(oid => oid !== null, () => false)
       if (hasRemoteBranch) {
+        // Commit du working directory avant que la fusion n'avance la branche par référence.
+        const before = await g.resolveOrThrow(`refs/heads/${current}`)
         const author = await this.auth.getAuthor(repoPath)
         const fastForwarded = await git
           .merge({
@@ -901,7 +886,7 @@ export class SyncService {
             fastForwardOnly: true,
           })
           .then(r => !r.alreadyMerged, () => false)
-        if (fastForwarded) await safeCheckout({ dir: repoPath, ref: current })
+        if (fastForwarded) await safeCheckout({ dir: repoPath, ref: current, from: before })
       }
     }
     // GH173: not checked out → only its ref moves, never the working directory. Only while the
@@ -976,22 +961,18 @@ export class SyncService {
   }
 
   async createTag(repoPath: string, tagName: string, commitSha?: string): Promise<void> {
-    const sha = commitSha ?? await gitFor(repoPath).resolveOrThrow('HEAD')
-    await git.writeRef({ fs, dir: repoPath, ref: `refs/tags/${tagName}`, value: sha, force: false })
+    const g = gitFor(repoPath)
+    const sha = commitSha ?? await g.resolveOrThrow('HEAD')
+    // Jamais d'écrasement d'un tag existant (`oldOid: null` : la ref ne doit pas exister).
+    await g.updateRefs([{ ref: `refs/tags/${tagName}`, newOid: sha, oldOid: null }])
   }
 
   /** Annotated tag carrying a message (e.g. a baseline comment) — unlike `createTag`, readable back via `git.readTag`. */
   async createAnnotatedTag(repoPath: string, tagName: string, message: string, commitSha?: string): Promise<void> {
-    const sha = commitSha ?? await gitFor(repoPath).resolveOrThrow('HEAD')
+    const g = gitFor(repoPath)
+    const sha = commitSha ?? await g.resolveOrThrow('HEAD')
     const author = await this.auth.getAuthor(repoPath)
-    await git.annotatedTag({
-      fs,
-      dir: repoPath,
-      ref: tagName,
-      object: sha,
-      message,
-      tagger: { name: author.name, email: author.email },
-    })
+    await g.annotatedTag(tagName, sha, message, { name: author.name, email: author.email })
   }
 
   /** HEAD commit sha, or null when the repo has no commit yet. */
@@ -1124,20 +1105,18 @@ export class SyncService {
 
   /**
    * Creates `name` at the current HEAD and switches to it — without writing a single file to the
-   * working directory (T87). `git.branch({ checkout: true })` delegates to isomorphic-git's
-   * `checkout()`, which by default rewrites tracked files from the target tree — since the new
-   * branch points at the exact same commit as before, that would silently clobber any uncommitted
-   * edit sitting in the working directory at the moment of creation (the routine case now that
-   * editing happens directly on the integration branch, deferred to "Publier"). `noCheckout: true`
-   * moves HEAD without touching the filesystem.
+   * working directory nor the index (T87): uncommitted edits sitting in the working directory at the
+   * moment of creation (the routine case now that editing happens directly on the integration
+   * branch, deferred to "Publier") stay as they are. Only HEAD moves (`symbolic-ref`).
    */
   async createBranch(repoPath: string, name: string): Promise<void> {
     // GH314 — HEAD left on an annotated tag object (checkout before the fix): branch from its commit.
     const g = gitFor(repoPath)
-    const head = await g.resolve('HEAD').catch(() => null) ?? undefined
+    const head = await g.resolve('HEAD').catch(() => null)
     const object = head && ((await g.resolveCommit(head).catch(() => null)) ?? head)
-    await git.branch({ fs, dir: repoPath, ref: name, object, checkout: false })
-    await git.checkout({ fs, dir: repoPath, ref: name, noCheckout: true })
+    // Dépôt sans commit : seul HEAD change (la branche naîtra au premier commit).
+    if (object) await g.createBranch(name, object)
+    await g.setHeadBranch(name)
   }
 
   /**
@@ -1163,9 +1142,9 @@ export class SyncService {
     const localOid = await g.resolve(`refs/heads/${branch}`).catch(() => null)
     let state: CheckoutBranchResult['remote']
     if (!localOid) {
-      await git.branch({ fs, dir: repoPath, ref: branch, object: remoteOid, checkout: false })
-      await git.setConfig({ fs, dir: repoPath, path: `branch.${branch}.remote`, value: remote })
-      await git.setConfig({ fs, dir: repoPath, path: `branch.${branch}.merge`, value: `refs/heads/${branch}` })
+      await g.createBranch(branch, remoteOid)
+      await g.setConfig(`branch.${branch}.remote`, remote)
+      await g.setConfig(`branch.${branch}.merge`, `refs/heads/${branch}`)
       state = 'created'
     } else if (localOid === remoteOid) {
       state = 'up-to-date'
@@ -1196,7 +1175,7 @@ export class SyncService {
   }
 
   async deleteBranch(repoPath: string, name: string): Promise<void> {
-    await git.deleteBranch({ fs, dir: repoPath, ref: name })
+    await gitFor(repoPath).deleteBranch(name)
   }
 
   async merge(repoPath: string, fromBranch: string): Promise<MergeResult> {
@@ -1238,7 +1217,8 @@ export class SyncService {
         fastForwardOnly: false,
       })
       if (checkedOut && result.oid && result.oid !== before) {
-        await git.checkout({ fs, dir: repoPath, ref: intoBranch, force: true })
+        // La fusion n'a déplacé que la ref : index et disque réalignés sur la nouvelle pointe.
+        await g.checkout(intoBranch, { force: true })
       }
       return { success: true, sha: result.oid ?? '' }
     } catch (err: unknown) {
@@ -1250,7 +1230,7 @@ export class SyncService {
   }
 
   async createBranchAt(repoPath: string, name: string, sha: string): Promise<void> {
-    await git.branch({ fs, dir: repoPath, ref: name, object: sha, checkout: false })
+    await gitFor(repoPath).createBranch(name, sha)
   }
 
   async deleteRemoteBranch(repoPath: string, name: string, remote = 'origin'): Promise<void> {
@@ -1274,7 +1254,9 @@ export class SyncService {
 
   async deleteTag(repoPath: string, tagName: string): Promise<void> {
     await assertNotVersionTag(repoPath, tagName)
-    await git.deleteRef({ fs, dir: repoPath, ref: `refs/tags/${tagName}` })
+    const g = gitFor(repoPath)
+    // Comme `git.deleteRef` : un tag absent n'est pas une erreur.
+    if (await g.resolve(`refs/tags/${tagName}`)) await g.updateRefs([{ ref: `refs/tags/${tagName}`, newOid: null }])
   }
 
   async pushBranch(repoPath: string, branchName: string, remote = 'origin'): Promise<void> {

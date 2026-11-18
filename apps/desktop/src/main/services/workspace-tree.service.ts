@@ -10,10 +10,8 @@
  */
 
 import { ForgeAccessError, httpStatusOf } from './forge/forge-access'
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import * as yaml from 'js-yaml'
 
 import { gitFor } from '../git/git-backend'
@@ -669,7 +667,7 @@ export class WorkspaceTreeService {
       if (await g.currentBranch()) return
       const head = await g.resolveOrThrow('HEAD')
       const commit = await this.peelToCommit(repoPath, head)
-      if (commit !== head) await git.writeRef({ fs, dir: repoPath, ref: 'HEAD', value: commit, force: true })
+      if (commit !== head) await g.detachHead(commit)
     } catch {
       // Unreadable HEAD: left as is, the next checkout settles it.
     }

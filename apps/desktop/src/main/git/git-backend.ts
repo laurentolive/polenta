@@ -1,11 +1,26 @@
+import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
+import * as zlib from 'zlib'
 
 import { objectData, objectInfo, resolveGitDir, type ObjectInfo } from './cat-file-batch'
 import { GitError, isGitError } from './git-errors'
 import { gitText, isRepoWriteBusy, repoKey, runGit, splitZ, withRepoWriteLock, type RunOptions } from './git-runner'
 import { closeRepo } from './process-registry'
+import { gitInstall } from './git-binary'
+import { nodeCheckout } from './node-checkout'
+
+/**
+ * Checkout écrit par Polenta (`nodeCheckout`) : Windows seulement (Defender n'existe que là), avec un
+ * git qui connaît `check-attr --source` (≥ 2.40 ; le git 2.39 de Debian bookworm ne l'a pas).
+ * `POLENTA_NODE_CHECKOUT=0` le désactive (comparaisons, diagnostic).
+ */
+export function useNodeCheckout(platform: NodeJS.Platform = process.platform): boolean {
+  if (platform !== 'win32' || process.env.POLENTA_NODE_CHECKOUT === '0') return false
+  const [maj, min] = gitInstall().version.split('.').map(Number)
+  return maj > 2 || (maj === 2 && min >= 40)
+}
 
 /**
  * GH337 — la seule API git des services (design §4). Une instance par dépôt (`gitFor`).
@@ -245,6 +260,46 @@ export function parseLog(out: Buffer | string, withChanges: boolean): LogEntry[]
     entries.push(e)
   }
   return entries
+}
+
+/** Objet arbre (format git) d'entrées d'un niveau, triées comme git (un dossier se compare avec `/`). */
+export function serializeTree(entries: TreeEntry[]): Buffer {
+  const key = (e: TreeEntry) => Buffer.from(e.type === 'tree' ? `${e.path}/` : e.path, 'utf8')
+  const sorted = [...entries].sort((a, b) => Buffer.compare(key(a), key(b)))
+  return Buffer.concat(sorted.flatMap(e => [
+    Buffer.from(`${parseInt(e.mode, 8).toString(8)} ${e.path}\0`, 'utf8'),
+    Buffer.from(e.oid, 'hex'),
+  ]))
+}
+
+/**
+ * Écrit un objet libre sans lancer git (chemin chaud : `commitSingleFile`, à chaque enregistrement
+ * d'une version ou d'une validation — 5 processus évités). Même format et même écriture atomique que
+ * git (fichier temporaire puis renommage) ; un objet déjà présent n'est pas réécrit. `null` quand le
+ * dépôt sort du cas simple (dossier git introuvable, objets sha256) : l'appelant passe par git.
+ */
+export async function writeLooseObject(repo: string, type: 'blob' | 'tree', data: Buffer): Promise<string | null> {
+  const gitDir = resolveGitDir(repo)
+  if (!gitDir) return null
+  const commonFile = await fs.promises.readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => null)
+  const common = commonFile ? path.resolve(gitDir, commonFile.trim()) : gitDir
+  const config = await fs.promises.readFile(path.join(common, 'config'), 'utf8').catch(() => '')
+  if (/objectformat\s*=\s*sha256/i.test(config)) return null
+  const raw = Buffer.concat([Buffer.from(`${type} ${data.length}\0`, 'utf8'), data])
+  const oid = crypto.createHash('sha1').update(raw).digest('hex')
+  const dir = path.join(common, 'objects', oid.slice(0, 2))
+  const file = path.join(dir, oid.slice(2))
+  if (fs.existsSync(file)) return oid
+  await fs.promises.mkdir(dir, { recursive: true })
+  const tmp = path.join(dir, `tmp_obj_${process.pid}_${crypto.randomBytes(6).toString('hex')}`)
+  await fs.promises.writeFile(tmp, zlib.deflateSync(raw))
+  try {
+    await fs.promises.rename(tmp, file)
+  } catch (err) {
+    await fs.promises.rm(tmp, { force: true })
+    if (!fs.existsSync(file)) throw err // déjà écrit en parallèle : rien à faire
+  }
+  return oid
 }
 
 export interface NetworkOptions {
@@ -599,6 +654,18 @@ export class GitBackend {
   }
 
   /**
+   * Fins de ligne des fichiers suivis (`ls-files --eol`) : `index` et `worktree` valent `lf`, `crlf`,
+   * `mixed`, `none`, `-text` ou `''` (fichier absent du disque). Un seul processus.
+   */
+  async lsFilesEol(): Promise<{ path: string; index: string; worktree: string }[]> {
+    return splitZ((await this.run(['ls-files', '--eol', '-z'])).stdout).map(line => {
+      const tab = line.indexOf('\t')
+      const [i = '', w = ''] = line.slice(0, tab).trim().split(/\s+/)
+      return { path: line.slice(tab + 1), index: i.replace(/^i\//, ''), worktree: w.replace(/^w\//, '') }
+    })
+  }
+
+  /**
    * Noms des refs sous `prefix` (`refs/heads`, `refs/tags`, `refs/remotes/origin`), préfixe retiré,
    * triés par nom (`for-each-ref`) : remplace `listBranches` / `listTags` d'isomorphic-git. Une
    * branche distante `HEAD` (symref) figure dans la liste, comme chez isomorphic-git.
@@ -777,6 +844,29 @@ export class GitBackend {
     return out.trim()
   }
 
+  /** Écrit `data` tel quel comme blob (aucun filtre `.gitattributes`) et renvoie son oid. */
+  async writeBlob(data: Buffer | string): Promise<string> {
+    const buf = typeof data === 'string' ? Buffer.from(data, 'utf8') : data
+    const oid = await writeLooseObject(this.dir, 'blob', buf)
+    if (oid) return oid
+    return (await this.text(['hash-object', '-w', '--no-filters', '--stdin'], { stdin: buf })).trim()
+  }
+
+  /** Écrit un arbre d'un niveau ; `path` de chaque entrée = son nom dans l'arbre (ordre indifférent). */
+  async mktree(entries: TreeEntry[]): Promise<string> {
+    const oid = await writeLooseObject(this.dir, 'tree', serializeTree(entries))
+    if (oid) return oid
+    const stdin = entries.map(e => `${e.mode} ${e.type} ${e.oid}\t${e.path}\0`).join('')
+    return (await this.text(['mktree', '-z'], { stdin })).trim()
+  }
+
+  /** Pose des entrées d'index (`update-index --index-info`), sans toucher au disque. */
+  async setIndexEntries(entries: { mode: string; oid: string; path: string }[]): Promise<void> {
+    if (entries.length === 0) return
+    const stdin = entries.map(e => `${e.mode} ${e.oid}\t${e.path}\0`).join('')
+    await this.w(['update-index', '-z', '--index-info'], { stdin })
+  }
+
   /** Transaction de refs : tout ou rien. `newOid: null` supprime ; `oldOid` vérifie la valeur courante. */
   async updateRefs(ops: { ref: string; newOid: string | null; oldOid?: string | null }[]): Promise<void> {
     if (ops.length === 0) return
@@ -797,12 +887,22 @@ export class GitBackend {
     await this.w(['branch', '-D', '--', name])
   }
 
+  /** HEAD devient `refs/heads/<name>` (symbolique), sans toucher à l'index ni au disque ; la branche peut ne pas exister (dépôt vide). */
+  async setHeadBranch(name: string): Promise<void> {
+    await this.w(['symbolic-ref', 'HEAD', `refs/heads/${name}`])
+  }
+
+  /** Détache HEAD sur `oid` (`update-ref --no-deref`), sans toucher à l'index ni au disque ni à la branche courante. */
+  async detachHead(oid: string): Promise<void> {
+    await this.w(['update-ref', '--no-deref', 'HEAD', oid])
+  }
+
   async tag(name: string, target = 'HEAD'): Promise<void> {
     await this.w(['tag', '--', name, target])
   }
 
   async annotatedTag(name: string, target: string, message: string, tagger: GitAuthor): Promise<void> {
-    await this.w([...commitConfig(tagger), 'tag', '-a', '--no-sign', '-F', '-', '--', name, target], {
+    await this.w([...commitConfig(tagger), 'tag', '-a', '--no-sign', '--cleanup=whitespace', '-F', '-', '--', name, target], {
       stdin: message, env: { extra: personEnv('COMMITTER', tagger) },
     })
   }
@@ -814,8 +914,14 @@ export class GitBackend {
   /**
    * Checkout : refuse (GitError `local-changes`) plutôt que d'écraser une modification locale.
    * `detach` : tête détachée sur un commit ou un tag.
+   * Sous Windows (git ≥ 2.40, `check-attr --source`), les fichiers sont écrits par Polenta
+   * (`nodeCheckout`, épargné par Defender, GH337-sprint0.md § Essai) ; `git checkout` hors du chemin
+   * simple (modification locale, filtre, sous-module…) et pour `force`.
    */
   async checkout(rev: string, opts: { detach?: boolean; force?: boolean } = {}): Promise<void> {
+    if (!opts.force && useNodeCheckout()) {
+      if (await nodeCheckout(this.dir, rev, { detach: opts.detach })) return
+    }
     const args = [...commitConfig(), 'checkout', '-q']
     if (opts.force) args.push('-f')
     if (opts.detach) args.push('--detach')

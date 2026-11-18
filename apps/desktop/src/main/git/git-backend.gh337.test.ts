@@ -317,6 +317,48 @@ describe('écritures', () => {
     expect(fs.existsSync(path.join(dir, 'n'))).toBe(false)
     expect(await g.status()).toEqual([])
   })
+
+  it('E10 setHeadBranch / detachHead : HEAD seul déplacé, disque, index et branches intacts', async () => {
+    const c1 = await commit({ 'f': '1' }, 'un')
+    write('f', 'local')
+    await g.createBranch('x', c1)
+    await g.setHeadBranch('x')
+    expect(await g.currentBranch()).toBe('x')
+    await g.detachHead(c1)
+    expect(await g.currentBranch()).toBeNull()
+    expect(await g.resolve('HEAD')).toBe(c1)
+    expect(await g.resolve('refs/heads/x')).toBe(c1)
+    expect(await g.resolve('refs/heads/main')).toBe(c1)
+    expect(fs.readFileSync(path.join(dir, 'f'), 'utf8')).toBe('local')
+    // Dépôt vide : HEAD peut viser une branche sans commit.
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'gh337-backend-empty-'))
+    try {
+      await gitFor(empty).init('main')
+      await gitFor(empty).setHeadBranch('int-x')
+      expect(await gitFor(empty).currentBranch()).toBe('int-x')
+    } finally {
+      await gitFor(empty).close()
+      fs.rmSync(empty, { recursive: true, force: true })
+    }
+  })
+
+  it('E11 deleteBranch : branche non fusionnée supprimée', async () => {
+    await commit({ 'f': '1' }, 'un')
+    await g.createBranch('y')
+    await g.setHeadBranch('y')
+    await commit({ 'f': '2' }, 'deux')
+    await g.setHeadBranch('main')
+    await g.deleteBranch('y')
+    expect(await g.resolve('refs/heads/y')).toBeNull()
+  })
+
+  it('E12 lsFilesEol : index et disque, fichier absent', async () => {
+    await commit({ 'lf.txt': 'a\nb\n', 'gone.txt': 'x\n' }, 'init')
+    fs.writeFileSync(path.join(dir, 'lf.txt'), 'a\r\nb\r\n')
+    fs.rmSync(path.join(dir, 'gone.txt'))
+    const by = Object.fromEntries((await g.lsFilesEol()).map(e => [e.path, `${e.index}/${e.worktree}`]))
+    expect(by).toEqual({ 'lf.txt': 'lf/crlf', 'gone.txt': 'lf/' })
+  })
 })
 
 describe('fusion', () => {

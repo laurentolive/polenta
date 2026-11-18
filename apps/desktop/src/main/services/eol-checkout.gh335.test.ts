@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { AuthService } from './auth.service'
 import { SyncService } from './sync.service'
-import { eolAwareStatusMatrix } from './eol-status.util'
 import { GITATTRIBUTES_CONTENT } from './repo-conformity.util'
 
 /**
@@ -49,12 +48,6 @@ afterEach(async () => {
 })
 
 describe('GH335 — checkout et fins de ligne', () => {
-  it('reproduit le blocage : isomorphic-git seul refuse le checkout', async () => {
-    await write('tree.yaml', 'a: 1\r\nb: 1\r\n')
-    await expect(git.checkout({ fs, dir: repo, ref: 'int-tmp' }))
-      .rejects.toBeInstanceOf(git.Errors.CheckoutConflictError)
-  })
-
   it('un fichier en CRLF sur le disque (LF dans git) ne bloque pas « Checkout branche »', async () => {
     await write('tree.yaml', 'a: 1\r\nb: 1\r\n')
     await write('other.yaml', 'x: 1\r\n') // inchangé entre les branches : ne gêne pas non plus
@@ -78,14 +71,18 @@ describe('GH335 — checkout et fins de ligne', () => {
 })
 
 describe('GH335 — file du verrou packed-refs', () => {
-  it('statut d\'un repo entièrement en CRLF (> 1000 fichiers) : pas de « Too many pending tasks »', async () => {
+  // GH337 — réécrit sur le backend natif : même comportement vu par l'utilisateur (panneau Version
+  // vide, changement de branche possible), par SyncService.
+  it('repo entièrement en CRLF (> 1000 fichiers) : statut vide, checkout possible, pas de « Too many pending tasks »', async () => {
     const files = Array.from({ length: 1100 }, (_, i) => `r/f${i}.yaml`)
     await fsP.mkdir(path.join(repo, 'r'))
     await Promise.all(files.map(f => write(f, 'a: 1\nb: 1\n')))
     await commitAll('many')
     await Promise.all(files.map(f => write(f, 'a: 1\r\nb: 1\r\n')))
 
-    const rows = await eolAwareStatusMatrix(repo)
-    expect(rows.filter(([, h, w, s]) => !(h === 1 && w === 1 && s === 1))).toEqual([])
+    const status = await sync.status(repo)
+    expect(status.staged.length + status.unstaged.length).toBe(0)
+    await sync.checkoutBranch(repo, 'int-tmp')
+    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-tmp')
   }, 60_000)
 })

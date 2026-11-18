@@ -316,8 +316,9 @@ export class RevalidationService {
       ? await this.history.stampObject(p, after.objectTypeRef, before, after, `${dir}/${after.id}.yaml`, targetRepo)
       : after
     await this.git.writeYaml(targetRepo, `${dir}/${updated.id}.yaml`, auditForWrite(updated))
-    if (category === 'requirement') this.reqIndex.upsert(p, updated as Requirement)
-    else this.testsIndex.upsertTestCase(p, updated as TestCase)
+    // GH404 — index du repo qui porte le fichier, pas celui où l'élément a été trouvé.
+    if (category === 'requirement') this.reqIndex.upsert(targetRepo, updated as Requirement)
+    else this.testsIndex.upsertTestCase(targetRepo, updated as TestCase)
     return targetRepo
   }
 

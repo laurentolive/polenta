@@ -166,7 +166,8 @@ export class IssuesService {
       ? await this.history.stampObject(repoPath, after.objectTypeRef, before, after, `${ISSUES_DIR}/${after.id}.yaml`, targetRepo, comment)
       : after
     await this.git.writeYaml(targetRepo, `${ISSUES_DIR}/${stamped.id}.yaml`, auditForWrite(stamped))
-    this.upsert(repoPath, stamped)
+    // GH404 — index du repo qui porte le fichier (composant compris), pas celui de l'appelant.
+    this.upsert(targetRepo, stamped)
     // Notifications rendues à l'appelant, jamais écrites ni indexées.
     return transitionWarnings.length > 0 ? { ...stamped, transitionWarnings } : stamped
   }

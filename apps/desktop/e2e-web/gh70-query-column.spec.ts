@@ -60,7 +60,8 @@ test('N2 — requête script partagée : déclaration saisie, enregistrée, relu
   await editor().getByTestId('column-decl-type').selectOption('number')
   await expect(editor().getByTestId('column-decl-errors')).toHaveCount(0)
   await s.page.getByRole('button', { name: 'Sauvegarder', exact: true }).click()
-  await expect.poll(() => (yaml.load(fs.readFileSync(queryYaml(q.id), 'utf8')) as { column?: unknown }).column).toEqual({
+  // GH387 — fichier relu pendant son écriture : vide (`undefined`), le poll recommence.
+  await expect.poll(() => (yaml.load(fs.readFileSync(queryYaml(q.id), 'utf8')) as { column?: unknown } | undefined)?.column).toEqual({
     label: 'Longueur du titre', appliesTo: { categories: ['requirement'], objectTypes: [] }, type: 'number',
   })
   await s.page.reload()
@@ -83,7 +84,7 @@ test('15 / 16 — « Entrées de campagne » en mode modèle : colonnes du résu
   await editor().getByTestId('column-decl-valueColumn').selectOption('status')
   await editor().getByTestId('column-decl-tooltipColumn').selectOption('campaignTitle')
   await s.page.getByRole('button', { name: 'Sauvegarder', exact: true }).click()
-  await expect.poll(() => (yaml.load(fs.readFileSync(queryYaml(q.id), 'utf8')) as { column?: unknown }).column).toMatchObject({
+  await expect.poll(() => (yaml.load(fs.readFileSync(queryYaml(q.id), 'utf8')) as { column?: unknown } | undefined)?.column).toMatchObject({
     label: 'Statut en campagne', idColumn: 'testCaseId', valueColumn: 'status', tooltipColumn: 'campaignTitle',
   })
   const saved = (await s.invoke<Array<{ id: string; template?: { id: string }; state: { customized: boolean } }>>('queries:list', s.project.localPath, username)).find((x) => x.id === q.id)!

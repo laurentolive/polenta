@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { BrowserContext, Page } from '@playwright/test'
 
 /** Appel d'un channel par le bridge de la page (même chemin que les composants : `window.polenta`). */
 export function invoke<T = unknown>(page: Page, channel: string, ...args: unknown[]): Promise<T> {
@@ -7,6 +7,22 @@ export function invoke<T = unknown>(page: Page, channel: string, ...args: unknow
       .polenta.invoke(ch as string, ...(a as unknown[])),
     [channel, args] as const,
   ) as Promise<T>
+}
+
+/**
+ * GH387 — appel d'un channel depuis le process de test, sans page : `POST /rpc/<channel>` avec les
+ * cookies de session du contexte (même requête que le bridge web). Sert à préparer un projet avant
+ * d'avoir chargé l'application.
+ */
+export async function rpc<T = unknown>(context: BrowserContext, channel: string, ...args: unknown[]): Promise<T> {
+  const csrf = (await context.cookies()).find(c => c.name === 'polenta_csrf')?.value ?? ''
+  const res = await context.request.post(`/rpc/${encodeURIComponent(channel)}`, {
+    headers: { 'x-polenta-csrf': csrf },
+    data: { args, undefinedArgs: args.flatMap((a, i) => (a === undefined ? [i] : [])) },
+  })
+  const body = await res.json().catch(() => null) as { ok?: boolean; value?: T; error?: { message?: string } } | null
+  if (!body?.ok) throw new Error(`${channel} : ${body?.error?.message ?? `erreur serveur (${res.status()})`}`)
+  return body.value as T
 }
 
 /** Bruit connu, sans rapport avec l'application. */

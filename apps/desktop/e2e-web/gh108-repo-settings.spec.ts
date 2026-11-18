@@ -13,15 +13,16 @@ import { E2E_ORG, E2E_READONLY_ORG } from './support/fake-forgejo-api'
  */
 const s = setupSession({ project: null })
 const RUN = Date.now().toString(36)
-const AUTH_FILE = path.join(E2E.dataDir, 'users', E2E.user.login, 'userData', 'auth.json')
+// GH387 — fonction : `E2E.dataDir` (pile du worker) n'est connu qu'après le global setup.
+const authFile = () => path.join(E2E.dataDir, 'users', E2E.user.login, 'userData', 'auth.json')
 const SETTINGS = /Paramètres du repo|Repository settings/
 
 const barePath = (owner: string, name: string) => path.join(E2E.remotesDir, owner, `${name}.git`)
 
 function setAccount(fields: Record<string, unknown>) {
-  const store = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf-8')) as { accounts: Array<Record<string, unknown>> }
+  const store = JSON.parse(fs.readFileSync(authFile(), 'utf-8')) as { accounts: Array<Record<string, unknown>> }
   for (const a of store.accounts) if (a['remoteHost'] === '127.0.0.1') Object.assign(a, fields)
-  fs.writeFileSync(AUTH_FILE, JSON.stringify(store, null, 2))
+  fs.writeFileSync(authFile(), JSON.stringify(store, null, 2))
 }
 
 function seedRepo(owner: string, name: string) {

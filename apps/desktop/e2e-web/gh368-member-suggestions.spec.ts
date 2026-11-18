@@ -13,16 +13,17 @@ import { E2E_ORG } from './support/fake-forgejo-api'
  */
 const s = setupSession({ project: null })
 const RUN = Date.now().toString(36)
-const AUTH_FILE = path.join(E2E.dataDir, 'users', E2E.user.login, 'userData', 'auth.json')
+// GH387 — fonction : `E2E.dataDir` (pile du worker) n'est connu qu'après le global setup.
+const authFile = () => path.join(E2E.dataDir, 'users', E2E.user.login, 'userData', 'auth.json')
 const LOGIN = /Compte à ajouter|Account to add/
 
 test.beforeAll(() => {
   // Compte de la session déclaré Forgejo, API sur la forge locale.
-  const store = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf-8')) as { accounts: Array<Record<string, unknown>> }
+  const store = JSON.parse(fs.readFileSync(authFile(), 'utf-8')) as { accounts: Array<Record<string, unknown>> }
   for (const a of store.accounts) {
     if (a['remoteHost'] === '127.0.0.1') Object.assign(a, { provider: 'forgejo', baseUrl: E2E.gitBaseUrl })
   }
-  fs.writeFileSync(AUTH_FILE, JSON.stringify(store, null, 2))
+  fs.writeFileSync(authFile(), JSON.stringify(store, null, 2))
 })
 
 const wizard = () => s.page.getByRole('form', { name: /Ajouter un repo|Add a repository/ })

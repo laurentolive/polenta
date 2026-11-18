@@ -17,6 +17,7 @@ import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
 import { RenderGateProvider, useRenderWhenVisibleAtRest } from './useRenderWhenVisibleAtRest'
 import { MultiEnumPopover } from './MultiEnumPopover'
+import { AnchoredPopover } from './AnchoredPopover'
 import { RowMaxLinesContext, useCellClamp, ClampedContent, RichtextClamp } from '../grid/RowClamp'
 import { LinkFieldPopover } from '../links/LinkFieldPopover'
 import { LinkList } from '../links/LinkList'
@@ -551,7 +552,6 @@ const InlineCell = memo(function InlineCell({
 const LinkCell = memo(function LinkCell({
   nodeId,
   col,
-  typeName,
   value,
   isOpen,
   freezeStyle,
@@ -960,7 +960,6 @@ function ExcelContextMenu({
 
 function GroupRow({
   node,
-  depth,
   columns,
   isExpanded,
   section,
@@ -1300,7 +1299,8 @@ function ExcelViewInner({
   const [columnFreezeMenu, setColumnFreezeMenu] = useState<{ colIdx: number; x: number; y: number } | null>(null)
   const openFreezeMenu = useCallback((colIdx: number, x: number, y: number) => setColumnFreezeMenu({ colIdx, x, y }), [])
   const closeFreezeMenu = useCallback(() => setColumnFreezeMenu(null), [])
-  const [activeLinkPopover, setActiveLinkPopover] = useState<{ nodeId: string; col: string; top: number; left: number; width: number } | null>(null)
+  // GH401 — `anchorTop` (haut de la cellule) : le popover s'ouvre au-dessus s'il ne tient pas dessous.
+  const [activeLinkPopover, setActiveLinkPopover] = useState<{ nodeId: string; col: string; top: number; anchorTop: number; left: number; width: number } | null>(null)
   useEffect(() => {
     if (!activeLinkPopover) return
     const handler = (e: MouseEvent) => {
@@ -1352,6 +1352,7 @@ function ExcelViewInner({
     objectId: string
     field: string
     top: number
+    anchorTop: number
     left: number
     width: number
   } | null>(null)
@@ -1360,6 +1361,7 @@ function ExcelViewInner({
     objectId: string
     field: string
     top: number
+    anchorTop: number
     left: number
     width: number
   } | null>(null)
@@ -2100,15 +2102,15 @@ function ExcelViewInner({
     toggleMultiEnum: (objId, f, rect) => {
       const isOpen = activeMultiEnumPopover?.objectId === objId && activeMultiEnumPopover.field === f
       if (isOpen) { setActiveMultiEnumPopover(null); return }
-      setActiveMultiEnumPopover({ objectId: objId, field: f, top: rect.bottom + 2, left: rect.left, width: rect.width })
+      setActiveMultiEnumPopover({ objectId: objId, field: f, top: rect.bottom + 2, anchorTop: rect.top, left: rect.left, width: rect.width })
     },
     editLinkField: (objId, f, rect) => {
-      setActiveLinkFieldPopover({ objectId: objId, field: f, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 420) })
+      setActiveLinkFieldPopover({ objectId: objId, field: f, top: rect.bottom + 2, anchorTop: rect.top, left: rect.left, width: Math.max(rect.width, 420) })
     },
     openLinkPopover: (nodeId, col, rect) => {
       if (selection) return // GH33 — lecture seule : liens affichés, pas éditables
       if (!rows.find(r => r.node.id === nodeId)?.node.objectId) return // GH244 — ligne sans objet : rien à lier
-      setActiveLinkPopover({ nodeId, col, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })
+      setActiveLinkPopover({ nodeId, col, top: rect.bottom + 2, anchorTop: rect.top, left: rect.left, width: Math.max(rect.width, 320) })
     },
     closeLinkPopover: () => setActiveLinkPopover(null),
     navigateToObject: (peerId, opts) => onNavigateToObject?.(peerId, opts),
@@ -2556,7 +2558,9 @@ function ExcelViewInner({
               applyMultiEnumToggleToSelection(activeMultiEnumPopover.objectId, activeMultiEnumPopover.field, v, !selected.includes(v))
             }}
             onClose={() => setActiveMultiEnumPopover(null)}
-            style={{ top: activeMultiEnumPopover.top, left: activeMultiEnumPopover.left, minWidth: activeMultiEnumPopover.width }}
+            top={activeMultiEnumPopover.top}
+            anchorTop={activeMultiEnumPopover.anchorTop}
+            style={{ left: activeMultiEnumPopover.left, minWidth: activeMultiEnumPopover.width }}
           />
         )
       })()}
@@ -2572,7 +2576,9 @@ function ExcelViewInner({
             multiple={fieldDef?.multiple}
             onCommit={text => cellActionsImpl.inlineEdit(activeLinkFieldPopover.objectId, activeLinkFieldPopover.field, text)}
             onClose={() => setActiveLinkFieldPopover(null)}
-            style={{ top: activeLinkFieldPopover.top, left: activeLinkFieldPopover.left, width: activeLinkFieldPopover.width }}
+            top={activeLinkFieldPopover.top}
+            anchorTop={activeLinkFieldPopover.anchorTop}
+            style={{ left: activeLinkFieldPopover.left, width: activeLinkFieldPopover.width }}
           />
         )
       })()}
@@ -2589,10 +2595,13 @@ function ExcelViewInner({
         const currentObjectTypeRef = (objectMap.get(objectId) as Record<string, string>)?.objectTypeRef ?? ''
         const currentCategory = typeDef?.category
         return (
-          <div
+          <AnchoredPopover
             data-link-popover
             data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 space-y-3"
-            style={{ top: activeLinkPopover.top, left: activeLinkPopover.left, width: activeLinkPopover.width }}
+            top={activeLinkPopover.top}
+            anchorTop={activeLinkPopover.anchorTop}
+            left={activeLinkPopover.left}
+            width={activeLinkPopover.width}
             onClick={e => e.stopPropagation()}
           >
             <LinkTypeEditor
@@ -2607,7 +2616,7 @@ function ExcelViewInner({
               onLinkChange={onLinkChange}
               onNavigateToObject={onNavigateToObject ? (peerId, opts) => { setActiveLinkPopover(null); onNavigateToObject(peerId, opts) } : undefined}
             />
-          </div>
+          </AnchoredPopover>
         )
       })()}
       </ExcelCellActionsContext.Provider>

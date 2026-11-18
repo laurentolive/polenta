@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react'
+import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ElementLink } from '../element/ElementLink'
@@ -70,7 +70,7 @@ function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPa
     // sinon l'édition de l'utilisateur l'emporte à l'écran jusqu'à sa sauvegarde.
     if (localValRef.current === syncedValRef.current) setLocalVal(value)
     syncedValRef.current = value
-  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value])
 
   const set = (v: string) => { setLocalVal(v); onChange(v) }
 
@@ -625,7 +625,6 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
         : onFlushValuesRef.current(localValuesRef.current)
       void Promise.resolve(p).catch(err => console.error('[EditView] T159 — échec du flush au démontage', err))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // GH342 — fermeture de la fenêtre : détruite sans démontage, l'effet ci-dessus ne tourne pas. Même

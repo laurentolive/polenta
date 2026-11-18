@@ -12,7 +12,7 @@ import { primeMergeSession } from './useMergeSession'
  */
 export function useOpenMergeResolution(projectId: string | null | undefined) {
   const qc = useQueryClient()
-  const { openTab } = useTabs()
+  const { attemptOpenTab } = useTabs()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -25,8 +25,9 @@ export function useOpenMergeResolution(projectId: string | null | undefined) {
       void qc.invalidateQueries({ queryKey: ['merge-resolution', 'list'] })
       // After an await, not in the click any more: without flushSync the router's (synchronous)
       // location update renders before the new tab becomes active, and TabsContext's tab-sync
-      // effect rewrites the *previous* tab to /merge-resolve.
-      flushSync(() => openTab('/merge-resolve', { id: session.id, projectId: projectId ?? '' }))
+      // effect rewrites the *previous* tab to /merge-resolve. GH407 — gardée : page active modifiée →
+      // « Quitter cette page ? » (la session reste reprenable par « Reprendre la résolution »).
+      flushSync(() => attemptOpenTab('/merge-resolve', { id: session.id, projectId: projectId ?? '' }))
       return true
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

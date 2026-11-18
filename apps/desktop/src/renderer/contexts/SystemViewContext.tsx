@@ -27,7 +27,7 @@ import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { WORKSPACE_LINK_QUERY_KEYS } from '../hooks/useWorkspaceLinks'
 import { normRepoPath } from '../components/system/linkUtils'
-import { useTreeState, treeUpdateObjectId, treeFindNode, treeFindByObjectId, treeRemove } from '../hooks/useTreeState'
+import { useTreeState, treeUpdateObjectId, treeFindNode, treeFindByObjectId } from '../hooks/useTreeState'
 import { useVersioning } from './VersioningContext'
 import { isEditableTarget } from '../lib/editableTarget'
 import type { TypeTreeNode, ObjectTypeDefinition, ObjectCategory, SystemNode, LinkTypeDefinition, TestCase } from '@polenta/types'
@@ -695,6 +695,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
 
   // ── Page affichée : mode, élément édité, goto (GH228) ────────────────────────
   // Relu à chaque changement de `view` : l'effet ci-dessous a écrit le mode de la page précédente.
+  // GH395 — `urlView` voulu dans les dépendances : déclenche la relecture du localStorage.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const storedViewMode = useMemo(() => readStoredViewMode(repoPath) ?? 'excel', [repoPath, urlView])
   useEffect(() => {
     if (repoPath && (urlView === 'excel' || urlView === 'word')) localStorage.setItem(`polenta:viewMode:${repoPath}`, urlView)

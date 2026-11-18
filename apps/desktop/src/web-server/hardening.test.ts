@@ -14,6 +14,7 @@ describe('liens symboliques neutralisés (core.symlinks=false)', () => {
   it('fs.promises.symlink et fs.symlinkSync écrivent un fichier texte', async () => {
     disableSymlinks()
     // `require` : le module réel, celui que voient isomorphic-git et les services.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- module CommonJS réel, voir ci-dessus
     const realFs = require('fs') as typeof fs
     await realFs.promises.symlink('/etc/passwd', path.join(dir, 'a'))
     realFs.symlinkSync('/etc/shadow', path.join(dir, 'b'))

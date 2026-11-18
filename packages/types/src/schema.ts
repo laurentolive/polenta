@@ -1,5 +1,5 @@
 import type { ValidationDecisionDef } from './validation'
-﻿import type { ExportTemplateKey } from './export'
+import type { ExportTemplateKey } from './export'
 
 export type SchemaFieldType =
   | 'text'

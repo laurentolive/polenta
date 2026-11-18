@@ -163,6 +163,8 @@ export function RenderGateProvider({
       }
       io.disconnect()
       ioRef.current = null
+      // GH395 — le Set est créé une fois et jamais remplacé : on vide bien celui de l'effet.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       intersectingRef.current.clear()
       scrollingRef.current = false
     }

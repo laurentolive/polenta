@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { useOptionalTabs } from '../contexts/TabsContext'
@@ -41,7 +42,8 @@ export function useOpenRowTarget(repoPath: string, workspaceDir: string) {
       return
     }
     const { pathname, search } = rowTargetRoute(target, encodeProjectId(workspaceDir || repoPath))
-    tabs.openTab(pathname, search)
+    // GH407 — gardée (page modifiée) ; après un `await`, sous flushSync (GH37, `openTab` de TabsContext).
+    flushSync(() => tabs.attemptOpenTab(pathname, search))
   }, [repoPath, workspaceDir, tabs, flash, t])
 
   return { open, message }

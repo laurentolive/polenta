@@ -64,7 +64,7 @@ const NO_OFF_REPOS: Awaited<ReturnType<typeof offIntegrationRepos>> = []
 
 export function ModificationControl({ currentProjectId }: Props) {
   const { t } = useTranslation()
-  const { openTab } = useTabs()
+  const { attemptOpenTab } = useTabs()
   const qc = useQueryClient()
   const {
     repoPath, branch, integrationBranch, mode, pendingChangesCount, refetch, workspaceDir, flatNodes, tree,
@@ -329,8 +329,9 @@ export function ModificationControl({ currentProjectId }: Props) {
       void qc.invalidateQueries({ queryKey: ['merge-resolution', 'list'] })
       // Called from an async callback, not a click: without flushSync the router's (synchronous)
       // location update renders before the new tab becomes active, and the tab-sync effect of
-      // TabsContext rewrites the *previous* tab to /merge-resolve.
-      flushSync(() => openTab('/merge-resolve', { id: session.id, projectId: currentProjectId ?? '' }))
+      // TabsContext rewrites the *previous* tab to /merge-resolve. GH407 — gardée : page active
+      // modifiée → « Quitter cette page ? » ; Rester laisse la session à « Reprendre la résolution ».
+      flushSync(() => attemptOpenTab('/merge-resolve', { id: session.id, projectId: currentProjectId ?? '' }))
     },
   })
 
@@ -400,7 +401,7 @@ export function ModificationControl({ currentProjectId }: Props) {
       {openResolutions.length > 0 && (
         <button
           type="button"
-          onClick={() => openTab('/merge-resolve', { id: openResolutions[0].id, projectId: currentProjectId ?? '' })}
+          onClick={() => attemptOpenTab('/merge-resolve', { id: openResolutions[0].id, projectId: currentProjectId ?? '' })}
           className="btn-secondary-sm flex items-center gap-1.5 text-status-warning"
           title={openResolutions.map(s => `${s.leftRef} → ${s.rightRef}`).join('\n')}
         >

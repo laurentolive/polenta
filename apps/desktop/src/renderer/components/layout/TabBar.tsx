@@ -11,7 +11,6 @@ import { api } from '../../api'
 import { isWeb } from '../../platform'
 import { hrefOf } from '../../lib/tabHistory'
 import { flushPendingEdits } from '../../lib/pendingEdits'
-import { stageIncomingDraft } from '../../lib/tabDraft'
 import { deriveCurrentProjectId } from './AppLayout'
 import { isTabDragPayload, TAB_DRAG_MIME } from '../../../shared/tab-drag'
 
@@ -151,8 +150,9 @@ export function TabBar() {
     const dragId = e.dataTransfer.getData(TAB_DRAG_MIME)
     void api.app.takeTabDrag(dragId).then(payload => {
       if (!isTabDragPayload(payload)) return
-      stageIncomingDraft(payload.draft)
-      adoptTab(payload.tab, slot)
+      // GH407 — la saisie de l'onglet reçu est remise à sa page quand il s'affiche (tout de suite, ou
+      // après « Quitter cette page ? » si la page active est modifiée).
+      adoptTab(payload.tab, slot, payload.draft)
     }).catch(() => {})
   }
 

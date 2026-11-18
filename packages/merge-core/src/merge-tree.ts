@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- déclaration locale du module `diff3` (non typé)
 /// <reference path="./diff3.d.ts" />
 import diff3Merge from 'diff3'
 import { deepEqual, isPlainObject, orderedKeys } from './object'

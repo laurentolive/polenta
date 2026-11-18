@@ -125,6 +125,65 @@ temporaire.
 - Écarté : demander aux clients ou à l'installeur une exclusion Defender (droits administrateur,
   politique de sécurité des clients, Polenta s'installe par utilisateur).
 
+### Essai : fichiers écrits par Polenta (2026-11-18)
+
+Décision de l'humain (2026-11-18) : essayer de faire écrire les fichiers par Polenta, que Defender
+épargne, puis mesurer et continuer.
+
+`src/main/git/node-checkout.ts` : git calcule ce qui change (`diff-tree`) et fournit les blobs
+(`cat-file --batch`). Polenta applique la règle de fin de ligne de git (reprise de `convert.c` :
+attributs `text` / `eol` de la cible, lus par `check-attr --source`, puis `core.autocrlf` et
+`core.eol`), écrit et supprime les fichiers. git remet ensuite l'index (`read-tree --reset`, qui
+garde les stats des entrées inchangées, puis `update-index --refresh`) et HEAD. Les résolutions
+passent par le `cat-file` persistant et les appels indépendants partent en parallèle : 4 vagues de
+processus au lieu d'une dizaine.
+
+**Repli sur `git checkout`**, sans rien toucher, quand le cas sort du chemin simple :
+- modification locale suivie ;
+- fichier non suivi au chemin d'un ajout ;
+- attribut `filter`, `ident` ou `working-tree-encoding` ;
+- passage d'un fichier à un sous-module, ou l'inverse ;
+- sous-module modifié avec `submodule.recurse`.
+
+Le cas `submodule.recurse` a été trouvé sur PH4, dépôt antérieur à #333. Hors de ces cas, les
+sous-modules sont traités comme par `git checkout` sans récursion : contenu non touché.
+
+**Vérifications** :
+- 4 tests (`node-checkout.gh337.test.ts`) : working directory, index et HEAD identiques à
+  `git checkout`, avec `text`, `text=auto` (texte et binaire), `eol=crlf`, `eol=lf`, `-text`,
+  sans attribut ; tête détachée ; replis.
+- Sur les vrais dépôts : `git status` vide après chaque checkout (`bench-git.ts --verify`).
+
+**Mesures** : `Polenta.exe` et git copiés dans `%LOCALAPPDATA%\Programs` (cas client), médiane de
+5 allers-retours, mêmes couples de révisions que le 2026-11-17. Les copies du banc désactivent
+`submodule.recurse`, pour que tous les moteurs fassent le même travail.
+
+| Aller-retour | isomorphic-git | `git checkout` | écriture Polenta |
+|---|---|---|---|
+| handstickProduct (504 fichiers) | 746 ms | 1 424 ms | **946 ms** (×1,27 d'isomorphic-git) |
+| PH4 (1 032 fichiers) | 6 716 ms | 6 314 ms | **3 013 ms** (×0,45) |
+
+Décomposition par checkout, en médiane (`--trace`) :
+
+| Étape | handstick | PH4 |
+|---|---|---|
+| diff-tree, config, statut (parallèles) | 53 ms | 107 ms |
+| check-attr, blobs (parallèles) | 109 ms | 339 ms |
+| écriture disque par Polenta | 241 ms | 847 ms |
+| read-tree | 34 ms | 44 ms |
+| refresh de l'index, HEAD | 106 ms | 427 ms |
+
+Lecture :
+- Le checkout écrit par Polenta est **1,5× à 2× plus rapide que `git checkout`**. Il est **2,2×
+  plus rapide qu'isomorphic-git sur le gros dépôt**, mais reste **+27 % (≈ +100 ms par checkout)
+  sur le petit**. Le seuil de 10 % n'est donc toujours pas tenu sur handstickProduct.
+- Ce qui reste vient surtout de l'écriture disque, qu'isomorphic-git fait aussi, et du refresh de
+  l'index, où git.exe relit les fichiers écrits. Pour supprimer le refresh, il faudrait que
+  Polenta écrive lui-même le fichier d'index avec les stats (réimplémenter une partie de git).
+  Ce n'est pas fait.
+- La branche continue avec ce checkout (sprint 2 : `safe-checkout` passe par `nodeCheckout`, avec
+  repli sur `git checkout`).
+
 ## Écarts par rapport au design
 
 - **Statut** : un fichier dont la taille sur disque diffère de celle de l'index (CRLF sur disque, LF

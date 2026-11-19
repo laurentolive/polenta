@@ -121,6 +121,7 @@ export function SystemView() {
     root,
     rootKey,
     setRoot,
+    obsoleteObjects,
     canUndo,
     canRedo,
     undo,
@@ -1303,6 +1304,7 @@ export function SystemView() {
             onInlineEdit={readOnly ? undefined : stableInlineEdit}
             onRenameNode={readOnly ? undefined : stableRenameNode}
             onRootChange={readOnly ? undefined : stableRootChangeDnd}
+            onObsoleteObjects={obsoleteObjects}
             onColumnsReorder={stableChangeExcel}
             generateId={generateId}
             stepsByObjectId={stepsByObjectId}

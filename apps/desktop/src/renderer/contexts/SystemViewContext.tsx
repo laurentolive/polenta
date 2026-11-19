@@ -223,6 +223,8 @@ export interface SystemViewState {
   // Tree
   root: TypeTreeNode[]
   setRoot: (root: TypeTreeNode[]) => void
+  /** GH415 — passe des exigences à obsolète avant suppression de l'arbre ; renvoie les refusées. */
+  obsoleteObjects: (objectIds: string[]) => Promise<string[]>
   canUndo: boolean
   canRedo: boolean
   undo: () => void
@@ -674,6 +676,42 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     if (!readOnly) saveMutation.mutate()
   }, [readOnly, saveMutation])
 
+  // GH415 — « Supprimer » d'un objet de l'arbre : l'exigence passe d'abord au statut terminal
+  // (obsolète), puis quitte l'arbre (sinon elle redevient « non classée »). Renvoie les IDs qui
+  // n'ont pas pu l'être : type sans statut terminal (tests, issues…), transition refusée.
+  const obsoleteObjects = useCallback(async (objectIds: string[]): Promise<string[]> => {
+    if (effectiveType?.category !== 'requirement') return objectIds
+    let terminal = effectiveType.statuses?.find(s => s.isTerminal)?.name
+    if (!terminal) {
+      // Type sans statut terminal : un statut « obsolete » terminal est ajouté à sa définition dans
+      // le schéma du repo, puis les exigences y passent (choix validé sur #415).
+      const schema = await api.schema.get(repoPath)
+      const def = flattenSystemNodes(schema.nodes).find(f => f.node.name === effectiveNodeId)?.node
+        .objectTypes?.find(t => t.name === effectiveTypeId)
+      if (!def) return objectIds
+      def.statuses = def.statuses ?? []
+      const existing = def.statuses.find(s => s.name === 'obsolete')
+      if (existing) existing.isTerminal = true
+      else def.statuses.push({ name: 'obsolete', label: 'Obsolète', isTerminal: true })
+      await api.schema.save(repoPath, schema)
+      await qc.invalidateQueries({ queryKey: ['schema', repoPath] })
+      terminal = 'obsolete'
+    }
+    const refused: string[] = []
+    for (const id of objectIds) {
+      try {
+        const req = await api.requirements.get(repoPath, id)
+        if (req.status !== terminal) {
+          await api.requirements.transition(repoPath, id, { toStatus: terminal }, project?.workspaceDir || undefined)
+        }
+      } catch {
+        refused.push(id)
+      }
+    }
+    qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
+    return refused
+  }, [effectiveType, effectiveNodeId, effectiveTypeId, repoPath, project?.workspaceDir, qc])
+
   // ── Filter ─────────────────────────────────────────────────────────────────
   const [filterVisible, setFilterVisible] = useState(false)
   const [filter, setFilter] = useState('')
@@ -1013,6 +1051,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     repoNameOf,
     root,
     setRoot,
+    obsoleteObjects,
     canUndo,
     canRedo,
     undo,

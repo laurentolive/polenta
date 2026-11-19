@@ -85,11 +85,60 @@ Non mesurés pour ce sprint (la suite n'a pas été instrumentée à la fin).
 
 ## Points à trancher à la validation finale
 
-1. **Exception anti-import** : `scripts/app-version.ts` lance `git describe` au build. Le garder
-   documenté, ou le faire passer par le git embarqué ?
-2. **Askpass côté terminal** (sprint 3, écart 6) : non câblé. À faire, ou à décider comme limite
-   connue ?
-3. **Test du délai réseau natif** (sprint 3, écart 7) : pas d'équivalent.
+1. **Exception anti-import** : `scripts/app-version.ts` lance `git describe` au build. **Décidé
+   (2026-11-19) : exception gardée**, documentée dans `no-direct-git.gh337.test.ts` (script de build,
+   hors application livrée). Rien d'autre à changer.
+2. **Askpass côté terminal** (sprint 3, écart 6) : **câblé (2026-11-19)**. Voir « Suite : sprint 5 »
+   ci-dessous.
+3. **Test du délai réseau natif** (sprint 3, écart 7) : **couvert (2026-11-19)** par
+   `git/network-timeout.gh337.test.ts`. Voir « Suite : sprint 5 ».
 4. **Checkout polenta-official** : écart accepté (voir Mesures). À reconfirmer après relecture.
 5. **R8 et gh222-diff-edit** : échecs e2e antérieurs à GH337, à traiter dans un ticket séparé.
 6. **Spec historique** : exemples de code à mettre à jour dans `SPEC-ELECTRON-DESKTOP`.
+
+## Suite : sprint 5 (2026-11-19)
+
+**Askpass côté terminal (spec §6, écart 6 du sprint 3).**
+
+- `askpass.ts` : `CredentialResolver` reçoit l'invite. `hostFromPrompt` lit l'hôte dans
+  `Password for 'https://user@host': ` (sans port ni identifiant). `terminalCredentials(lookup)` appelle
+  `auth.getHttpsCredentials` pour cet hôte. `openAskpassSession(resolve, 'terminal')` : pas de
+  `SSH_ASKPASS` (le terminal garde `ssh` interactif).
+- `ELECTRON_RUN_AS_NODE=1` n'est plus dans l'environnement : `askpass.sh` le pose pour son seul
+  processus. Le shell du terminal ne le reçoit donc pas (il filtre déjà `ELECTRON_*`).
+- `terminal.service.ts` : chaque session ouvre son nonce (`'terminal'`), l'environnement du shell reçoit
+  `POLENTA_ASKPASS_*` et `GIT_ASKPASS` après filtrage (`shellEnv(…, extra)`). Le nonce est révoqué au
+  `kill`, à la fin du shell, et si le lancement échoue. `start` devient asynchrone (ouverture du pipe).
+  `TerminalDeps` (`auth`, `spawnPty`, `shell`) est injectable pour les tests.
+- Tests : `services/terminal-askpass.gh337.test.ts` (faux pty, vrai `askpass.sh` lancé par le `sh` de
+  Git for Windows) : (1) aucun PAT dans l'environnement du shell ; (2) hôte extrait d'une invite ; (3) hôte
+  inconnu ou pas de compte : réponse vide ; (4) nonce refusé après fin de shell et après `kill`.
+- **Choix non prévu par la spec** : le nonce terminal n'a **pas** le plafond de 6 réponses des
+  opérations (il vit toute la session, un `push` par invite consommerait sinon le quota). Les réponses
+  restent bornées par la durée de la session.
+- **Limite connue, à valider** : le nonce est dans l'environnement du shell. Tout programme lancé dans le
+  terminal peut donc lancer `askpass.js` avec une invite forgée et obtenir les identifiants du compte
+  connecté pour l'hôte visé. C'est la conséquence directe de la décision du §6 (nonce de session), la même
+  exposition que pour les outils du même utilisateur que la spec rejette ailleurs (PAT dans l'environnement).
+- Non vérifié : un vrai `git push` depuis le terminal vers une forge (aucun serveur HTTP authentifié en
+  test). Le chemin git complet n'est couvert que pour les opérations (`network.gh337.test.ts`).
+
+**Délai réseau natif (GH15, écart 7 du sprint 3).**
+
+- `netRun` reçoit déjà `timeoutMs` par `NetworkOptions` : aucune modification de production.
+- `git/network-timeout.gh337.test.ts` : serveur HTTP muet sur `127.0.0.1` (port libre), délai de
+  1,5 s. `ls-remote`, `fetch` et `clone` s'arrêtent avec une `GitError` de kind `timeout`, en moins de 20 s,
+  et `liveProcessCount()` revient à 0.
+- **Point à traiter** : le message de cette erreur est peu clair (`git fetch --tags origin : code null`,
+  stderr vide). GH15 demande une erreur claire. Non modifié ici (hors demande) : à décider.
+
+**Vérifications (sprint 5)**
+
+- `pnpm -s typecheck` : 0 erreur.
+- `npx vitest run src/main/git src/main/services/terminal src/main/services/sync` : 17 fichiers, 154 tests verts.
+- `npx vitest run` (suite complète) : 193 fichiers, 2 014 tests verts.
+- E2E desktop `gh238` (`pnpm test:e2e:desktop -g GH238`) : **4 réussis, 4 échecs** (E5, E6, GH345, E7).
+  Le même lot sur la branche **sans** ce diff (stash) donne les mêmes 4 échecs : pas causé par ce sprint.
+  E1 à E4 (ouverture du shell avec l'environnement askpass) passent. Non établi : si ces 4 échecs existent
+  déjà sur `main` (la branche a changé le terminal au sprint 3). Un processus `sleep.exe` a survécu à la
+  fermeture du shell dans E5 : à qualifier.

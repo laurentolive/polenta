@@ -15,8 +15,10 @@ const SCANNED = ['src', 'scripts']
 
 /** Exceptions documentées : code de build exécuté hors de l'application (voir le fichier). */
 const ALLOWED_GIT_SPAWN = new Set([
-  // Version de l'application au build, lue dans les tags (GH158). Tourne sur le poste de build,
-  // avant que `vendor/git` existe ; ne fait pas partie du runtime de Polenta.
+  // Script de build, hors de l'application livrée : `git describe` lit la version dans les tags du
+  // dépôt (GH158) sur le poste de build, avant que `vendor/git` existe. Il ne tourne jamais dans
+  // Polenta à l'exécution, donc il ne passe pas par GitBackend. Exception gardée par décision de
+  // l'humain (2026-11-19, specs/GH337-sprint4.md point 1) : ne pas l'étendre à un autre fichier.
   'scripts/app-version.ts',
 ])
 

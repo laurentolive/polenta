@@ -3,6 +3,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import type { IPty } from 'node-pty'
 import type { TerminalDetectResult, TerminalKind } from '@polenta/types'
+import { type AskpassCredentials, type AskpassSession, openAskpassSession, terminalCredentials } from '../git/askpass'
 import { gitInstall } from '../git/git-binary'
 import { gitEnv } from '../git/git-config'
 import { cdCommand, resolveShell, shellEnv, type ShellSpec } from './terminal-shell.util'
@@ -33,20 +34,38 @@ function loadNodePty(): NodePty {
   return nodePty
 }
 
+/** Dépendances injectables (tests) : par défaut, le compte connecté, `node-pty` et le Git Bash embarqué. */
+export interface TerminalDeps {
+  /** Identifiants du compte connecté pour un remote (GH337 §6, session terminal). */
+  auth?: { getHttpsCredentials(remote: string): Promise<AskpassCredentials | null> }
+  spawnPty?: NodePty['spawn']
+  shell?: () => ShellSpec
+}
+
+interface TerminalSession { pty: IPty; owner: number; askpass: AskpassSession }
+
 export class TerminalService {
-  private readonly sessions = new Map<string, { pty: IPty; owner: number }>()
+  private readonly sessions = new Map<string, TerminalSession>()
   private nextId = 1
 
   /** `send` diffuse aux fenêtres (`terminal:data`, `terminal:exit`). */
   /** GH342 — `send` vise la fenêtre propriétaire (id de webContents) : avec plusieurs fenêtres, la
    *  sortie d'un shell ne part pas dans les autres. */
-  constructor(private readonly send: (owner: number, channel: string, ...args: unknown[]) => void) {}
+  constructor(
+    private readonly send: (owner: number, channel: string, ...args: unknown[]) => void,
+    private readonly deps: TerminalDeps = {},
+  ) {}
 
   /** Shell à lancer, re-résolu à chaque appel. Sous Windows, lève `GitUnavailableError` si le git
    *  embarqué est absent. */
   private shell(): ShellSpec {
+    if (this.deps.shell) return this.deps.shell()
     const embeddedBash = process.platform === 'win32' ? gitInstall().bashExe : null
     return resolveShell({ platform: process.platform, env: process.env, embeddedBash, exists: p => fs.existsSync(p) })
+  }
+
+  private spawnPty(file: string, args: string[], opts: Parameters<NodePty['spawn']>[2]): IPty {
+    return this.deps.spawnPty ? this.deps.spawnPty(file, args, opts) : loadNodePty().spawn(file, args, opts)
   }
 
   async detect(): Promise<TerminalDetectResult> {
@@ -56,23 +75,35 @@ export class TerminalService {
 
   /** `owner` : id du webContents demandeur — ses sessions sont tuées quand il recharge ou disparaît
    *  (`killOwnedBy`), le nettoyage React n'ayant alors pas lieu. */
-  start(_kind: TerminalKind, cwd: string, cols: number, rows: number, owner: number): { id: string; name: string } {
+  /** GH337 §6 — la session reçoit un nonce « terminal » : git et son askpass lisent l'hôte de chaque
+   *  invite et répondent avec le compte connecté pour cet hôte. Le nonce est révoqué à la fermeture. */
+  async start(_kind: TerminalKind, cwd: string, cols: number, rows: number, owner: number): Promise<{ id: string; name: string }> {
     const shell = this.shell()
-    const pty = loadNodePty().spawn(shell.file, shell.args, {
-      name: 'xterm-256color',
-      cols: Math.max(cols, 2),
-      rows: Math.max(rows, 1),
-      cwd: cwd && fs.existsSync(cwd) ? cwd : os.homedir(),
-      env: shellEnv(gitEnv({ terminal: true }), process.platform),
-      // ConPTY de Windows, pas celui livré par node-pty (option expérimentale, désactivée aussi par
-      // défaut dans VS Code) : avec ce dernier, une frappe rapide arrivait parfois dans le désordre
-      // au shell (`techo` pour `echo`), constaté en test d'interface.
-      useConptyDll: false,
-    })
+    const lookup = (remote: string): Promise<AskpassCredentials | null> =>
+      this.deps.auth ? this.deps.auth.getHttpsCredentials(remote) : Promise.resolve(null)
+    const askpass = await openAskpassSession(terminalCredentials(lookup), 'terminal')
+    let pty: IPty
+    try {
+      pty = this.spawnPty(shell.file, shell.args, {
+        name: 'xterm-256color',
+        cols: Math.max(cols, 2),
+        rows: Math.max(rows, 1),
+        cwd: cwd && fs.existsSync(cwd) ? cwd : os.homedir(),
+        env: shellEnv(gitEnv({ terminal: true }), process.platform, askpass.env),
+        // ConPTY de Windows, pas celui livré par node-pty (option expérimentale, désactivée aussi par
+        // défaut dans VS Code) : avec ce dernier, une frappe rapide arrivait parfois dans le désordre
+        // au shell (`techo` pour `echo`), constaté en test d'interface.
+        useConptyDll: false,
+      })
+    } catch (err) {
+      askpass.revoke()
+      throw err
+    }
     const id = String(this.nextId++)
-    this.sessions.set(id, { pty, owner })
+    this.sessions.set(id, { pty, owner, askpass })
     pty.onData(chunk => this.send(owner, 'terminal:data', id, chunk))
     pty.onExit(({ exitCode }) => {
+      askpass.revoke()
       this.sessions.delete(id)
       this.send(owner, 'terminal:exit', id, exitCode)
     })
@@ -98,9 +129,12 @@ export class TerminalService {
    *  (git, less…) ; `taskkill /T` en repli, une seconde après, pour un descendant qui y aurait
    *  échappé — pas avant : l'agent de node-pty qui liste la console échouerait. */
   kill(id: string): void {
-    const pty = this.sessions.get(id)?.pty
-    if (!pty) return
+    const session = this.sessions.get(id)
+    if (!session) return
+    const pty = session.pty
     const pid = pty.pid
+    // Session en fermeture : son nonce askpass n'a plus à répondre (GH337 §6).
+    session.askpass.revoke()
     try {
       pty.kill()
     } catch { /* déjà terminé */ }

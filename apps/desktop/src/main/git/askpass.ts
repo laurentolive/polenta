@@ -18,12 +18,14 @@ import * as path from 'path'
  */
 
 export interface AskpassCredentials { username: string; password: string }
-export type CredentialResolver = () => Promise<AskpassCredentials | null>
+/** Résout les identifiants pour une invite (`prompt` : texte exact demandé par git). */
+export type CredentialResolver = (prompt: string) => Promise<AskpassCredentials | null>
 
-/** Nombre maximal de réponses données pour un jeton (username + password, avec une marge de reprise). */
+/** Nombre maximal de réponses données pour un jeton d'opération (username + password, avec une marge de reprise). */
 const MAX_ANSWERS_PER_TOKEN = 6
 
-interface TokenEntry { resolve: CredentialResolver; answers: number }
+/** Jeton : `limit` = réponses maximales (`Infinity` pour le terminal, borné par la durée de la session). */
+interface TokenEntry { resolve: CredentialResolver; answers: number; limit: number }
 
 const tokens = new Map<string, TokenEntry>()
 let server: net.Server | null = null
@@ -93,13 +95,38 @@ async function answer(line: string): Promise<string> {
   let req: { nonce?: unknown; prompt?: unknown }
   try { req = JSON.parse(line) } catch { return '' }
   const entry = typeof req.nonce === 'string' ? tokens.get(req.nonce) : undefined
-  if (!entry || entry.answers >= MAX_ANSWERS_PER_TOKEN) return ''
+  if (!entry || entry.answers >= entry.limit) return ''
   entry.answers++
   const prompt = typeof req.prompt === 'string' ? req.prompt : ''
   if (!/^(username|password)\b/i.test(prompt.trim())) return ''
-  const creds = await entry.resolve().catch(() => null)
+  const creds = await entry.resolve(prompt).catch(() => null)
   if (!creds) return ''
   return /^username/i.test(prompt.trim()) ? creds.username : creds.password
+}
+
+/**
+ * Hôte de l'invite de git : `Password for 'https://user@host': ` → `host` (sans port ni identifiant).
+ * `null` si l'invite ne vise pas une URL http(s) (passphrase SSH, invite inconnue).
+ */
+export function hostFromPrompt(prompt: string): string | null {
+  const m = /^(?:username|password) for '(https?:\/\/[^']+)'/i.exec(prompt.trim())
+  if (!m) return null
+  try {
+    return new URL(m[1]).hostname || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Résolveur d'une session terminal (§6) : l'hôte est lu dans l'invite, puis `lookup` (le compte connecté
+ * pour cet hôte, `auth.getHttpsCredentials`) répond. Hôte absent ou sans identifiants : `null`.
+ */
+export function terminalCredentials(lookup: (remote: string) => Promise<AskpassCredentials | null>): CredentialResolver {
+  return async prompt => {
+    const host = hostFromPrompt(prompt)
+    return host ? lookup(`https://${host}`) : null
+  }
 }
 
 export interface AskpassSession {
@@ -110,24 +137,26 @@ export interface AskpassSession {
 }
 
 /**
- * Ouvre une session d'identifiants pour une opération réseau. `resolve` est appelé à chaque invite
- * (lazy : rien n'est lu si git n'en a pas besoin). Appeler `revoke()` à la fin de l'opération.
+ * Ouvre une session d'identifiants. `resolve` est appelé à chaque invite (lazy : rien n'est lu si git
+ * n'en a pas besoin). `operation` : une opération réseau, `revoke()` à sa fin. `terminal` : la session
+ * du terminal, `revoke()` à sa fermeture. Le terminal garde `ssh` interactif : pas de `SSH_ASKPASS`.
+ * `ELECTRON_RUN_AS_NODE` n'est pas dans l'environnement : le shim le pose pour son seul processus.
  */
-export async function openAskpassSession(resolve: CredentialResolver): Promise<AskpassSession> {
+export async function openAskpassSession(resolve: CredentialResolver, kind: 'operation' | 'terminal' = 'operation'): Promise<AskpassSession> {
   const where = await ensureServer()
   const nonce = randomBytes(32).toString('hex')
-  tokens.set(nonce, { resolve, answers: 0 })
+  tokens.set(nonce, { resolve, answers: 0, limit: kind === 'terminal' ? Infinity : MAX_ANSWERS_PER_TOKEN })
   const dir = askpassDir()
+  const env: Record<string, string> = {
+    POLENTA_ASKPASS_PIPE: where,
+    POLENTA_ASKPASS_NONCE: nonce,
+    GIT_ASKPASS: path.join(dir, 'askpass.sh'),
+    POLENTA_NODE: process.execPath,
+    POLENTA_ASKPASS_JS: path.join(dir, 'askpass.js'),
+  }
+  if (kind === 'operation') env.SSH_ASKPASS = path.join(dir, 'askpass.sh')
   return {
-    env: {
-      POLENTA_ASKPASS_PIPE: where,
-      POLENTA_ASKPASS_NONCE: nonce,
-      GIT_ASKPASS: path.join(dir, 'askpass.sh'),
-      SSH_ASKPASS: path.join(dir, 'askpass.sh'),
-      POLENTA_NODE: process.execPath,
-      POLENTA_ASKPASS_JS: path.join(dir, 'askpass.js'),
-      ELECTRON_RUN_AS_NODE: '1',
-    },
+    env,
     revoke: () => { tokens.delete(nonce) },
   }
 }

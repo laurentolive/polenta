@@ -71,10 +71,11 @@ app.whenReady().then(() => {
   const update = new UpdateService(container.appSettings)
   update.onBeforeInstall(prepareForcedQuit)
   // GH238 — terminal de la vue Version ; ses shells ne survivent pas à l'application.
+  // GH337 — identifiants askpass de la session terminal : ceux du compte connecté (§6).
   const terminal = new TerminalService((owner, channel, ...args) => {
     const target = webContents.fromId(owner)
     if (target && !target.isDestroyed()) target.send(channel, ...args)
-  })
+  }, { auth: container.auth })
   app.on('will-quit', () => terminal.killAll())
   // GH337 — aucun processus git (ni son réseau : git-remote-https, ssh) ne survit à l'application.
   app.on('will-quit', () => { void closeAll(); void closeAskpassServer() })

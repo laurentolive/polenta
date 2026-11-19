@@ -37,8 +37,12 @@ export function resolveShell(p: ShellProbe): ShellSpec {
 /** Environnement du shell : `base` doit venir de `gitEnv({ terminal: true })` (PATH avec le git
  *  embarqué en tête, config isolée, locale et invites de l'utilisateur, `HOME` inchangé). On retire
  *  ce qui vient d'Electron / de Polenta : `ELECTRON_RUN_AS_NODE` ferait d'un `electron` lancé depuis
- *  le terminal un simple Node. */
-export function shellEnv(base: Record<string, string | undefined>, platform: NodeJS.Platform): Record<string, string> {
+ *  le terminal un simple Node.
+ *  GH337 — `extra` : variables askpass de la session terminal (`openAskpassSession(…, 'terminal')`),
+ *  ajoutées après le filtrage (elles portent le préfixe `POLENTA_`). Jamais de PAT ici. */
+export function shellEnv(
+  base: Record<string, string | undefined>, platform: NodeJS.Platform, extra: Record<string, string> = {},
+): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(base)) {
     if (v === undefined || /^(ELECTRON_|POLENTA_)/i.test(k)) continue
@@ -48,6 +52,7 @@ export function shellEnv(base: Record<string, string | undefined>, platform: Nod
   out['COLORTERM'] = 'truecolor'
   // Sans elle, le /etc/profile de Git Bash fait `cd ~` et ignore le dossier de départ.
   if (platform === 'win32') out['CHERE_INVOKING'] = '1'
+  Object.assign(out, extra)
   return out
 }
 

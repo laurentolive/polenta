@@ -12,7 +12,7 @@ import { outsideClone } from './support/forge'
 const s = setupSession()
 test.beforeEach(() => s.allowConsoleErrors(/status of 404/))
 
-const REFRESH = /^(Rafraîchir|Refresh)(\s\d+)?$/
+const REFRESH = /^(Récupérer|Get updates)(\s\d+)?$/
 const WORK = 'dev-gh414'
 
 interface IntegrationState { currentBranch: string; configured: string }

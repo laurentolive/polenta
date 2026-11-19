@@ -76,7 +76,7 @@ async function oidOf(e: WalkNode | undefined): Promise<string | undefined> {
 }
 
 /**
- * GH337 — parcours à trois côtés sans isomorphic-git (`git.walk`) : les arbres sont lus une fois
+ * GH337 — parcours à trois côtés par `lsTree` récursif : les arbres sont lus une fois
  * chacun (`lsTree` récursif, dossiers compris), puis parcourus dans l'ordre des chemins. `map` reçoit
  * le chemin et l'entrée de chaque côté (absente = `undefined`) ; renvoyer `true` pour un dossier le
  * fait descendre, sinon son contenu est ignoré (même contrat que `git.walk`).

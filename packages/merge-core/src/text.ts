@@ -10,7 +10,7 @@ export function linesWithBreaks(text: string): string[] {
 }
 
 /**
- * Line-based 3-way merge — same `diff3` library and argument order as isomorphic-git's
+ * Line-based 3-way merge — same `diff3` library and argument order as the `mergeFile` convention
  * `mergeFile`, so a file is in conflict here exactly when it is for `git.merge`. Each conflicting
  * chunk becomes a block `hunk:<n>`.
  */

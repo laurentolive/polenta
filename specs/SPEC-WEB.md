@@ -204,6 +204,9 @@ la version web »).
   `node:20-bookworm-slim` + dépendances externes du bundle (Fastify, playwright-core) + Chromium
   headless et ses dépendances système (`playwright-core install --with-deps --only-shell chromium`).
   Utilisateur `node` (uid 1000), volume `/var/lib/polenta-web`, `HEALTHCHECK` sur `/healthz`.
+  GH337 : l'image installe `git` (apt, bookworm : 2.39) et `openssh-client` ; le serveur web lance le git
+  du système, pas le git portable de l'installeur (`git-binary.ts`). Le protocole git
+  autorisé est `https` (`setAllowedGitProtocols`, `http` seulement si `gitAllowHttp`).
 - **Kit `deploy/`** (#45) : service compose `polenta-web` (profil `web`, `web.env` de l'instance,
   démarre après la forge saine) ; `polenta-host instance web enable <nom> --domain <d> --version <v>
   [--image <i>]` crée l'application OAuth2 de la forge, installe la page de consentement

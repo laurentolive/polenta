@@ -1,8 +1,7 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { TestRepo } from '../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { ObjectTypeDefinition, ProjectSchema, TestCampaign, TestRun, WorkspaceTree } from '@polenta/types'
@@ -44,8 +43,7 @@ const runsByTest = new Map<string, TestRun[]>()
 const campaignsById = new Map<string, TestCampaign>()
 
 async function commitAll(dir: string) {
-  await git.add({ fs, dir, filepath: '.' })
-  await git.commit({ fs, dir, message: 'c', author: { name: 'Alice', email: 'a@x', timestamp: 1_790_000_000, timezoneOffset: 0 } })
+  await new TestRepo(dir).commitAll('c', { name: 'Alice', email: 'a@x', timestamp: 1_790_000_000 })
 }
 const req = (dir: string, id: string) => gitSvc.writeYaml(dir, `requirements/${id}.yaml`, { id, objectTypeRef: 'root::exigence', title: id, status: 'draft', version: 1, fields: {} })
 const readVersion = (dir: string, id: string) => versions.get(dir, id)
@@ -59,7 +57,7 @@ beforeEach(async () => {
   const schemas = new Map<string, ProjectSchema>()
   for (const [dir, p] of [[root, 'P'], [comp, 'M'], [sub, 'B']] as const) {
     await fsP.mkdir(dir, { recursive: true })
-    await git.init({ fs, dir, defaultBranch: 'main' })
+    await TestRepo.init(dir, 'main')
     schemas.set(path.resolve(dir), schemaOf(p))
     await gitSvc.writeYaml(dir, '.polenta/schema.yaml', schemaOf(p))
     await commitAll(dir)

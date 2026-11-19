@@ -1,8 +1,7 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { TestRepo } from '../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { MountOverride } from '@polenta/types'
@@ -25,10 +24,10 @@ let ws: string
 async function initRepo(name: string, branch = 'main', manifest?: string): Promise<void> {
   const dir = path.join(ws, name)
   await fsP.mkdir(dir, { recursive: true })
-  await git.init({ fs, dir, defaultBranch: branch })
+  await TestRepo.init(dir, branch)
   await fsP.writeFile(path.join(dir, 'README.md'), name)
-  await git.add({ fs, dir, filepath: 'README.md' })
-  await git.commit({ fs, dir, message: 'init', author: AUTHOR })
+  await new TestRepo(dir).add(['README.md'])
+  await new TestRepo(dir).commit('init', AUTHOR)
   if (manifest !== undefined) await fsP.writeFile(path.join(dir, 'polenta-repo.yaml'), manifest)
 }
 

@@ -58,7 +58,7 @@ export class IntegrationBranchService {
       throw new Error(`« ${branch} » n'est pas un nom de branche d'intégration valide (int-<nom>).`)
     }
     const current = await branchOf(repoPath)
-    // Branche absente en local : isomorphic-git crée la branche de suivi depuis origin/<branch>.
+    // Branche absente en local : la branche de suivi est créée depuis origin/<branch>.
     if (current !== branch) await this.sync.checkoutBranch(repoPath, branch)
 
     const outcome: DesignateOutcome = { branch, committed: false, push: 'no-remote', defaultBranch: 'no-forge' }
@@ -159,7 +159,7 @@ export class IntegrationBranchService {
       const g = gitFor(repoPath)
       const oid = await g.resolve(`refs/heads/${branch}`)
       if (oid) {
-        // Comme isomorphic-git : branche encore courante (retour arrière échoué) → HEAD détaché d'abord.
+        // Branche encore courante (retour arrière échoué) → HEAD détaché d'abord.
         if ((await g.currentBranch()) === branch) await g.detachHead(oid)
         await g.deleteBranch(branch)
       }
@@ -209,7 +209,7 @@ export class IntegrationBranchService {
 }
 
 
-/** Branche courante, `undefined` en tête détachée ou hors dépôt (sémantique de `currentBranch` d'isomorphic-git + `.catch`). */
+/** Branche courante, `undefined` en tête détachée ou hors dépôt. */
 async function branchOf(repoPath: string): Promise<string | undefined> {
   return (await gitFor(repoPath).currentBranch().catch(() => null)) ?? undefined
 }

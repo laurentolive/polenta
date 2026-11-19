@@ -35,7 +35,9 @@ Local git working tree (clone du remote)
 2. **Lecture/écriture = working tree.** `fs.readFile` sur les fichiers du repo cloné. Pas de `git show`.
 3. **Git commit = action utilisateur explicite.** Les services écrivent sur disque (`fs.writeFile`) sans committer. L'utilisateur décide quand committer.
 4. **Chaque modification passe par une branche git.** Une branche = une intention de travail. Elle peut toucher N exigences et N tests. Le merge ne requiert pas de review — la review est un workflow indépendant sur les exigences/tests, découplé du cycle de vie des branches.
-5. **isomorphic-git** remplace `simple-git`. Pur JS, pas de binaire git système requis.
+5. **Git natif embarqué** (GH337) : `GitBackend` (`src/main/git/`) lance le git for Windows portable
+   livré dans l'installeur (`vendor/git`). Il remplace `simple-git` puis `isomorphic-git` (retiré).
+   Pas de git système requis chez le client ; seul `src/main/git/` lance `git`.
 6. **schemaVersion** vérifié à l'ouverture de chaque repo.
 
 > **Précision (T122)** : la règle 1 vise l'absence de serveur **HTTP** exposant l'app à
@@ -147,7 +149,6 @@ pas champ par champ.
 ```json
 {
   "dependencies": {
-    "isomorphic-git": "^1.25.0",
     "keytar": "^7.9.0",
     "node-pty": "1.1.0",
     "@xterm/xterm": "6.0.0",
@@ -1078,7 +1079,8 @@ export default defineConfig({
 - ❌ Faire des requêtes réseau depuis le renderer — tout passe par IPC
 - ❌ Exposer `ipcRenderer` directement dans le preload — uniquement via `contextBridge`
 - ❌ Stocker le PAT en clair dans `userData` ou dans le repo
-- ❌ Réutiliser `simple-git` — uniquement `isomorphic-git`
+- ❌ Réutiliser `simple-git` ou `isomorphic-git` — uniquement le git embarqué, via `GitBackend` (GH337)
+- ❌ Lancer `git` (spawn / execFile) hors de `src/main/git/` (test `no-direct-git.gh337.test.ts`)
 - ❌ Importer `electron` ou `keytar` dans `main/services/` (GH44 : passer par `HostContext`,
   `PlatformHost`, `PrintRenderer` — le noyau est partagé avec le serveur web et le serveur MCP)
 - ❌ Éditer `.polenta/trees/<nœud>/<type>.yaml`, `polenta-repo.yaml` généré, ou tout fichier `.polenta/*.cache.yaml` manuellement — maintenus par l'application (T130 : pas de `.gitmodules`, ce mécanisme n'existe pas — voir §22)
@@ -1763,18 +1765,17 @@ seulement (écart avec le client web : `SPEC-WEB.md` §11).
   sélectionné (statut, graphe, branches, tags, état d'intégration) ; la frappe suivante désarme.
   Couvre l'index git et les états de merge/rebase, invisibles au watcher (qui ignore `.git` hormis
   HEAD/refs).
-- **Git Bash introuvable** : « Git Bash introuvable sur ce poste », Installer Git (`winget install
-  --id Git.Git …` dans le pseudo-terminal si winget répond, sinon page git-scm.com) et Revérifier ;
-  Git installé utilisable sans redémarrer (emplacements standards toujours consultés).
+- **Bash embarqué absent** (GH337) : erreur explicite « lancer `pnpm git:fetch` » (installation
+  incomplète). Pas de repli sur les shells du poste, ni de bouton d'installation de Git (retirés).
 - **Main** : `TerminalService` (`services/terminal.service.ts`, hors `Container` partagé, créé dans
   `main/index.ts`), `node-pty` chargé à la demande depuis `app.asar.unpacked`, **ConPTY de
   Windows** (`useConptyDll: false` : celui livré par node-pty mélangeait une frappe rapide).
-  Shell : `bin\bash.exe --login -i` de Git for Windows, `CHERE_INVOKING=1`, environnement sans
+  Shell : `bin\bash.exe --login -i` du git embarqué (`vendor/git`, GH337), `CHERE_INVOKING=1`, git embarqué en tête du PATH, environnement sans
   `ELECTRON_*` / `POLENTA_*` (`terminal-shell.util.ts`). Kill : `pty.kill()` puis `taskkill /T`
   une seconde après si le shell vit encore. Sessions tuées à la sortie de l'application et à une
   nouvelle page principale du webContents propriétaire (rechargement).
 - **Channels** (`DESKTOP_ONLY_CHANNELS`) : `terminal:detect`, `terminal:start`, `terminal:write`,
-  `terminal:cd`, `terminal:resize`, `terminal:kill`, `terminal:open-git-download` (URL fixe) ;
+  `terminal:cd`, `terminal:resize`, `terminal:kill` ;
   événements `terminal:data` (id, chunk) et `terminal:exit` (id, code).
 - Le terminal agit hors de Polenta : un `rm` du fichier d'un objet ne pose pas de pierre tombale,
   une édition à la main contourne l'historique — écarts d'une édition hors application, sans

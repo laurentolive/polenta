@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { TestRepo } from '../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { AuthService } from './auth.service'
@@ -163,10 +163,10 @@ describe('comptes', () => {
       defaultAccount: 'github.com:octo',
     }))
     const repo = path.join(dir, 'repo')
-    await git.init({ fs, dir: repo, defaultBranch: 'main' })
-    await git.addRemote({ fs, dir: repo, remote: 'origin', url: `${forge.baseUrl}/acme/essai.git` })
+    await TestRepo.init(repo, 'main')
+    await new TestRepo(repo).addRemote('origin', `${forge.baseUrl}/acme/essai.git`)
     expect(await auth.getAuthor(repo)).toEqual({ name: 'Bob Martin', email: 'bob@acme.fr' })
-    await git.deleteRemote({ fs, dir: repo, remote: 'origin' })
+    await new TestRepo(repo).removeRemote('origin')
     expect(await auth.getAuthor(repo)).toEqual({ name: 'Octo', email: 'o@x' })
   })
 })

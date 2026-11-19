@@ -1,10 +1,9 @@
 import { execFileSync } from 'child_process'
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { TestRepo } from '../git/test-repo.test-util'
 
 import type { ExecutionHistoryRow, GraphValidation } from '@polenta/types'
 import { GraphService } from './graph.service'
@@ -84,8 +83,7 @@ const executions = {
 let tick = 0
 
 async function commitAll(message: string) {
-  await git.add({ fs, dir, filepath: '.' })
-  await git.commit({ fs, dir, message, author: { name: 'Alice', email: 'a@x', timestamp: Date.UTC(2026, 9, 1) / 1000 + ++tick, timezoneOffset: 0 } })
+  await new TestRepo(dir).commitAll(message, { name: 'Alice', email: 'a@x', timestamp: Date.UTC(2026, 9, 1) / 1000 + ++tick })
 }
 const writeReq = (id: string, extra: Record<string, unknown> = {}) => gitSvc.writeYaml(dir, `requirements/${id}.yaml`, {
   id, projectId: '', branchId: '', objectTypeRef: 'root::exigence', title: `Titre ${id}`, status: 'draft', version: 1, fields: {}, ...extra,
@@ -106,7 +104,7 @@ const rowOf = async (id: string, req: string) => (await rowsOf(id)).find(r => r.
 beforeEach(async () => {
   dir = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh204-'))
   gitSvc = new GitService()
-  await git.init({ fs, dir, defaultBranch: 'main' })
+  await TestRepo.init(dir, 'main')
   await gitSvc.writeYaml(dir, '.polenta/schema.yaml', SCHEMA)
   await commitAll('schéma')
   coverage = {}
@@ -396,12 +394,12 @@ describe('signature (U9, U10, U15)', () => {
     const v = await release('1.0')
     const val = await validations.create(dir, { versionId: v.id, title: 'V' })
     await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme' })
-    const tagsBefore = await git.listTags({ fs, dir })
+    const tagsBefore = await new TestRepo(dir).listTags()
     const signed = await validations.sign(dir, val.id)
     expect(signed.status).toBe('signee')
-    expect(await git.listTags({ fs, dir })).toEqual(tagsBefore)
-    const [last] = await git.log({ fs, dir, depth: 1 })
-    expect(last.commit.message).toContain(val.id)
+    expect(await new TestRepo(dir).listTags()).toEqual(tagsBefore)
+    const [last] = await new TestRepo(dir).git.log('HEAD', { limit: 1 })
+    expect(last.message).toContain(val.id)
     const committed = await gitSvc.readTextAt(dir, last.oid, `validations/${val.id}.yaml`)
     expect(committed).toContain('status: signee')
     expect(await code(validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'hors_scope' }))).toBe('VALIDATION_LOCKED')

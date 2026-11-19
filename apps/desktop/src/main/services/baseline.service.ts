@@ -1,7 +1,7 @@
 import { gitFor } from '../git/git-backend'
 import { assertNotVersionTag, frozenVersionTags } from './version-tags.util'
 
-/** Noms des tags du dépôt (`[]` hors dépôt, comme `listTags` d'isomorphic-git dans un `.catch`). */
+/** Noms des tags du dépôt (`[]` hors dépôt). */
 async function listTagNames(repoPath: string): Promise<string[]> {
   try {
     return await gitFor(repoPath).refNames('refs/tags')

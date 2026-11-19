@@ -26,8 +26,8 @@ export default defineConfig({
     // réel — trouvé et corrigé identiquement dans les deux tickets en vérification manuelle de
     // l'app buildée ("SyntaxError: Unexpected token 'export'" au boot).
     //
-    // isomorphic-git, chokidar exclus aussi : externalisés, leurs dépendances transitives
-    // (async-lock, readdirp...) ne sont satisfaites QUE par ces libs — pnpm, en mode strict, ne
+    // chokidar exclus aussi : externalisé, ses dépendances transitives
+    // (readdirp...) ne sont satisfaites QUE par cette lib — pnpm, en mode strict, ne
     // les hisse jamais dans apps/desktop/node_modules (elles n'existent que sous
     // node_modules/.pnpm/<lib>@…/node_modules/). electron-builder ne peut donc jamais les trouver
     // pour le packaging ("Cannot find module 'async-lock'", puis 'readdirp'). keytar reste
@@ -48,7 +48,7 @@ export default defineConfig({
     plugins: [
       externalizeDepsPlugin({
         exclude: [
-          '@polenta/types', 'isomorphic-git', 'chokidar', 'docx', 'exceljs', 'js-yaml', 'electron-updater',
+          '@polenta/types', 'chokidar', 'docx', 'exceljs', 'js-yaml', 'electron-updater',
           'docxtemplater', 'pizzip', 'angular-expressions', 'markdown-it', 'xlsx-template',
           '@polenta/merge-core', 'diff3',
         ],

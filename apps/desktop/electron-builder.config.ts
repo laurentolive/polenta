@@ -72,13 +72,12 @@ export function builderConfig(brand: LoadedBrand): Configuration {
       '!out/notices/**/*',
       // electron.vite.config.ts externalise toutes les deps npm du process main
       // (externalizeDepsPlugin) — elles restent des `require()` réels à l'exécution (keytar,
-      // isomorphic-git...) et doivent donc être physiquement présentes dans le package. Le
+      // ...) et doivent donc être physiquement présentes dans le package. Le
       // détecteur "production dependencies" intégré d'electron-builder (marche l'arbre de
       // package.json pour ne garder que les deps de prod) ne suit pas correctement la structure
-      // symlinkée de node_modules par pnpm : des deps transitives comme `async-lock` (requise par
-      // `isomorphic-git`, pas listée dans notre package.json) passaient à la trappe — "Cannot find
-      // module 'async-lock'" au lancement. On inclut tout node_modules explicitement plutôt que de
-      // compter sur cette détection.
+      // symlinkée de node_modules par pnpm : des deps transitives (requises par une dépendance,
+      // pas listées dans notre package.json) passaient à la trappe — "Cannot find module" au
+      // lancement. On inclut tout node_modules explicitement plutôt que de compter sur cette détection.
       'node_modules/**/*',
     ],
     extraResources: [

@@ -1,8 +1,7 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { TestRepo } from '../../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ForgeKind } from '@polenta/types'
 
@@ -43,8 +42,8 @@ async function setup(provider: ForgeKind) {
   const ctx: HostContext = { userDataDir: dir, tokenStore: tokens, machineConfig: { hideGithub: false } }
   auth = new AuthService(ctx)
   service = new ForgeService(auth, {} as WorkspaceService, {} as SyncService)
-  await git.init({ fs, dir: repo, defaultBranch: 'int-a' })
-  await git.addRemote({ fs, dir: repo, remote: 'origin', url: `${forge.baseUrl}/acme/proj.git` })
+  await TestRepo.init(repo, 'int-a')
+  await new TestRepo(repo).addRemote('origin', `${forge.baseUrl}/acme/proj.git`)
 }
 
 beforeEach(async () => {
@@ -103,8 +102,8 @@ describe('ForgeService.alignDefaultBranch — Forgejo', () => {
   })
 
   it('origin hors forge connue → no-forge', async () => {
-    await git.deleteRemote({ fs, dir: repo, remote: 'origin' })
-    await git.addRemote({ fs, dir: repo, remote: 'origin', url: 'https://ailleurs.test/acme/proj.git' })
+    await new TestRepo(repo).removeRemote('origin')
+    await new TestRepo(repo).addRemote('origin', 'https://ailleurs.test/acme/proj.git')
     expect(await service.alignDefaultBranch(repo, 'int-b')).toBe('no-forge')
   })
 })

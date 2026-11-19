@@ -393,7 +393,7 @@ export class AuthService {
     return { name: `${BRAND.productName} User`, email: `user@${BRAND.id}.local` }
   }
 
-  // ─── Credentials for isomorphic-git ────────────────────────────────────────
+  // ─── Credentials for git (serveur d'identifiants, GH337) ───────────────────
 
   async getHttpsCredentials(remote: string): Promise<{ username: string; password: string } | null> {
     const host = extractHost(remote)
@@ -578,7 +578,7 @@ export function extractHost(remote: string): string {
 }
 
 async function readGitConfig(repoPath: string, key: string): Promise<string | null> {
-  // isomorphic-git doesn't have a simple getConfig for local — read .git/config manually
+  // lecture de .git/config à la main (pas de processus git pour une clé de config simple)
   const configPath = path.join(repoPath, '.git', 'config')
   try {
     const raw = await fsPromises.readFile(configPath, 'utf-8')

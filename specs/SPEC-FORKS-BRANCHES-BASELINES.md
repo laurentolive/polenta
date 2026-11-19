@@ -67,7 +67,7 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
 `ahead > 0`), le bouton Rafraîchir reste toujours visible, sur demande explicite.
 
 > **GH37 — `pull` réécrit.** `fetch`, puis merge de `refs/remotes/origin/<branche>` dans la branche
-> courante via isomorphic-git (`abortOnConflict`), puis `checkout` pour réaligner le WD. Un
+> courante via `GitBackend.mergeBranches` (git embarqué, GH337 ; conflit sans écriture), puis `checkout` pour réaligner le WD. Un
 > **conflit n'écrit plus rien dans le working directory**. C'est aussi vrai pour un remote SSH ou
 > local, dont l'ancien chemin `git pull --no-rebase` en CLI écrivait les marqueurs dans les
 > fichiers. Le conflit est renvoyé (`MergeResult` avec `leftRef`/`rightRef`), et le panneau Version
@@ -76,7 +76,9 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
 > **Correctif `SyncService.createBranch` (T87) :** créer une branche à la position courante alors
 > que le répertoire de travail contient des modifications non commitées (le cas nominal ci-dessus)
 > ne doit écraser aucun fichier. `git.branch({ checkout: true })` d'isomorphic-git délègue à son
-> `checkout()`, qui par défaut réécrit les fichiers suivis — risque réel de perte de travail.
+> `checkout()`, qui par défaut réécrit les fichiers suivis — risque réel de perte de travail (historique T87).
+> GH337 : `createBranch` crée la branche par `GitBackend.createBranch` puis pose HEAD (`setHeadBranch`) sans
+> toucher au working directory.
 > `createBranch` utilise désormais `git.branch({ checkout: false })` puis
 > `git.checkout({ ref: name, noCheckout: true })`, qui déplace `HEAD` sans toucher un seul fichier.
 > Bénéficie à tous les appelants de `sync:create-branch` (pas seulement "Publier").
@@ -168,7 +170,7 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
 - Les reviews (fonctionnalité générique, indépendante de ce workflow) peuvent être créées sur
   n'importe quelle branche.
 - Aucune garde applicative n'empêche de checkout une autre branche/commit sur un repo qui a des
-  modifications en attente (décision explicite T87) — comportement natif d'isomorphic-git : succès
+  modifications en attente (décision explicite T87) — comportement natif de git (GH337) : succès
   si aucun conflit de fichier (les modifications suivent alors sur la nouvelle cible), erreur native
   sinon.
 
@@ -238,8 +240,8 @@ de "Publier") ne l'est jamais.
 ### 2.4 Résolution de conflits
 
 **État actuel (T84) :** la détection de conflit reste **binaire au niveau fichier**, pas champ par
-champ. `SyncService.merge`/`mergeInto` détectent `MergeConflictError` d'isomorphic-git via
-`instanceof git.Errors.MergeConflictError` (pas un test sur `err.message` — cf. note historique
+champ. `SyncService.merge`/`mergeInto` détectent `MergeConflictError` (`git-errors.ts`, GH337 ; était
+d'isomorphic-git) via `instanceof` (pas un test sur `err.message` — cf. note historique
 ci-dessous) et retournent `{ success: false, conflicts: string[] }`, où `conflicts` porte les
 chemins réels des fichiers en conflit (`err.data.filepaths`). Le type `YamlConflict`
 (`base`/`ours`/`theirs`/`conflictingFields`), jamais peuplé et sans consommateur, a été supprimé de

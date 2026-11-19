@@ -356,7 +356,7 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.sync.isMergedInto(repoPath, branch, into))
   r.handle('sync:log', async (_e, repoPath: string, limit = 20) => {
     const g = gitFor(repoPath)
-    await g.resolveOrThrow('HEAD') // dépôt sans commit : erreur, comme `git.log` d'isomorphic-git
+    await g.resolveOrThrow('HEAD') // dépôt sans commit : erreur
     const commits = await g.log('HEAD', { limit })
     return commits.map(c => ({
       sha: c.oid,

@@ -297,7 +297,7 @@ export class GitService {
   }
 
   /**
-   * Branche `branchName` sur HEAD, sans checkout. Comme `git.branch` d'isomorphic-git : refusée si
+   * Branche `branchName` sur HEAD, sans checkout. Refusée si
    * elle existe ; dépôt vide (HEAD sans commit) : aucune ref créée, sans erreur.
    */
   async createBranch(repoPath: string, branchName: string): Promise<void> {
@@ -318,7 +318,7 @@ export class GitService {
   }
 
   /**
-   * Supprime la branche locale, fusionnée ou non (comme isomorphic-git) ; branche courante : HEAD
+   * Supprime la branche locale, fusionnée ou non ; branche courante : HEAD
    * est d'abord détaché sur son commit (git refuse sinon de la supprimer).
    */
   async deleteBranch(repoPath: string, name: string): Promise<void> {

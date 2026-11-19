@@ -190,8 +190,8 @@ export class WorkspaceTreeService {
         // doesn't exist yet (brand-new dependency — safe to clone), or it already holds a
         // valid clone whose current pin just isn't the requested one (e.g. the pin was just
         // edited to a branch/tag that hasn't been fetched locally yet). Cloning in the second
-        // case would destroy the existing repo: isomorphic-git's clone() re-initializes .git
-        // as an early step, before the network fetch that might then fail on a bad ref name —
+        // case would destroy the existing repo: a clone replaces .git early, before the network
+        // fetch that might then fail on a bad ref name —
         // so a typo'd branch could wipe an otherwise-fine local checkout (T74 finding).
         const alreadyCloned = await this.hasGitDir(node.repoPath)
         try {

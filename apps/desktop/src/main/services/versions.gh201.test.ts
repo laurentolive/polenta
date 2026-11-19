@@ -1,10 +1,9 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import git from 'isomorphic-git'
+import { TestRepo } from '../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ObjectTypeDefinition, ProjectSchema, WorkspaceTree } from '@polenta/types'
@@ -55,15 +54,14 @@ let tree: WorkspaceTree | null
 
 async function initRepo(dir: string, prefix: string) {
   await fsP.mkdir(dir, { recursive: true })
-  await git.init({ fs, dir, defaultBranch: 'main' })
+  await TestRepo.init(dir, 'main')
   schemas.set(path.resolve(dir), schemaOf(prefix))
   await gitSvc.writeYaml(dir, '.polenta/schema.yaml', schemaOf(prefix))
   await commitAll(dir, 'schéma')
 }
 let tick = 0
 async function commitAll(dir: string, message: string) {
-  await git.add({ fs, dir, filepath: '.' })
-  await git.commit({ fs, dir, message, author: { name: 'Alice', email: 'a@x', timestamp: T0 + ++tick, timezoneOffset: 0 } })
+  await new TestRepo(dir).commitAll(message, { name: 'Alice', email: 'a@x', timestamp: T0 + ++tick })
 }
 const writeReq = (dir: string, id: string, extra: Record<string, unknown> = {}) => gitSvc.writeYaml(dir, `requirements/${id}.yaml`, {
   id, projectId: '', branchId: '', objectTypeRef: 'root::exigence', title: `Titre ${id}`, status: 'draft', version: 1, fields: {}, ...extra,
@@ -72,7 +70,7 @@ const writeTest = (dir: string, id: string, extra: Record<string, unknown> = {})
   id, objectTypeRef: 'root::test', title: `Test ${id}`, status: 'draft', version: 1, fields: {}, steps: [], ...extra,
 })
 const backlogIds = async (dir: string) => (await versions.backlog(dir)).map(i => `${i.id}:${i.kind}`)
-const head = (dir: string) => git.resolveRef({ fs, dir, ref: 'HEAD' })
+const head = (dir: string) => new TestRepo(dir).resolve('HEAD')
 const code = (p: Promise<unknown>) => p.then(() => 'ok', (e: Error) => e.message.split(':')[0])
 
 beforeEach(async () => {
@@ -209,8 +207,8 @@ describe('passage released', () => {
     expect(v).toMatchObject({ status: 'released', freeze: { tag: 'produit-1.0', sha: before } })
     const commit = await head(root)
     expect(await gitSvc.resolveTagOid(root, 'produit-1.0')).toBe(commit)
-    const { commit: c } = await git.readCommit({ fs, dir: root, oid: commit })
-    expect(c.parent).toEqual([before])
+    const c = (await new TestRepo(root).git.readCommit(commit))!
+    expect(c.parents).toEqual([before])
     expect(c.message.trim()).toBe('[version] PV-0001 1.0 released')
     // Les autres modifications restent en attente, hors du commit.
     expect(await gitSvc.readTextAt(root, commit, 'autre.txt')).toBeNull()
@@ -479,7 +477,7 @@ describe('GH268 — corrections de la revue', () => {
     await expect(baselines.delete(root, v.freeze!.tag)).rejects.toThrow(v.id)
     await expect(sync.deleteTag(root, v.freeze!.tag)).rejects.toThrow(v.id)
     await baselines.delete(root, 'baseline-a')
-    expect(await git.listTags({ fs, dir: root })).toEqual([v.freeze!.tag])
+    expect(await new TestRepo(root).listTags()).toEqual([v.freeze!.tag])
   })
 
   it('un approuvé modifié hors interface, puis livré, ne revient pas au backlog', async () => {
@@ -516,11 +514,11 @@ describe('GH268 — corrections de la revue', () => {
     const original = sync.createAnnotatedTag.bind(sync)
     const spy = vi.spyOn(sync, 'createAnnotatedTag').mockImplementationOnce(async (...args) => {
       const out = await original(...args)
-      await git.commit({ fs, dir: root, message: 'entre-temps', author: { name: 'B', email: 'b@x', timestamp: T0 + ++tick, timezoneOffset: 0 } })
+      await new TestRepo(root).commit('entre-temps', { name: 'B', email: 'b@x', timestamp: T0 + ++tick })
       return out
     })
     await expect(versions.release(root, v.id, 'produit-1.0')).rejects.toThrow(/avancé/)
-    expect(await git.listTags({ fs, dir: root })).toEqual([])
+    expect(await new TestRepo(root).listTags()).toEqual([])
     spy.mockRestore()
     expect(await code(versions.release(root, v.id, 'produit-1.0'))).toBe('ok')
   })

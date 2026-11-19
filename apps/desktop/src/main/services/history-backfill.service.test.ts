@@ -1,9 +1,8 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { TestRepo } from '../git/test-repo.test-util'
 
 import type { Requirement } from '@polenta/types'
 import { CampaignsService } from './campaigns.service'
@@ -17,7 +16,7 @@ import { TestsIndexService } from './tests-index.service'
 import { TestsService } from './tests.service'
 
 // GH77 sprint 3 — reprise de l'historique depuis git (scénarios B1–B6 de specs/GH77-tests.md).
-// Vrai repo git (isomorphic-git), un commit par étape, dates et auteurs fixés.
+// Vrai repo git (git embarqué, TestRepo), un commit par étape, dates et auteurs fixés.
 
 const SCHEMA = {
   version: 1,
@@ -53,21 +52,21 @@ async function commit(files: Record<string, unknown | null>, author: string, tim
   for (const [file, content] of Object.entries(files)) {
     if (content === null) {
       await fsP.rm(path.join(dir, file), { force: true })
-      await git.remove({ fs, dir, filepath: file })
+      await new TestRepo(dir).git.remove([file])
       continue
     }
     if (typeof content === 'string') await fsP.writeFile(path.join(dir, file), content)
     else await gitSvc.writeYaml(dir, file, content)
-    await git.add({ fs, dir, filepath: file })
+    await new TestRepo(dir).add([file])
   }
-  await git.commit({ fs, dir, message, author: { name: author, email: `${author}@x`, timestamp: time, timezoneOffset: 0 } })
+  await new TestRepo(dir).commit(message, { name: author, email: `${author}@x`, timestamp: time })
 }
 
 const onDisk = () => gitSvc.readYaml<Requirement>(dir, 'requirements/SYS-0001.yaml') as Promise<Requirement>
 
 beforeEach(async () => {
   dir = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh77-backfill-'))
-  await git.init({ fs, dir, defaultBranch: 'main' })
+  await TestRepo.init(dir, 'main')
   gitSvc = new GitService()
   await fsP.mkdir(path.join(dir, 'requirements'), { recursive: true })
   await commit({ '.polenta/schema.yaml': SCHEMA }, 'Admin', T0 - 100)
@@ -132,13 +131,13 @@ describe('HistoryBackfillService', () => {
 
   it('B5 — fusion : chaîne des premiers parents, le changement de la branche est daté du commit de fusion, sans doublon', async () => {
     await commit({ 'requirements/SYS-0001.yaml': req('draft', 'a') }, 'Alice', T0)
-    await git.branch({ fs, dir, ref: 'feature', checkout: true })
+    await new TestRepo(dir).checkout('feature', { create: true })
     await commit({ 'requirements/SYS-0001.yaml': req('review', 'a') }, 'Bob', T0 + 60)
-    await git.checkout({ fs, dir, ref: 'main' })
+    await new TestRepo(dir).checkout('main')
     await commit({ 'README.md': 'x' }, 'Carol', T0 + 90)
-    const merged = await git.merge({ fs, dir, ours: 'main', theirs: 'feature', author: { name: 'Merge', email: 'm@x', timestamp: T0 + 120, timezoneOffset: 0 } })
+    const merged = await new TestRepo(dir).git.mergeBranches('main', 'feature', { author: { name: 'Merge', email: 'm@x', timestamp: T0 + 120 } })
     expect(merged.mergeCommit).toBe(true)
-    await git.checkout({ fs, dir, ref: 'main', force: true })
+    await new TestRepo(dir).checkout('main', { force: true })
 
     await backfill.run(dir)
     expect((await onDisk()).history?.status).toEqual([

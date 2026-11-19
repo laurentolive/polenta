@@ -24,8 +24,8 @@ let reqFile = ''
 interface TypeLike { name: string; category: string; fields?: Array<{ name: string; type: string; label?: string }> }
 interface NodeLike { name: string; objectTypes?: TypeLike[] }
 
-// GH314 — isomorphic-git compare les dates à la seconde : un fichier réécrit à taille égale dans la
-// seconde de son dernier ajout à l'index passe pour inchangé (bug de l'app, #326 — voir
+// GH314 — l'ancien moteur comparait les dates à la seconde : un fichier réécrit à taille égale dans la
+// seconde de son dernier ajout à l'index passait pour inchangé (bug de l'app, #326 — voir
 // specs/GH314.md). Chaque écriture reçoit une date de modification distincte pour ne pas en dépendre.
 let mtimeSeq = 0
 async function write(rel: string, content: string) {

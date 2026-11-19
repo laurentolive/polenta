@@ -93,7 +93,7 @@ This is a pnpm and Turborepo monorepo.
 | `packages/api-client` | Renderer ↔ main process client |
 | `specs/` | Functional and technical specifications |
 
-Main technologies: Electron, React, TanStack Router and Query, Tiptap, isomorphic-git,
+Main technologies: Electron, React, TanStack Router and Query, Tiptap, git embarqué (GitBackend),
 AlaSQL, MiniSearch, Recharts, Zod.
 
 ## Documentation

@@ -36,8 +36,8 @@ export function writeDeniedError(host: string, repo: string): ForgeAccessError {
  * declined », mesuré le 2026-10-10 avec un membre de l'équipe lecteurs) — pas de 403.
  */
 export function isPushDeclined(err: unknown): boolean {
-  const e = err as { code?: unknown; message?: unknown; data?: { prettyDetails?: unknown }; stderr?: unknown } | null
-  const text = [e?.message, e?.data?.prettyDetails, e?.stderr].filter(v => typeof v === 'string').join('\n')
+  const e = err as { message?: unknown; stderr?: unknown } | null
+  const text = [e?.message, e?.stderr].filter(v => typeof v === 'string').join('\n')
   return /pre-receive hook declined|protected branch|not allowed to push/i.test(text)
 }
 
@@ -47,23 +47,20 @@ export function isPushDeclined(err: unknown): boolean {
  * ni une erreur locale, qui n'auraient pas à attendre un aller-retour réseau.
  */
 export function isNonGitResponse(err: unknown): boolean {
-  const e = err as { code?: unknown; message?: unknown; stderr?: unknown } | null
-  if (e?.code === 'SmartHttpError') return true
+  const e = err as { message?: unknown; stderr?: unknown } | null
   const text = [e?.message, e?.stderr].filter(v => typeof v === 'string').join('\n')
   return /smart" HTTP protocol|could not determine hash algorithm|is this a git repository|text\/html|<!DOCTYPE html/i.test(text)
 }
 
 /**
  * Statut HTTP d'une erreur git ou d'API, `null` si l'erreur n'en porte pas :
- * - isomorphic-git `HttpError` → `data.statusCode` (duck typing, robuste à une copie dupliquée) ;
- * - binaire git natif (remotes SSH ou locaux, T154) → « returned error: 401/403 », « Authentication failed » ;
+ * - binaire git (remotes HTTP, SSH ou locaux, T154, GH337) → « returned error: 401/403 », « Authentication failed » ;
  * - `ForgeHttpError` (API) → `status`.
  */
 export function httpStatusOf(err: unknown): number | null {
   if (err instanceof ForgeAccessError) return err.issue.status
   if (err instanceof ForgeHttpError) return err.status
-  const e = err as { code?: unknown; data?: { statusCode?: unknown }; message?: unknown; stderr?: unknown } | null
-  if (e?.code === 'HttpError' && typeof e.data?.statusCode === 'number') return e.data.statusCode
+  const e = err as { message?: unknown; stderr?: unknown } | null
   const text = `${typeof e?.message === 'string' ? e.message : ''}\n${typeof e?.stderr === 'string' ? e.stderr : ''}`
   const m = /returned error: (\d{3})/.exec(text)
   if (m) return Number(m[1])

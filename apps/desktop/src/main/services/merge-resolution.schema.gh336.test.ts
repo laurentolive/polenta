@@ -1,8 +1,6 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import yaml from 'js-yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
@@ -10,6 +8,7 @@ import type { AuthService } from './auth.service'
 import { MergeResolutionService } from './merge-resolution.service'
 import { SchemaService } from './schema.service'
 import { SyncService } from './sync.service'
+import { TestRepo } from '../git/test-repo.test-util'
 
 /**
  * Cas client (PH2, merge int-PH2 ← origin/int-PH2) : la destination a ajouté des statuts au type
@@ -26,13 +25,14 @@ let repo: string
 let userData: string
 let service: MergeResolutionService
 
+const r = () => new TestRepo(repo)
+
 async function write(rel: string, content: string) {
   await fsP.mkdir(path.dirname(path.join(repo, rel)), { recursive: true })
   await fsP.writeFile(path.join(repo, rel), content)
 }
 async function commitAll(message: string) {
-  await git.add({ fs, dir: repo, filepath: '.' })
-  return git.commit({ fs, dir: repo, message, author: AUTHOR })
+  return r().commitAll(message, AUTHOR)
 }
 
 const schema = (statuses: string[]) => dump({
@@ -47,21 +47,21 @@ const FILE = 'requirements/PRODUCT_REQ-0181.yaml'
 beforeEach(async () => {
   repo = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh336-merge-'))
   userData = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh336-merge-ud-'))
-  await git.init({ fs, dir: repo, defaultBranch: 'int-PH2' })
+  await TestRepo.init(repo, 'int-PH2')
   service = new MergeResolutionService(userData, auth, new SyncService(auth), new SchemaService(auth))
 
   await write('.polenta/schema.yaml', schema(['draft']))
   await commitAll('base')
-  await git.branch({ fs, dir: repo, ref: 'remote' })
+  await r().branch('remote')
 
   // Destination (origin/int-PH2) : nouveaux statuts, exigence créée avec l'un d'eux.
-  await git.checkout({ fs, dir: repo, ref: 'remote' })
+  await r().checkout('remote')
   await write('.polenta/schema.yaml', schema(['draft', 'A intégrer']))
   await write(FILE, req('A intégrer', 'Distant'))
   await commitAll('remote')
 
   // Mes modifications (int-PH2 local, checkouté) : ancien schéma, même ID créé localement.
-  await git.checkout({ fs, dir: repo, ref: 'int-PH2' })
+  await r().checkout('int-PH2')
   await write(FILE, req('draft', 'Local'))
   await commitAll('local')
 })

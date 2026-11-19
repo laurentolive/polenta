@@ -1,8 +1,7 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { TestRepo } from '../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { ObjectTypeDefinition, ProjectSchema, TestCampaign, TestRun } from '@polenta/types'
@@ -313,8 +312,8 @@ describe('dry run, réimport, contrôles (14–19)', () => {
   })
 
   it('executedBy : user.name git du dépôt englobant (19)', async () => {
-    await git.init({ fs, dir, defaultBranch: 'main' })
-    await git.setConfig({ fs, dir, path: 'user.name', value: 'Robot CI' })
+    await TestRepo.init(dir, 'main')
+    await new TestRepo(dir).setConfig('user.name', 'Robot CI')
     const sub = path.join(dir, 'polenta')
     await fsP.mkdir(sub)
     expect(await gitUserName(sub)).toBe('Robot CI')

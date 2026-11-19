@@ -1,10 +1,13 @@
 /**
- * GH337 — mesures du spike (spec §8, design §10) : isomorphic-git contre git natif embarqué, sur
- * une COPIE des dépôts donnés (jamais les originaux : le checkout aller-retour les modifie).
+ * GH337 — banc du git natif embarqué (spec §8, design §10) : statut, lecture de tous les fichiers à
+ * HEAD, historique par fichier, checkout aller-retour (git seul, puis écriture Polenta), sur une COPIE
+ * des dépôts donnés (jamais les originaux : le checkout aller-retour les modifie).
  *
- *   tsx scripts/bench-git.ts <dépôt> [<dépôt>…]   [--only native|iso] [--runs 3]
+ *   tsx scripts/bench-git.ts <dépôt> [<dépôt>…] [--runs 3] [--ops <texte>] [--pair <rev1>..<rev2>|-]
+ *                                               [--trace] [--verify]
  *
- * Après le sprint 4 (isomorphic-git supprimé), seul `--only native` reste utilisable.
+ * Sprint 4 : isomorphic-git n'est plus une dépendance. Les mesures du spike (contre isomorphic-git)
+ * sont conservées dans `specs/GH337-sprint0.md` ; ce banc ne mesure plus que le git natif.
  */
 import * as fs from 'fs'
 import * as os from 'os'
@@ -16,11 +19,7 @@ import { closeAll } from '../src/main/git/process-registry'
 import { gitFor } from '../src/main/git/git-backend'
 import { nodeCheckout } from '../src/main/git/node-checkout'
 
-type Op = { name: string; iso?: (dir: string) => Promise<unknown>; native: (dir: string) => Promise<unknown>; runs?: number }
-
-async function loadIso(): Promise<typeof import('isomorphic-git') | null> {
-  try { return (await import('isomorphic-git')).default as unknown as typeof import('isomorphic-git') } catch { return null }
-}
+type Op = { name: string; native: (dir: string) => Promise<unknown>; runs?: number }
 
 /** Copie du seul `.git` (pas de node_modules ni de fichiers locaux), puis working directory reconstruit. */
 async function copyRepo(src: string, pair?: [string, string]): Promise<string> {
@@ -52,20 +51,14 @@ async function otherBranch(dir: string): Promise<string | null> {
   return heads.find(h => h !== cur) ?? null
 }
 
-function opsFor(iso: typeof import('isomorphic-git') | null): Op[] {
+function opsFor(): Op[] {
   return [
     {
       name: '200 × resolve HEAD',
-      iso: iso ? async dir => { for (let i = 0; i < 200; i++) await iso.resolveRef({ fs, dir, ref: 'HEAD' }) } : undefined,
       native: async dir => { for (let i = 0; i < 200; i++) await objectInfo(dir, 'HEAD') },
     },
     {
       name: 'lire tous les fichiers à HEAD',
-      iso: iso ? async dir => {
-        const files = await iso.listFiles({ fs, dir, ref: 'HEAD' })
-        const oid = await iso.resolveRef({ fs, dir, ref: 'HEAD' })
-        for (const filepath of files) await iso.readBlob({ fs, dir, oid, filepath })
-      } : undefined,
       native: async dir => {
         const entries = splitZ((await runGit(dir, ['ls-tree', '-r', '-z', 'HEAD'])).stdout)
         for (const e of entries) {
@@ -77,23 +70,14 @@ function opsFor(iso: typeof import('isomorphic-git') | null): Op[] {
     },
     {
       name: 'statut, arbre propre',
-      iso: iso ? dir => iso.statusMatrix({ fs, dir }) : undefined,
       native: dir => runGit(dir, ['status', '--porcelain=v2', '-z', '--untracked-files=all']),
     },
     {
       name: 'historique par fichier',
-      iso: undefined, // 451 s mesurés sur polenta-official (commentaire de l'issue) : non relancé
       native: dir => gitFor(dir).log('HEAD', { changes: true }),
     },
     {
       name: 'checkout aller-retour',
-      iso: iso ? async dir => {
-        const other = await otherBranch(dir)
-        if (!other) return
-        const cur = await iso.currentBranch({ fs, dir }) as string
-        await iso.checkout({ fs, dir, ref: other })
-        await iso.checkout({ fs, dir, ref: cur })
-      } : undefined,
       native: async dir => {
         const other = await otherBranch(dir)
         if (!other) return
@@ -103,7 +87,7 @@ function opsFor(iso: typeof import('isomorphic-git') | null): Op[] {
       },
     },
     {
-      // Essai GH337 : git calcule, Polenta écrit les fichiers (node-checkout.ts).
+      // git calcule, Polenta écrit les fichiers (node-checkout.ts).
       name: 'checkout aller-retour, écriture Polenta',
       native: async dir => {
         const other = await otherBranch(dir)
@@ -141,16 +125,14 @@ async function time(fn: () => Promise<unknown>, runs: number): Promise<number> {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
-  const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : null
   const runs = args.includes('--runs') ? Number(args[args.indexOf('--runs') + 1]) : 3
   // --ops <texte> : seulement les opérations dont le nom contient ce texte (ex. « checkout »).
   const opsFilter = args.includes('--ops') ? args[args.indexOf('--ops') + 1] : null
   // --pair <rev1>..<rev2> : une par dépôt, dans l'ordre (« - » : première autre branche locale).
   const pairArgs = args.flatMap((a, i) => (a === '--pair' ? [args[i + 1]] : []))
-  const repos = args.filter((a, i) => !a.startsWith('--') && !['--only', '--runs', '--ops', '--pair'].includes(args[i - 1] ?? ''))
-  const iso = only === 'native' ? null : await loadIso()
-  const ops = opsFor(iso).filter(op => !opsFilter || op.name.includes(opsFilter))
-  console.log(`| Opération | ${repos.map(r => `${path.basename(r)} iso / natif`).join(' | ')} |`)
+  const repos = args.filter((a, i) => !a.startsWith('--') && !['--runs', '--ops', '--pair'].includes(args[i - 1] ?? ''))
+  const ops = opsFor().filter(op => !opsFilter || op.name.includes(opsFilter))
+  console.log(`| Opération | ${repos.map(r => `${path.basename(r)} natif`).join(' | ')} |`)
   console.log(`|---|${repos.map(() => '---').join('|')}|`)
   const copies = await Promise.all(repos.map((r, i) => {
     const p = pairArgs[i]
@@ -163,10 +145,8 @@ async function main(): Promise<void> {
     for (let i = 0; i < ops.length; i++) {
       const op = ops[i]
       const n = op.runs ?? runs
-      const isoMs = op.iso && only !== 'native' ? await time(() => op.iso!(copies[r]), n) : null
-      const natMs = only !== 'iso' ? await time(() => op.native(copies[r]), n) : null
-      const fmt = (v: number | null) => (v === null ? '—' : `${Math.round(v)} ms`)
-      rows[i].push(`${fmt(isoMs)} / ${fmt(natMs)}`)
+      const natMs = await time(() => op.native(copies[r]), n)
+      rows[i].push(`${Math.round(natMs)} ms`)
     }
   }
   for (const row of rows) console.log(`| ${row.join(' | ')} |`)

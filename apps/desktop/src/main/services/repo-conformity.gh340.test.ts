@@ -1,11 +1,10 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import git from 'isomorphic-git'
 import yaml from 'js-yaml'
+import { TestRepo } from '../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { AuthService } from './auth.service'
@@ -120,22 +119,20 @@ describe('GH340 — reprise des dates', () => {
     expect(await load('requirements/SYS-0002.yaml')).toMatchObject(AUDITED)
     expect(await fsP.readFile(path.join(repo, 'tests/TEST-0002.yaml'), 'utf8')).toBe('{id: TEST-0002, title: flux}\n')
 
-    const [last] = await git.log({ fs, dir: repo, depth: 1 })
-    expect(last.commit.message).toMatch(/^\[polenta\] Mise en conformité du dépôt \(audit-dates\)/)
-    const changed = await git.walk({
-      fs, dir: repo, trees: [git.TREE({ ref: last.oid }), git.TREE({ ref: last.commit.parent[0] })],
-      map: async (file, [a, b]) => (file !== '.' && (await a?.type()) === 'blob' && (await a?.oid()) !== (await b?.oid()) ? file : undefined),
-    })
-    expect((changed as string[]).sort()).toEqual(['issues/PI-0001.yaml', 'requirements/SYS-0001.yaml', 'requirements/SYS-0004.yaml', 'tests/TEST-0001.yaml'])
+    const [last] = await new TestRepo(repo).git.log('HEAD', { limit: 1 })
+    expect(last.message).toMatch(/^\[polenta\] Mise en conformité du dépôt \(audit-dates\)/)
+    const changed = (await new TestRepo(repo).git.diffNames(last.parents[0] ?? null, last.oid))
+      .filter(e => e.status !== 'D').map(e => e.path)
+    expect(changed.sort()).toEqual(['issues/PI-0001.yaml', 'requirements/SYS-0001.yaml', 'requirements/SYS-0004.yaml', 'tests/TEST-0001.yaml'])
     expect((await run(origin, ['rev-parse', 'main'])).stdout.trim()).toBe(last.oid)
     expect(await service.check(repo, false)).toEqual([{ id: 'audit-dates', files: ['tests/TEST-0002.yaml'] }])
   })
 
   it('C5b — rien à compléter : aucun commit vide', async () => {
     await service.apply(repo, false)
-    const [before] = await git.log({ fs, dir: repo, depth: 1 })
+    const [before] = await new TestRepo(repo).git.log('HEAD', { limit: 1 })
     expect(await service.apply(repo, false)).toEqual({ sha: null, pushed: true })
-    const [after] = await git.log({ fs, dir: repo, depth: 1 })
+    const [after] = await new TestRepo(repo).git.log('HEAD', { limit: 1 })
     expect(after.oid).toBe(before.oid)
   })
 

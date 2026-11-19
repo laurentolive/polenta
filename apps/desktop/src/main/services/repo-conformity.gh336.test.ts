@@ -1,11 +1,10 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { TestRepo } from '../git/test-repo.test-util'
 
 import type { AuthService } from './auth.service'
 import { GitService } from './git.service'
@@ -36,7 +35,8 @@ const write = async (rel: string, content: string) => {
   await fsP.writeFile(path.join(repo, rel), content)
 }
 const read = (rel: string) => fsP.readFile(path.join(repo, rel), 'utf8')
-const headFiles = async (ref = 'HEAD') => git.listFiles({ fs, dir: repo, ref })
+const headFiles = async (ref = 'HEAD') => (await new TestRepo(repo).git.lsTree(ref, { recursive: true }))
+  .filter(e => e.type === 'blob').map(e => e.path)
 const clean = async () => {
   const s = await sync.status(repo)
   return s.staged.length + s.unstaged.length === 0
@@ -97,7 +97,7 @@ describe('GH336 — apply', () => {
     const res = await service.apply(repo, true)
 
     expect(res.pushed).toBe(true)
-    const { commit } = await git.readCommit({ fs, dir: repo, oid: res.sha! })
+    const commit = (await new TestRepo(repo).git.readCommit(res.sha!))!
     expect(commit.message).toMatch(/^\[polenta\] Mise en conformité du dépôt/)
     expect(await headFiles()).toEqual(['.gitattributes', '.gitignore', 'AGENTS.md', 'a.yaml'])
     expect(await read('.gitattributes')).toBe('* text=auto eol=lf\n')
@@ -142,7 +142,7 @@ describe('GH336 — apply', () => {
   })
 
   it('refuse hors de la branche d\'intégration', async () => {
-    await git.branch({ fs, dir: repo, ref: 'dev-x', checkout: true })
+    await new TestRepo(repo).checkout('dev-x', { create: true })
     await expect(service.apply(repo, false)).rejects.toThrow('conformity-off-integration:main')
   })
 

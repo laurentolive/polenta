@@ -13,7 +13,7 @@ afterAll(async () => { await fsP.rm(dir, { recursive: true, force: true, maxRetr
 describe('liens symboliques neutralisés (core.symlinks=false)', () => {
   it('fs.promises.symlink et fs.symlinkSync écrivent un fichier texte', async () => {
     disableSymlinks()
-    // `require` : le module réel, celui que voient isomorphic-git et les services.
+    // `require` : le module réel, celui que voient les services.
     const realFs = require('fs') as typeof fs
     await realFs.promises.symlink('/etc/passwd', path.join(dir, 'a'))
     realFs.symlinkSync('/etc/shadow', path.join(dir, 'b'))

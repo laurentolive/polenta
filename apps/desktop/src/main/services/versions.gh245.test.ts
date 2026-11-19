@@ -1,8 +1,7 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { TestRepo } from '../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { ObjectLink, ObjectTypeDefinition, ProjectSchema, TestCampaign, WorkspaceTree } from '@polenta/types'
@@ -44,8 +43,7 @@ let tick = 0
 const T0 = Date.UTC(2026, 10, 1) / 1000
 
 async function commitAll(dir: string, message: string) {
-  await git.add({ fs, dir, filepath: '.' })
-  await git.commit({ fs, dir, message, author: { name: 'Alice', email: 'a@x', timestamp: T0 + ++tick, timezoneOffset: 0 } })
+  await new TestRepo(dir).commitAll(message, { name: 'Alice', email: 'a@x', timestamp: T0 + ++tick })
 }
 const req = (dir: string, id: string) => gitSvc.writeYaml(dir, `requirements/${id}.yaml`, { id, objectTypeRef: 'root::exigence', title: `Titre ${id}`, status: 'draft', version: 1, fields: {} })
 const test = (dir: string, id: string) => gitSvc.writeYaml(dir, `tests/${id}.yaml`, { id, objectTypeRef: 'root::test', title: `Test ${id}`, status: 'draft', version: 1, fields: {}, steps: [] })
@@ -66,7 +64,7 @@ beforeEach(async () => {
   const schemas = new Map<string, ProjectSchema>()
   for (const [dir, p] of [[root, 'P'], [comp, 'M']] as const) {
     await fsP.mkdir(dir, { recursive: true })
-    await git.init({ fs, dir, defaultBranch: 'main' })
+    await TestRepo.init(dir, 'main')
     schemas.set(path.resolve(dir), schemaOf(p))
     await gitSvc.writeYaml(dir, '.polenta/schema.yaml', schemaOf(p))
     await commitAll(dir, 'schéma')
@@ -185,7 +183,7 @@ describe('analyse d\'impact', () => {
     expect(released.analysis).toMatchObject({ frozen: true, rows: [{ id: 'PR-0002', status: 'pas_d_impact_reel' }] })
     // Figée sans les arbres (volumineux, chemins locaux).
     expect(released.analysis!.roots).toEqual([expect.objectContaining({ elementId: 'PR-0001', descendantTree: [], ascendantTree: [] })])
-    const head = await git.resolveRef({ fs, dir: root, ref: 'HEAD' })
+    const head = await new TestRepo(root).resolve('HEAD')
     expect(await gitSvc.readTextAt(root, head, `versions/${v.id}.yaml`)).toContain('analysis:')
     // Figée : un lien retiré ensuite ne change rien à l'analyse de la version released.
     await links(root, [])

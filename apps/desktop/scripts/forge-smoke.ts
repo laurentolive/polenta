@@ -17,12 +17,12 @@ import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import { execSync } from 'child_process'
-import git from 'isomorphic-git'
 import { parseForgeAccessError } from '@polenta/types'
 
 import { AuthService } from '../src/main/services/auth.service'
 import { SyncService } from '../src/main/services/sync.service'
 import type { HostContext, TokenStore } from '../src/main/host/host-context'
+import { gitFor, gitLsRemoteHeadOids } from '../src/main/git/git-backend'
 
 interface Accounts {
   instance: string
@@ -86,7 +86,7 @@ async function caught(p: Promise<unknown>): Promise<unknown> {
 
 async function commitFile(sync: SyncService, repo: string, name: string): Promise<string> {
   await fsP.writeFile(path.join(repo, name), `smoke ${new Date().toISOString()}\n`)
-  await git.add({ fs, dir: repo, filepath: name })
+  await gitFor(repo).add([name])
   return (await sync.commit(repo, `smoke: ${name}`)).sha
 }
 
@@ -128,13 +128,12 @@ async function main(): Promise<void> {
   check('S2-4', 'clone du repo privé', fs.existsSync(path.join(repo, '.gitignore')))
   await commitFile(w.sync, repo, 'auteur.txt')
   await w.sync.pushBranch(repo, 'main')
-  const [last] = await git.log({ fs, dir: repo, depth: 1 })
+  const [last] = await gitFor(repo).log('HEAD', { limit: 1 })
   check('S2-4 / critère 1', 'auteur du commit = identité de la forge',
-    last.commit.author.name === 'Test itest-auteur' && last.commit.author.email === 'itest-auteur@esquaresoft.fr',
-    `${last.commit.author.name} <${last.commit.author.email}>`)
-  const info = await git.getRemoteInfo({ url: repoUrl, onAuth: async () => (await w.auth.getHttpsCredentials(repoUrl)) ?? undefined, http: (await import('../src/main/services/git-http')).default })
-  const remoteHead = (info.refs as { heads?: Record<string, string> } | undefined)?.heads?.main
-  check('S2-4', 'push effectif sur le serveur', remoteHead === last.oid)
+    last.author.name === 'Test itest-auteur' && last.author.email === 'itest-auteur@esquaresoft.fr',
+    `${last.author.name} <${last.author.email}>`)
+  const heads = await gitLsRemoteHeadOids(repoUrl, { credentials: async () => (await w.auth.getHttpsCredentials(repoUrl)) ?? null })
+  check('S2-4', 'push effectif sur le serveur', heads.get('main') === last.oid)
 
   // ── Lecteur : push refusé, commit local conservé ─────────────────────────────
   const wl = await workstation('lecteur')
@@ -146,7 +145,7 @@ async function main(): Promise<void> {
   const errL = await caught(wl.sync.pushBranch(repoL, 'main'))
   const parsedL = errL instanceof Error ? parseForgeAccessError(errL.message) : null
   check('S2-12 / critère 6', 'push lecteur → 403 « pas le droit de publier »', parsedL?.issue.status === 403, parsedL?.humanMessage ?? String(errL))
-  const [lastL] = await git.log({ fs, dir: repoL, depth: 1 })
+  const [lastL] = await gitFor(repoL).log('HEAD', { limit: 1 })
   check('S2-12', 'commit local conservé', lastL.oid === shaL)
 
   // ── Compte désactivé : accès révoqué, une seule fois, puis reconnexion ───────
@@ -155,13 +154,13 @@ async function main(): Promise<void> {
     const errF = await caught(w.sync.fetch(repo, ''))
     const parsedF = errF instanceof Error ? parseForgeAccessError(errF.message) : null
     check('S2-9 / critère 19', 'fetch d’un compte désactivé → 401 accès révoqué', parsedF?.issue.status === 401, parsedF?.humanMessage ?? String(errF))
-    const before = (await git.log({ fs, dir: repo, depth: 1 }))[0].oid
+    const before = (await gitFor(repo).log('HEAD', { limit: 1 }))[0].oid
     const tick1 = await w.sync.autoSync(repo, 'main')
     const t0 = Date.now()
     const tick2 = await w.sync.autoSync(repo, 'main')
     check('S2-9 / critère 5', 'auto-pull : accessRevoked, sans exception', tick1.accessRevoked === true && tick1.revokedServer === new URL(A.baseUrl).origin)
     check('S2-9 / critère 5', 'tick suivant sans appel réseau', tick2.accessRevoked === true && Date.now() - t0 < 500, `${Date.now() - t0} ms`)
-    check('S2-9', 'working tree intact', (await git.log({ fs, dir: repo, depth: 1 }))[0].oid === before)
+    check('S2-9', 'working tree intact', (await gitFor(repo).log('HEAD', { limit: 1 }))[0].oid === before)
   } finally {
     admin('user enable itest-auteur')
   }

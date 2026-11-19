@@ -65,10 +65,12 @@ describe('choix du chemin', () => {
 
 describe.runIf(isWin)('Windows', () => {
   it('chemin simple : fichiers écrits par Polenta, pas de git checkout', async () => {
-    const before = { checkout: spawns('checkout'), readTree: spawns('read-tree') }
+    const before = { checkout: spawns('checkout'), updateIndex: spawns('update-index'), readTree: spawns('read-tree') }
     await g.checkout('b')
     expect(spawns('checkout')).toBe(before.checkout)
-    expect(spawns('read-tree')).toBe(before.readTree + 1)
+    // Index écrit par `update-index --index-info` (pas de read-tree ni de refresh).
+    expect(spawns('update-index')).toBe(before.updateIndex + 1)
+    expect(spawns('read-tree')).toBe(before.readTree)
     expect(await g.currentBranch()).toBe('b')
     expect(read('a.txt')).toBe('b\n')
     expect(read('new/b.txt')).toBe('nouveau\n')

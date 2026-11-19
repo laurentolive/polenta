@@ -117,7 +117,9 @@ Le client web (`SPEC-WEB.md`) n'a ni écran `/login`, ni trousseau, ni gestion d
   (même règle « identité = celle du serveur » qu'au §1), puis `AuthService.connectWithToken(url,
   jeton, 'forgejo', identité)` dans l'espace de l'utilisateur : `auth.json` de
   `<data>/users/<login>/userData/`, compte par défaut, levée d'un « accès révoqué » antérieur.
-- **Jeton** : le jeton OAuth2 de la connexion sert directement à git et à l'API. Il n'est **jamais
+- **Jeton** : le jeton OAuth2 de la connexion sert directement à git et à l'API. Côté git, il est remis au
+  git embarqué par le serveur d'identifiants local (`askpass.ts`, GH337) : jamais dans la ligne de commande,
+  l'environnement du processus git ni `.git/config`. Il n'est **jamais
   persisté** ni envoyé au navigateur : `TokenStore` (interface de `main/host/host-context.ts` qui
   remplace les appels directs à `keytar`, GH44 S1) est implémenté sur le web par
   `SessionTokenStore` (mémoire de la session, rafraîchi par `refresh_token` une minute avant

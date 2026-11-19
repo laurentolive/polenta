@@ -1,9 +1,8 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { TestRepo } from '../git/test-repo.test-util'
 
 import { CreateRequirementSchema } from '@polenta/zod-schemas'
 import { GitService } from './git.service'
@@ -49,8 +48,7 @@ let tick = 0
 const T0 = Date.UTC(2026, 10, 1) / 1000
 
 async function commitAll(message: string) {
-  await git.add({ fs, dir, filepath: '.' })
-  await git.commit({ fs, dir, message, author: { name: 'Alice', email: 'a@x', timestamp: T0 + ++tick, timezoneOffset: 0 } })
+  await new TestRepo(dir).commitAll(message, { name: 'Alice', email: 'a@x', timestamp: T0 + ++tick })
 }
 const call = async <T = any>(name: string, args: Record<string, unknown> = {}): Promise<T> => JSON.parse((await tools[name](args)).content[0].text) as T // eslint-disable-line @typescript-eslint/no-explicit-any
 const newReq = async (title = 'R') => (await mcp.requirements.create(dir, { objectTypeRef: 'root::exigence', title, fields: {} } as never)).id
@@ -68,9 +66,9 @@ async function released(title: string, ids: string[]) {
 beforeEach(async () => {
   dir = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh271-'))
   gitSvc = new GitService()
-  await git.init({ fs, dir, defaultBranch: 'main' })
-  await git.setConfig({ fs, dir, path: 'user.name', value: 'Alice' })
-  await git.setConfig({ fs, dir, path: 'user.email', value: 'a@x' })
+  const repo = await TestRepo.init(dir, 'main')
+  await repo.setConfig('user.name', 'Alice')
+  await repo.setConfig('user.email', 'a@x')
   await gitSvc.writeYaml(dir, '.polenta/schema.yaml', SCHEMA)
   await commitAll('schéma')
   mcp = createMcpContainer(dir, undefined, 'alice')
@@ -222,7 +220,7 @@ describe('écritures refusées', () => {
     await commitAll('éléments')
     const v = await mcp.versions.create(dir, { title: '1.0' } as never)
     await commitAll('version')
-    await git.checkout({ fs, dir, ref: await git.resolveRef({ fs, dir, ref: 'HEAD' }) })
+    await new TestRepo(dir).checkout(await new TestRepo(dir).resolve('HEAD'))
     const code = (p: Promise<unknown>) => p.then(() => 'ok', (e: Error) => e.message.split(':')[0])
     expect(await code(mcp.versions.create(dir, { title: '2.0' } as never))).toBe('READONLY_REPO')
     expect(await code(mcp.versions.update(dir, v.id, { title: 'x' }))).toBe('READONLY_REPO')

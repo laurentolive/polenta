@@ -1,8 +1,7 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { TestRepo } from '../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { GitService } from './git.service'
@@ -41,12 +40,11 @@ let tick = 0
 const T0 = Date.UTC(2026, 10, 16) / 1000
 
 async function commitAll(message: string) {
-  await git.add({ fs, dir, filepath: '.' })
-  await git.commit({ fs, dir, message, author: { name: 'Alice', email: 'a@x', timestamp: T0 + ++tick, timezoneOffset: 0 } })
+  await new TestRepo(dir).commitAll(message, { name: 'Alice', email: 'a@x', timestamp: T0 + ++tick })
 }
 const call = async <T = any>(name: string, args: Record<string, unknown> = {}): Promise<T> => JSON.parse((await tools[name](args)).content[0].text) as T // eslint-disable-line @typescript-eslint/no-explicit-any
 const newReq = async (title = 'R') => (await mcp.requirements.create(dir, { objectTypeRef: 'root::exigence', title, fields: {} } as never)).id
-const tagExists = (tag: string) => git.resolveRef({ fs, dir, ref: `refs/tags/${tag}` }).then(() => true, () => false)
+const tagExists = (tag: string) => new TestRepo(dir).resolve(`refs/tags/${tag}`).then(() => true, () => false)
 
 /** Version released par le MCP, incluant `ids`. */
 async function releasedByMcp(title: string, ids: string[]) {
@@ -58,9 +56,9 @@ async function releasedByMcp(title: string, ids: string[]) {
 
 beforeEach(async () => {
   dir = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh362-'))
-  await git.init({ fs, dir, defaultBranch: 'main' })
-  await git.setConfig({ fs, dir, path: 'user.name', value: 'Alice' })
-  await git.setConfig({ fs, dir, path: 'user.email', value: 'a@x' })
+  const repo = await TestRepo.init(dir, 'main')
+  await repo.setConfig('user.name', 'Alice')
+  await repo.setConfig('user.email', 'a@x')
   await new GitService().writeYaml(dir, '.polenta/schema.yaml', SCHEMA)
   await commitAll('schéma')
   mcp = createMcpContainer(dir, undefined, 'alice')
@@ -107,13 +105,13 @@ describe('versions par le MCP (GH362 §3)', () => {
   })
 
   it('release sans config git locale : commit et tag signés par le --user du MCP (revue GH362)', async () => {
-    await git.setConfig({ fs, dir, path: 'user.name', value: undefined })
-    await git.setConfig({ fs, dir, path: 'user.email', value: undefined })
+    await new TestRepo(dir).unsetConfig('user.name')
+    await new TestRepo(dir).unsetConfig('user.email')
     const v = await releasedByMcp('1.0', [await newReq()])
-    const tagOid = await git.resolveRef({ fs, dir, ref: 'refs/tags/produit-1.0' })
-    const { tag } = await git.readTag({ fs, dir, oid: tagOid })
+    const tagOid = await new TestRepo(dir).resolve('refs/tags/produit-1.0')
+    const tag = (await new TestRepo(dir).git.readTag(tagOid))!
     expect(tag.tagger).toMatchObject({ name: 'alice' })
-    const { commit } = await git.readCommit({ fs, dir, oid: tag.object })
+    const commit = (await new TestRepo(dir).git.readCommit(tag.object))!
     expect(commit.author).toMatchObject({ name: 'alice' })
     expect(commit.message).toContain(v.id)
   })

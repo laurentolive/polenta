@@ -1,12 +1,11 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { AuthService } from './auth.service'
 import { SyncService } from './sync.service'
+import { TestRepo } from '../git/test-repo.test-util'
 
 /** GH367 — `listBranches` inclut les branches présentes seulement sur `origin` : un autre utilisateur
  *  n'a en local que la branche du clone, et ne voyait donc jamais les autres `int-*` du serveur. */
@@ -23,15 +22,13 @@ beforeEach(async () => {
   repo = path.join(tmp, 'repo')
   await fsP.mkdir(repo)
   sync = new SyncService({ getAuthor: async () => AUTHOR, getHttpsCredentials: async () => null } as unknown as AuthService)
-  await git.init({ fs, dir: repo, defaultBranch: 'int-A' })
-  await git.addRemote({ fs, dir: repo, remote: 'origin', url: 'https://forge.invalid/r.git' })
+  const r = await TestRepo.init(repo, 'int-A')
+  await r.addRemote('origin', 'https://forge.invalid/r.git')
   await fsP.writeFile(path.join(repo, 'a.txt'), 'a')
-  await git.add({ fs, dir: repo, filepath: 'a.txt' })
-  tip = await git.commit({ fs, dir: repo, message: 'init', author: AUTHOR })
+  await r.add(['a.txt'])
+  tip = await r.commit('init', AUTHOR)
   // Ce que laisse un clone suivi d'un fetch : int-A locale, int-B et int-C seulement sur origin.
-  for (const b of ['HEAD', 'int-A', 'int-C', 'int-B']) {
-    await git.writeRef({ fs, dir: repo, ref: `refs/remotes/origin/${b}`, value: tip, force: true })
-  }
+  await r.git.updateRefs(['HEAD', 'int-A', 'int-C', 'int-B'].map(b => ({ ref: `refs/remotes/origin/${b}`, newOid: tip })))
 })
 
 afterEach(async () => {
@@ -57,7 +54,7 @@ describe('GH367 — listBranches', () => {
   })
 
   it('repo sans remote : branches locales seules', async () => {
-    await git.deleteRemote({ fs, dir: repo, remote: 'origin' })
+    await new TestRepo(repo).removeRemote('origin')
     await fsP.rm(path.join(repo, '.git', 'refs', 'remotes'), { recursive: true, force: true })
     expect(await sync.listBranches(repo)).toEqual([{ name: 'int-A', isCurrent: true, type: 'int' }])
   })

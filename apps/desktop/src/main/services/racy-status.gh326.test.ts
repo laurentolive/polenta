@@ -1,12 +1,11 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { AuthService } from './auth.service'
 import { SyncService } from './sync.service'
+import { TestRepo } from '../git/test-repo.test-util'
 
 /**
  * GH326 — un fichier réécrit à taille égale dans la même seconde que son ajout à l'index passait pour
@@ -30,9 +29,9 @@ const abs = (rel: string) => path.join(repo, rel)
 const write = (rel: string, content: string) => fsP.writeFile(abs(rel), content)
 
 async function committedText(rel: string) {
-  const oid = await git.resolveRef({ fs, dir: repo, ref: 'HEAD' })
-  const { blob } = await git.readBlob({ fs, dir: repo, oid, filepath: rel })
-  return Buffer.from(blob).toString('utf8')
+  const text = await new TestRepo(repo).git.readText('HEAD', rel)
+  if (text === null) throw new Error(`${rel} absent de HEAD`)
+  return text
 }
 
 const waitStartOfSecond = () => new Promise(resolve => setTimeout(resolve, 1000 - (Date.now() % 1000) + 5))
@@ -58,10 +57,7 @@ async function rewriteWithinSecond(index: () => Promise<unknown>) {
 beforeEach(async () => {
   repo = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh326-'))
   sync = new SyncService({ getAuthor: async () => AUTHOR } as unknown as AuthService)
-  await git.init({ fs, dir: repo, defaultBranch: 'main' })
-  await write('other.yaml', 'a: 1\n')
-  await git.add({ fs, dir: repo, filepath: '.' })
-  await git.commit({ fs, dir: repo, message: 'base', author: AUTHOR })
+  await TestRepo.create(repo, { 'other.yaml': 'a: 1\n' }, { message: 'base', author: AUTHOR })
 })
 
 afterEach(async () => {

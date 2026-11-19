@@ -366,7 +366,7 @@ export class GitBackend {
       // Pas `--short` : il rend `heads/x` quand un tag porte le même nom que la branche.
       return (await this.text(['symbolic-ref', '-q', 'HEAD'])).trim().replace(/^refs\/heads\//, '') || null
     } catch (err) {
-      // `symbolic-ref -q` : 1 = tête détachée. Hors dépôt (128), on lève, comme isomorphic-git :
+      // `symbolic-ref -q` : 1 = tête détachée. Hors dépôt (128), on lève :
       // `GitService.currentBranch` traduirait sinon un dossier quelconque en « détaché » (lecture seule).
       if (isGitError(err) && err.exitCode === 1) return null
       throw err
@@ -679,8 +679,7 @@ export class GitBackend {
 
   /**
    * Noms des refs sous `prefix` (`refs/heads`, `refs/tags`, `refs/remotes/origin`), préfixe retiré,
-   * triés par nom (`for-each-ref`) : remplace `listBranches` / `listTags` d'isomorphic-git. Une
-   * branche distante `HEAD` (symref) figure dans la liste, comme chez isomorphic-git.
+   * triés par nom (`for-each-ref`). Une branche distante `HEAD` (symref) figure dans la liste.
    */
   async refNames(prefix: string): Promise<string[]> {
     const base = prefix.replace(/\/+$/, '') + '/'
@@ -741,7 +740,7 @@ export class GitBackend {
   /**
    * Refs selon les motifs, avec le **commit** visé : la cible elle-même, ou celle d'un tag annoté
    * (déréférencé d'un niveau) ; `null` quand la ref ne vise pas un commit (tag d'un blob ou d'un arbre,
-   * tag de tag). Remplace `git.log({ ref: tag, depth: 1 })` d'isomorphic-git pour lire le commit d'un tag.
+   * tag de tag). Sert à lire le commit d'un tag.
    */
   async refCommits(patterns: string[] = []): Promise<{ ref: string; oid: string; commit: string | null }[]> {
     const fmt = '%(refname)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)'
@@ -765,6 +764,11 @@ export class GitBackend {
   async addRemote(name: string, url: string): Promise<void> {
     this.remotesCache = null
     await this.w(['remote', 'add', name, url])
+  }
+
+  async removeRemote(name: string): Promise<void> {
+    this.remotesCache = null
+    await this.w(['remote', 'remove', name])
   }
 
   async setRemoteUrl(name: string, url: string): Promise<void> {
@@ -990,7 +994,7 @@ export class GitBackend {
    * Un conflit lève `MergeConflictError` (chemins) et ne modifie rien.
    */
   async mergeBranches(ours: string, theirs: string, opts: {
-    author: GitAuthor; message?: string; fastForwardOnly?: boolean; dryRun?: boolean
+    author: GitAuthor & { timestamp?: number }; message?: string; fastForwardOnly?: boolean; dryRun?: boolean
   }): Promise<{ oid: string; tree: string; mergeCommit: boolean }> {
     const ourOid = await this.resolveOrThrow(ours)
     const theirOid = await this.resolveOrThrow(theirs)
@@ -1121,8 +1125,18 @@ export async function gitClone(url: string, dest: string, opts: NetworkOptions &
 
 /** Branches du remote (`refs/heads/*`), sans clone. */
 export async function gitLsRemoteHeads(url: string, opts: NetworkOptions = {}): Promise<string[]> {
+  return [...(await gitLsRemoteHeadOids(url, opts)).keys()]
+}
+
+/** Têtes des branches du remote : nom (sans `refs/heads/`) → oid. Sert aux contrôles de push (smoke). */
+export async function gitLsRemoteHeadOids(url: string, opts: NetworkOptions = {}): Promise<Map<string, string>> {
   const out = await netRun(os.tmpdir(), url, ['ls-remote', '--heads', '--', url], opts, false)
-  return out.stdout.toString('utf8').split('\n').filter(Boolean).map(l => l.split('\t')[1].replace(/^refs\/heads\//, ''))
+  const heads = new Map<string, string>()
+  for (const line of out.stdout.toString('utf8').split('\n').filter(Boolean)) {
+    const [oid, ref] = line.split('\t')
+    heads.set(ref.replace(/^refs\/heads\//, ''), oid)
+  }
+  return heads
 }
 
 /** Racine du dépôt contenant `p`, `null` hors dépôt. */

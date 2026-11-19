@@ -1,17 +1,16 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { AuthService } from './auth.service'
 import { GITATTRIBUTES_CONTENT } from './repo-conformity.util'
 import { SyncService } from './sync.service'
+import { TestRepo } from '../git/test-repo.test-util'
 
 /**
  * GH296 — fichiers suivis qui ne diffèrent de HEAD que par les fins de ligne (`core.autocrlf` hors de
- * `.git/config`, invisible d'isomorphic-git). Vérifie le symptôme sur tous les usages du statut.
+ * `.git/config`, donc hors de portée de l'ancien moteur). Vérifie le symptôme sur tous les usages du statut.
  */
 
 const AUTHOR = { name: 'Testeur', email: 't@x' }
@@ -26,25 +25,34 @@ const write = (rel: string, content: string | Buffer) => fsP.writeFile(abs(rel),
 const paths = (files: { path: string }[]) => files.map(f => f.path).sort()
 
 async function commitAll(message: string) {
-  await git.add({ fs, dir: repo, filepath: '.' })
-  return git.commit({ fs, dir: repo, message, author: AUTHOR })
+  return new TestRepo(repo).commitAll(message, AUTHOR)
 }
 
 async function committedText(rel: string) {
-  const oid = await git.resolveRef({ fs, dir: repo, ref: 'HEAD' })
-  const { blob } = await git.readBlob({ fs, dir: repo, oid, filepath: rel })
-  return Buffer.from(blob).toString('latin1')
+  const blob = await new TestRepo(repo).git.readBlob(`HEAD:${rel}`)
+  if (blob === null) throw new Error(`${rel} absent de HEAD`)
+  return blob.toString('latin1')
+}
+
+/**
+ * Fichier antérieur à la règle EOL : blob CRLF dans git. `git add` le normaliserait en LF, donc le
+ * blob est écrit tel quel (sans filtre) puis indexé directement, et commité.
+ */
+async function legacyCrlfCommit(rel: string, content: string) {
+  const r = new TestRepo(repo)
+  const oid = await r.git.writeBlob(Buffer.from(content))
+  await r.git.setIndexEntries([{ mode: '100644', oid, path: rel }])
+  await r.commit('legacy', AUTHOR)
 }
 
 beforeEach(async () => {
   repo = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh296-'))
   sync = new SyncService({ getAuthor: async () => AUTHOR } as unknown as AuthService)
-  await git.init({ fs, dir: repo, defaultBranch: 'main' })
+  await TestRepo.init(repo, 'main')
   // GH337 — règle EOL portée par .gitattributes (spec §4.3)
   await write('.gitattributes', GITATTRIBUTES_CONTENT)
   await write('lf.yaml', LF)
   await write('other.yaml', LF)
-  await write('crlf-in-git.js', CRLF)
   await commitAll('base')
 })
 
@@ -64,6 +72,7 @@ describe('GH296 — statut', () => {
   // git normalise le disque (LF) avant de le comparer au blob CRLF : contenus différents, donc modifié.
   // (Ancien comportement GH296, propre à isomorphic-git : non modifié. À confirmer à la validation.)
   it('un fichier CRLF dans git, LF sur le disque : modifié, comme pour git en ligne de commande', async () => {
+    await legacyCrlfCommit('crlf-in-git.js', CRLF)
     await write('crlf-in-git.js', LF)
     expect((await sync.status(repo)).unstaged).toEqual([{ path: 'crlf-in-git.js', marker: 'M' }])
   })
@@ -106,6 +115,7 @@ describe('GH296 — stage et commit', () => {
   })
 
   it('« Tout stager » ignore les faux changements et garde les vrais', async () => {
+    await legacyCrlfCommit('crlf-in-git.js', CRLF)
     await write('lf.yaml', CRLF)
     await write('other.yaml', 'a: 9\r\n')
     await write('new.yaml', 'n\n')
@@ -117,7 +127,7 @@ describe('GH296 — stage et commit', () => {
     await sync.commit(repo, 'tout')
     expect(await committedText('lf.yaml')).toBe(LF)
     expect(await committedText('other.yaml')).toBe('a: 9\n')
-    // Un fichier déjà en CRLF dans git garde son style.
+    // Un fichier déjà en CRLF dans git garde son style (git ne convertit pas un blob déjà en CRLF).
     expect(await committedText('crlf-in-git.js')).toBe('x\r\n')
   })
 
@@ -137,18 +147,18 @@ describe('GH296 — stage et commit', () => {
 })
 
 describe('GH296 — gardes', () => {
-  beforeEach(() => git.addRemote({ fs, dir: repo, remote: 'origin', url: 'https://example.invalid/r.git' }))
+  beforeEach(() => new TestRepo(repo).addRemote('origin', 'https://example.invalid/r.git'))
 
   it('une dev-auto sans vrai changement revient sur l\'intégration', async () => {
-    await git.branch({ fs, dir: repo, ref: 'dev-auto', checkout: true })
+    await new TestRepo(repo).checkout('dev-auto', { create: true })
     await write('lf.yaml', CRLF)
     expect(await sync.settleAutoBranch(repo, 'main')).toEqual({ action: 'returned', branch: 'dev-auto' })
-    expect(await git.currentBranch({ fs, dir: repo })).toBe('main')
+    expect(await new TestRepo(repo).currentBranch()).toBe('main')
   })
 
   it('un faux changement sur l\'intégration ne crée pas de dev-auto', async () => {
     await write('lf.yaml', CRLF)
     expect(await sync.settleAutoBranch(repo, 'main')).toEqual({ action: 'none' })
-    expect(await git.currentBranch({ fs, dir: repo })).toBe('main')
+    expect(await new TestRepo(repo).currentBranch()).toBe('main')
   })
 })

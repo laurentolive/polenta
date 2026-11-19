@@ -248,8 +248,8 @@ export class SyncService {
    * Fetches new refs from `remote` into an already-cloned repo, without merging or checking
    * anything out (T74). Used when a repo already exists locally but a requested pin isn't
    * resolvable yet — the caller then checks out the pin directly. Never call `clone()` for
-   * this case: isomorphic-git's clone() re-initializes .git as an early step, before the
-   * network fetch that might then fail, which would destroy the existing checkout.
+   * this case: a clone replaces the existing `.git` before the network fetch that might then
+   * fail, which would destroy the existing checkout.
    *
    * `urlFallback` (the dependency's declared URL from polenta-repo.yaml) is used only if the
    * local repo has no `remote` configured yet — normal repos cloned by this app always do,
@@ -343,7 +343,7 @@ export class SyncService {
     try {
       const b = await g.currentBranch()
       branch = b ?? ''
-      // Branche sans commit : rien à compter (isomorphic-git levait ici).
+      // Branche sans commit : rien à compter.
       // GH337 — résolutions par le `cat-file` persistant, puis un seul processus pour les comptes
       // (`rev-list --left-right --count`), au lieu de deux `log` : chemin de chaque rafraîchissement.
       const remoteRef = `refs/remotes/origin/${b}`
@@ -373,7 +373,7 @@ export class SyncService {
   async commit(repoPath: string, message: string, author?: GitAuthor): Promise<CommitResult> {
     const resolvedAuthor = author ?? (await this.auth.getAuthor(repoPath))
 
-    // GH337 — `allowEmpty` : isomorphic-git commitait aussi un index inchangé ; le comportement reste.
+    // GH337 — `allowEmpty` : un commit sans changement reste possible, comme avant.
     const sha = await gitFor(repoPath).commit({
       message,
       author: { name: resolvedAuthor.name, email: resolvedAuthor.email },
@@ -406,7 +406,7 @@ export class SyncService {
     if (!branch) throw new Error('Detached HEAD — cannot commit')
     const head = await g.resolveOrThrow('HEAD')
     const commit = await readCommitOrThrow(g, head)
-    // Contenu stocké tel quel, comme `git.writeBlob` d'isomorphic-git (Polenta écrit en LF).
+    // Contenu stocké tel quel, sans filtre `.gitattributes` (Polenta écrit en LF).
     const blob = await g.writeBlob(Buffer.from(content, 'utf8'))
     const { tree, mode } = await this.replaceTreeEntry(g, commit.tree, filepath.split('/'), blob)
     const author = await this.auth.getAuthor(repoPath)
@@ -529,7 +529,7 @@ export class SyncService {
 
   /**
    * "Rafraîchir" (T153), reworked by GH37: fetch, then merge `refs/remotes/<remote>/<branch>` into
-   * the current branch through isomorphic-git with `abortOnConflict` — a conflict leaves the
+   * the current branch through the git engine (`GitBackend.mergeBranches`) — a conflict leaves the
    * working directory and the index untouched (no conflict markers, SSH remote included: the
    * former `git pull --no-rebase` CLI path wrote them into the user's files) and is returned so
    * the caller can open the merge editor (`leftRef` = local branch, `rightRef` = remote branch).
@@ -1126,7 +1126,7 @@ export class SyncService {
   }
 
   /**
-   * `git.merge` (isomorphic-git) only moves the `intoBranch` ref — merge commit or fast-forward —
+   * The merge only moves the `intoBranch` ref — merge commit or fast-forward —
    * and never touches the index nor the working directory. When `intoBranch` is the checked-out
    * branch, both would be left on the old tree: `git status` then shows the merged changes as
    * staged reversals, and the next commit silently undoes the merge (GH42). So, for the

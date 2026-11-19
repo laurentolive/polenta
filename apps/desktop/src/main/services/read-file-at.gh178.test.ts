@@ -1,8 +1,7 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { TestRepo } from '../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { AuthService } from './auth.service'
@@ -24,15 +23,14 @@ async function write(rel: string, content: string) {
 }
 
 async function commitAll(message: string) {
-  await git.add({ fs, dir: repo, filepath: '.' })
-  return git.commit({ fs, dir: repo, message, author: AUTHOR })
+  return new TestRepo(repo).commitAll(message, AUTHOR)
 }
 
 const text = (b: Uint8Array | null) => (b ? new TextDecoder().decode(b) : null)
 
 beforeEach(async () => {
   repo = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh178-'))
-  await git.init({ fs, dir: repo, defaultBranch: 'main' })
+  await TestRepo.init(repo, 'main')
   sync = new SyncService(auth)
 })
 

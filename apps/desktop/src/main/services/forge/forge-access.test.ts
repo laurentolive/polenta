@@ -31,8 +31,7 @@ describe('marqueur d’erreur d’accès', () => {
 })
 
 describe('httpStatusOf', () => {
-  it('isomorphic-git HttpError, git natif, ForgeHttpError', () => {
-    expect(httpStatusOf({ code: 'HttpError', data: { statusCode: 401 } })).toBe(401)
+  it('git (messages stderr), ForgeHttpError', () => {
     expect(httpStatusOf(new Error("fatal: unable to access 'https://h/r.git/': The requested URL returned error: 403"))).toBe(403)
     expect(httpStatusOf({ message: 'x', stderr: "fatal: Authentication failed for 'https://h/r.git/'" })).toBe(401)
     expect(httpStatusOf(new ForgeHttpError(404, '', 'GET u', 'text/plain'))).toBe(404)
@@ -47,16 +46,16 @@ describe('httpStatusOf', () => {
 })
 
 describe('isPushDeclined (mesuré sur Forgejo 15 / Gitea 28 avec un lecteur)', () => {
-  it('GitPushError isomorphic-git « pre-receive hook declined » → refus de droits', () => {
+  it('push refusé par un hook (« pre-receive hook declined ») → refus de droits', () => {
     const err = Object.assign(new Error('One or more branches were not updated: \n  - refs/heads/main: pre-receive hook declined'), {
-      code: 'GitPushError', data: { prettyDetails: '  - refs/heads/main: pre-receive hook declined' },
+      stderr: '  - refs/heads/main: pre-receive hook declined',
     })
     expect(isPushDeclined(err)).toBe(true)
     expect(isPushDeclined({ stderr: ' ! [remote rejected] main -> main (protected branch hook declined)' })).toBe(true)
   })
 
   it('réponse non-git (compte désactivé) détectée ; rejet non fast-forward : ni sonde ni refus de droits', () => {
-    expect(isNonGitResponse(Object.assign(new Error('Remote did not reply using the "smart" HTTP protocol.'), { code: 'SmartHttpError' }))).toBe(true)
+    expect(isNonGitResponse(new Error('Remote did not reply using the "smart" HTTP protocol.'))).toBe(true)
     expect(isNonGitResponse({ stderr: "fatal: https://h/r.git/info/refs not valid: could not determine hash algorithm; is this a git repository?" })).toBe(true)
     expect(isNonGitResponse(new Error('Push rejected because it was not a simple fast-forward.'))).toBe(false)
   })

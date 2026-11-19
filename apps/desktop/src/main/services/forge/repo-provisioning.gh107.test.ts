@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { TestRepo } from '../../git/test-repo.test-util'
 import * as yaml from 'js-yaml'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CreateRepoRequest, ForgeRepo } from '@polenta/types'
@@ -61,14 +61,14 @@ describe('RepoProvisioningService.create', () => {
   it('C-01 / C-02 — projet : un seul commit sur int-x (README, project.yaml), aucune branche main, étapes dans l\'ordre', async () => {
     const result = await service.create(request())
     const repo = path.join(dir, 'proj')
-    expect(await git.listBranches({ fs, dir: repo })).toEqual(['int-x'])
-    const log = await git.log({ fs, dir: repo })
+    expect(await new TestRepo(repo).listBranches()).toEqual(['int-x'])
+    const log = await new TestRepo(repo).git.log('HEAD')
     expect(log).toHaveLength(1)
-    const files = await git.listFiles({ fs, dir: repo, ref: 'int-x' })
+    const files = (await new TestRepo(repo).git.lsTree('int-x', { recursive: true })).map(e => e.path)
     expect(files).toEqual(expect.arrayContaining(['README.md', 'config/project.yaml', 'AGENTS.md', '.gitignore']))
     expect(fs.readFileSync(path.join(repo, 'README.md'), 'utf-8')).toBe('# proj\n\nLe projet\n')
     expect(yaml.load(fs.readFileSync(path.join(repo, 'config', 'project.yaml'), 'utf-8'))).toEqual({ integrationBranch: 'int-x' })
-    expect((await git.listRemotes({ fs, dir: repo }))[0].url).toBe(REMOTE.cloneUrl)
+    expect((await new TestRepo(repo).git.remotes())[0].url).toBe(REMOTE.cloneUrl)
     expect(forge.createRemote).toHaveBeenCalledWith('forge.test:bob', {
       owner: 'acme', ownerKind: 'org', name: 'proj', description: 'Le projet', visibility: 'private', defaultBranch: 'int-x',
     })
@@ -140,7 +140,7 @@ describe('RepoProvisioningService.create', () => {
     let pushedFrom = ''
     pushBranch.mockImplementationOnce(async (d: string) => {
       pushedFrom = d
-      expect(await git.listBranches({ fs, dir: d })).toEqual(['int-x'])
+      expect(await new TestRepo(d).listBranches()).toEqual(['int-x'])
     })
     const result = await service.create(request({ target: { kind: 'component' } }))
     expect(result).toMatchObject({ cloneUrl: REMOTE.cloneUrl, branch: 'int-x' })
@@ -154,8 +154,8 @@ describe('RepoProvisioningService.create', () => {
   it('C-08 — création locale sans options : toujours sur main, sans README ni project.yaml', async () => {
     const repo = path.join(dir, 'local')
     await workspace.initProjectRepo(repo)
-    expect(await git.listBranches({ fs, dir: repo })).toEqual(['main'])
-    expect(await git.listFiles({ fs, dir: repo, ref: 'main' })).not.toContain('README.md')
+    expect(await new TestRepo(repo).listBranches()).toEqual(['main'])
+    expect((await new TestRepo(repo).git.lsTree('main', { recursive: true })).map(e => e.path)).not.toContain('README.md')
   })
 
   it('GH108 — forge qui impose le privé : public demandé, créé privé, signalé sans bloquer', async () => {

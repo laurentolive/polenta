@@ -4,7 +4,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import git from 'isomorphic-git'
+import { TestRepo } from '../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { isAutoBranch } from '@polenta/types'
 
@@ -36,9 +36,9 @@ async function read(rel: string, dir = repo) {
   return fsP.readFile(path.join(dir, rel), 'utf8')
 }
 
-const current = () => git.currentBranch({ fs, dir: repo })
-const sha = (ref: string, dir = repo) => git.resolveRef({ fs, dir, ref })
-const branches = () => git.listBranches({ fs, dir: repo })
+const current = () => new TestRepo(repo).currentBranch()
+const sha = (ref: string, dir = repo) => new TestRepo(dir).resolve(ref)
+const branches = () => new TestRepo(repo).listBranches()
 
 /** Le collègue publie `rel` sur `origin/main`. */
 async function colleaguePublishes(rel: string, content: string) {
@@ -108,10 +108,10 @@ describe('settleAutoBranch', () => {
   })
 
   it('U5 — HEAD détaché : rien', async () => {
-    await git.checkout({ fs, dir: repo, ref: await sha('main') })
+    await new TestRepo(repo).checkout(await sha('main'))
     await write('requirements/R1.yaml', 'title: modifié\n')
     expect(await sync.settleAutoBranch(repo, 'main')).toEqual({ action: 'none' })
-    expect(await current()).toBeUndefined()
+    expect(await current()).toBeNull()
   })
 
   it('U6 — sur une branche dev-* ou une int-* non désignée : rien', async () => {
@@ -121,7 +121,7 @@ describe('settleAutoBranch', () => {
       expect(await sync.settleAutoBranch(repo, 'main')).toEqual({ action: 'none' })
       expect(await current()).toBe(b)
       await sync.discardAll(repo)
-      await git.checkout({ fs, dir: repo, ref: 'main' })
+      await new TestRepo(repo).checkout('main')
     }
   })
 
@@ -130,7 +130,7 @@ describe('settleAutoBranch', () => {
     await write('requirements/R1.yaml', 'title: travail\n')
     await sync.stageAll(repo)
     await sync.commit(repo, 'travail')
-    await git.checkout({ fs, dir: repo, ref: 'main' })
+    await new TestRepo(repo).checkout('main')
     await write('tests/T1.yaml', 'title: autre\n')
     expect(await sync.settleAutoBranch(repo, 'main')).toEqual({ action: 'switched', branch: 'dev-auto-2' })
     expect(await branches()).toContain('dev-auto')
@@ -162,8 +162,8 @@ describe('settleAutoBranch', () => {
   })
 
   it('U11 — dev-auto-3 fusionnée non checkoutée supprimée, dev-auto-notes conservée', async () => {
-    await git.branch({ fs, dir: repo, ref: 'dev-auto-3' })
-    await git.branch({ fs, dir: repo, ref: 'dev-auto-notes' })
+    await new TestRepo(repo).branch('dev-auto-3')
+    await new TestRepo(repo).branch('dev-auto-notes')
     await sync.settleAutoBranch(repo, 'main')
     const names = await branches()
     expect(names).not.toContain('dev-auto-3')
@@ -267,7 +267,7 @@ describe('resyncIntegration', () => {
   })
 
   it('U19 — non-régression GH39 : mise de côté sur dev-resync puis dev-resync-2', async () => {
-    await git.branch({ fs, dir: repo, ref: 'dev-resync' })
+    await new TestRepo(repo).branch('dev-resync')
     await write('requirements/R1.yaml', 'title: local\n')
     await run(repo, 'commit', '-am', 'local non poussé')
     await colleaguePublishes('requirements/R1.yaml', 'title: collègue\n')

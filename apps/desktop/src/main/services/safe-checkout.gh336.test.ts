@@ -1,8 +1,6 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AuthService } from './auth.service'
@@ -10,6 +8,7 @@ import { SyncService } from './sync.service'
 import { LocalChangesError, safeCheckout } from './safe-checkout.util'
 import { GitBackend } from '../git/git-backend'
 import { runGit } from '../git/git-runner'
+import { TestRepo } from '../git/test-repo.test-util'
 
 /**
  * GH336 §5 — « si le panneau Version n'affiche aucune modification locale, le changement de branche
@@ -22,6 +21,7 @@ const AUTHOR = { name: 'Testeur', email: 't@x' }
 let repo: string
 let sync: SyncService
 
+const tr = () => new TestRepo(repo)
 const write = async (rel: string, content: string) => {
   await fsP.mkdir(path.dirname(path.join(repo, rel)), { recursive: true })
   await fsP.writeFile(path.join(repo, rel), content)
@@ -30,24 +30,23 @@ const read = (rel: string) => fsP.readFile(path.join(repo, rel), 'utf8')
 const exists = (rel: string) => fsP.stat(path.join(repo, rel)).then(() => true, () => false)
 
 async function commitAll(message: string) {
-  await git.add({ fs, dir: repo, filepath: '.' })
-  return git.commit({ fs, dir: repo, message, author: AUTHOR })
+  return tr().commitAll(message, AUTHOR)
 }
 
 beforeEach(async () => {
   repo = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh336-'))
   sync = new SyncService({ getAuthor: async () => AUTHOR } as unknown as AuthService)
-  await git.init({ fs, dir: repo, defaultBranch: 'main' })
+  await TestRepo.init(repo, 'main')
   await write('a.yaml', 'a: 0\n')
   await commitAll('base')
   // int-PH2 : la pref a été commitée par erreur.
-  await git.branch({ fs, dir: repo, ref: 'int-PH2', checkout: true })
+  await tr().checkout('int-PH2', { create: true })
   await write('.local.migrated.pref', 'committed: true\n')
   await write('a.yaml', 'a: ph2\n')
   await commitAll('pref commitée')
   // int-tmp (depuis main) : *.pref ignoré.
-  await git.checkout({ fs, dir: repo, ref: 'main', force: true })
-  await git.branch({ fs, dir: repo, ref: 'int-tmp', checkout: true })
+  await tr().checkout('main', { force: true })
+  await tr().checkout('int-tmp', { create: true })
   await write('.gitignore', '*.pref\n')
   await commitAll('gitignore')
 })
@@ -69,7 +68,7 @@ describe('GH336 — checkout sûr', () => {
 
     await sync.checkoutBranch(repo, 'int-PH2')
 
-    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-PH2')
+    expect(await tr().currentBranch()).toBe('int-PH2')
     expect(await read('a.yaml')).toBe('a: ph2\n')
     expect(await read('.local.migrated.pref')).toBe('local: mine\n')
     // Le fichier local commité sur cette branche apparaît (à corriger par la mise en conformité).
@@ -82,15 +81,15 @@ describe('GH336 — checkout sûr', () => {
     expect(err).toBeInstanceOf(LocalChangesError)
     expect(err.message).toContain('Impossible de passer sur int-PH2')
     expect(err.message).toContain('- a.yaml : modifié')
-    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-tmp')
+    expect(await tr().currentBranch()).toBe('int-tmp')
     expect(await read('a.yaml')).toBe('a: local\n')
   })
 
   it('un fichier non suivi que la cible versionne est nommé comme tel', async () => {
-    await git.checkout({ fs, dir: repo, ref: 'int-PH2', force: true })
+    await tr().checkout('int-PH2', { force: true })
     await write('extra.yaml', 'e: ph2\n')
     await commitAll('extra')
-    await git.checkout({ fs, dir: repo, ref: 'main', force: true })
+    await tr().checkout('main', { force: true })
     await write('extra.yaml', 'e: local\n')
     const err = await sync.checkoutBranch(repo, 'int-PH2').catch(e => e)
     expect(err).toBeInstanceOf(LocalChangesError)
@@ -98,18 +97,18 @@ describe('GH336 — checkout sûr', () => {
   })
 
   it('une pref non suivie que la cible versionne ne bloque pas : copie locale gardée', async () => {
-    await git.checkout({ fs, dir: repo, ref: 'main', force: true })
+    await tr().checkout('main', { force: true })
     await write('.local.migrated.pref', 'x\n') // pas de .gitignore sur main : non suivi
     await sync.checkoutBranch(repo, 'int-PH2')
-    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-PH2')
+    expect(await tr().currentBranch()).toBe('int-PH2')
     expect(await read('.local.migrated.pref')).toBe('x\n')
   })
 
   it('le retour sur la branche où la pref est ignorée aboutit aussi', async () => {
-    await git.checkout({ fs, dir: repo, ref: 'int-PH2', force: true })
+    await tr().checkout('int-PH2', { force: true })
     expect(await nothingToCommit()).toBe(true)
     await sync.checkoutBranch(repo, 'int-tmp')
-    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-tmp')
+    expect(await tr().currentBranch()).toBe('int-tmp')
     expect(await exists('.gitignore')).toBe(true)
   })
 
@@ -125,7 +124,7 @@ describe('GH336 — checkout sûr', () => {
     await expect(safeCheckout({ dir: repo, ref: 'int-PH2' })).rejects.toThrow(/Too many pending tasks/)
     vi.restoreAllMocks()
 
-    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-tmp')
+    expect(await tr().currentBranch()).toBe('int-tmp')
     expect(await exists('.gitignore')).toBe(true)
     expect(await read('a.yaml')).toBe('a: 0\n')
     expect(await nothingToCommit()).toBe(true)
@@ -133,33 +132,33 @@ describe('GH336 — checkout sûr', () => {
 
   it('pref commitée par erreur et modifiée localement (capture client, dev-auto → int-PH2) : passe, copie locale gardée', async () => {
     // dev-auto (depuis int-PH2) : la pref y est suivie, avec un autre contenu.
-    await git.checkout({ fs, dir: repo, ref: 'int-PH2', force: true })
-    await git.branch({ fs, dir: repo, ref: 'dev-auto', checkout: true })
+    await tr().checkout('int-PH2', { force: true })
+    await tr().checkout('dev-auto', { create: true })
     await write('.local.migrated.pref', 'committed: dev-auto\n')
     await commitAll('pref modifiée sur dev-auto')
     await write('.local.migrated.pref', 'mes réglages\n')
 
     await safeCheckout({ dir: repo, ref: 'int-PH2' })
 
-    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-PH2')
+    expect(await tr().currentBranch()).toBe('int-PH2')
     expect(await read('.local.migrated.pref')).toBe('mes réglages\n')
     expect(await read('a.yaml')).toBe('a: ph2\n')
 
     // Et vers une branche qui ignore les .pref (non suivie là-bas) : passe aussi, copie gardée.
     await safeCheckout({ dir: repo, ref: 'int-tmp' })
-    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-tmp')
+    expect(await tr().currentBranch()).toBe('int-tmp')
     expect(await read('.local.migrated.pref')).toBe('mes réglages\n')
     expect(await nothingToCommit()).toBe(true)
   })
 
   it('pref indexée (stagée) : ne bloque pas non plus', async () => {
-    await git.checkout({ fs, dir: repo, ref: 'int-PH2', force: true })
+    await tr().checkout('int-PH2', { force: true })
     await write('.local.migrated.pref', 'stagée\n')
-    await git.add({ fs, dir: repo, filepath: '.local.migrated.pref' })
+    await tr().add(['.local.migrated.pref'])
 
     await safeCheckout({ dir: repo, ref: 'int-tmp' })
 
-    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-tmp')
+    expect(await tr().currentBranch()).toBe('int-tmp')
     expect(await read('.local.migrated.pref')).toBe('stagée\n')
     expect(await nothingToCommit()).toBe(true)
   })
@@ -167,7 +166,7 @@ describe('GH336 — checkout sûr', () => {
 
 /**
  * GH336 — « Too many pending tasks in queue packed-refs » : au-delà de 1000 lectures de refs en
- * attente (tous repos confondus), isomorphic-git rejetait la suivante, y compris celle d'un checkout.
+ * attente (tous repos confondus), le moteur précédent rejetait la suivante, y compris celle d'un checkout.
  * GH337 — l'ancien test visait `git-lock-limits` (supprimé) ; même comportement vérifié par les
  * services sur le backend natif.
  */
@@ -175,7 +174,7 @@ it('GH336 — 5000 résolutions de ref simultanées pendant un checkout : aucune
   const reads = Promise.allSettled(Array.from({ length: 5000 }, () => sync.resolveHead(repo)))
   await sync.checkoutBranch(repo, 'int-PH2')
   const results = await reads
-  expect(results.filter(r => r.status === 'rejected')).toEqual([])
-  expect(results.every(r => r.status === 'fulfilled' && typeof r.value === 'string')).toBe(true)
-  expect(await git.currentBranch({ fs, dir: repo })).toBe('int-PH2')
+  expect(results.filter(res => res.status === 'rejected')).toEqual([])
+  expect(results.every(res => res.status === 'fulfilled' && typeof res.value === 'string')).toBe(true)
+  expect(await tr().currentBranch()).toBe('int-PH2')
 }, 120_000)

@@ -1,9 +1,7 @@
 import { execFileSync } from 'child_process'
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ForgeKind } from '@polenta/types'
 
@@ -16,6 +14,7 @@ import { ForgeService } from './forge.service'
 import { AdminRequiredError, LastAdminError } from './forge-provider'
 import { RepoSettingsService } from './repo-settings.service'
 import { startFakeForge, type FakeForge } from './fake-forge.test-util'
+import { TestRepo } from '../../git/test-repo.test-util'
 
 /**
  * GH108 — fenêtre « Paramètres du repo » (specs/GH108-design.md §5, S-01 à S-09). Réponses de la
@@ -45,8 +44,8 @@ async function setup(provider: ForgeKind, url?: string) {
   }))
   const ctx: HostContext = { userDataDir: dir, tokenStore: tokens, machineConfig: { hideGithub: false } }
   service = new ForgeService(new AuthService(ctx), {} as WorkspaceService, {} as SyncService)
-  await git.init({ fs, dir: repo, defaultBranch: 'int-a' })
-  await git.addRemote({ fs, dir: repo, remote: 'origin', url: url ?? `${forge.baseUrl}/acme/proj.git` })
+  const r = await TestRepo.init(repo, 'int-a')
+  await r.addRemote('origin', url ?? `${forge.baseUrl}/acme/proj.git`)
 }
 
 const details = (admin = true, extra: Record<string, unknown> = {}) => ({
@@ -88,9 +87,9 @@ describe('repoSettingsAvailable', () => {
     await setup('forgejo')
     expect(await service.repoSettingsAvailable(repo)).toBe(true)
     expect(forge.requests).toHaveLength(0)
-    await git.deleteRemote({ fs, dir: repo, remote: 'origin' })
+    await new TestRepo(repo).removeRemote('origin')
     expect(await service.repoSettingsAvailable(repo)).toBe(false)
-    await git.addRemote({ fs, dir: repo, remote: 'origin', url: 'git@forge.test:acme/proj.git' })
+    await new TestRepo(repo).addRemote('origin', 'git@forge.test:acme/proj.git')
     expect(await service.repoSettingsAvailable(repo)).toBe(false)
   })
 
@@ -279,14 +278,13 @@ describe('README', () => {
   async function seed(readme: string | null, branch = 'int-a') {
     bare = path.join(dir, 'server.git').replace(/\\/g, '/')
     run(dir, 'init', '-q', '--bare', '--initial-branch=int-a', bare)
-    await git.init({ fs, dir: repo, defaultBranch: 'int-a' })
+    const r = await TestRepo.init(repo, 'int-a')
     await fsP.mkdir(path.join(repo, 'config'))
     await fsP.writeFile(path.join(repo, 'config', 'project.yaml'), 'integrationBranch: int-a\n')
     if (readme !== null) await fsP.writeFile(path.join(repo, 'README.md'), readme)
-    await git.add({ fs, dir: repo, filepath: '.' })
-    await git.commit({ fs, dir: repo, message: 'init', author: AUTHOR })
-    await git.addRemote({ fs, dir: repo, remote: 'origin', url: bare })
-    if (branch !== 'int-a') await git.branch({ fs, dir: repo, ref: branch, checkout: true })
+    await r.commitAll('init', AUTHOR)
+    await r.addRemote('origin', bare)
+    if (branch !== 'int-a') await r.checkout(branch, { create: true })
     const auth = { getAuthor: async () => AUTHOR, getHttpsCredentials: async () => null } as unknown as AuthService
     sync = new SyncService(auth)
     settings = new RepoSettingsService(new GitService(), sync)
@@ -324,8 +322,8 @@ describe('README', () => {
     await fsP.writeFile(path.join(repo, 'README.md'), '# repo\n\nÀ moi\n')
     expect(await settings.syncReadme(repo, 'Autre')).toEqual({ status: 'pending-changes' })
     expect(await fsP.readFile(path.join(repo, 'README.md'), 'utf-8')).toBe('# repo\n\nÀ moi\n')
-    await git.checkout({ fs, dir: repo, ref: 'int-a', force: true })
-    await git.branch({ fs, dir: repo, ref: 'dev-x', checkout: true })
+    await new TestRepo(repo).checkout('int-a', { force: true })
+    await new TestRepo(repo).checkout('dev-x', { create: true })
     expect(await settings.syncReadme(repo, 'Autre')).toEqual({ status: 'not-on-integration', branch: 'int-a' })
   })
 

@@ -1,8 +1,7 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
+import { TestRepo } from '../../git/test-repo.test-util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AuthService } from '../auth.service'
@@ -124,10 +123,10 @@ describe('ForgeService', () => {
   /** Projet local réel (git init + commit), comme createNewProject, sans l'arbre du workspace. */
   async function initRepo(repoPath: string) {
     await fsP.mkdir(repoPath, { recursive: true })
-    await git.init({ fs, dir: repoPath, defaultBranch: 'main' })
+    await TestRepo.init(repoPath, 'main')
     await fsP.writeFile(path.join(repoPath, 'AGENTS.md'), 'x')
-    await git.add({ fs, dir: repoPath, filepath: 'AGENTS.md' })
-    await git.commit({ fs, dir: repoPath, message: 'init', author: { name: 'P', email: 'p@x' } })
+    await new TestRepo(repoPath).add(['AGENTS.md'])
+    await new TestRepo(repoPath).commit('init', { name: 'P', email: 'p@x' })
   }
 
   beforeEach(() => {
@@ -220,7 +219,7 @@ describe('ForgeService', () => {
     async function repoWithOrigin(url: string): Promise<string> {
       const repoPath = path.join(dir, 'p')
       await initRepo(repoPath)
-      await git.addRemote({ fs, dir: repoPath, remote: 'origin', url })
+      await new TestRepo(repoPath).addRemote('origin', url)
       return repoPath
     }
 
@@ -228,10 +227,10 @@ describe('ForgeService', () => {
       forge.route('GET', '/api/v1/repos/acme/demo', () => ({ status: 200, json: apiRepo('acme/demo', false) }))
       const repoPath = await repoWithOrigin(`${forge.baseUrl}/acme/demo.git`)
       expect(await service.repoAccess(repoPath)).toEqual({ host, repo: 'acme/demo', pull: true, push: false })
-      await git.setConfig({ fs, dir: repoPath, path: 'remote.origin.url', value: 'https://github.com/octo/demo.git' })
+      await new TestRepo(repoPath).setConfig('remote.origin.url', 'https://github.com/octo/demo.git')
       expect(await service.repoAccess(repoPath)).toBeNull()
       await forge.close()
-      await git.setConfig({ fs, dir: repoPath, path: 'remote.origin.url', value: `${forge.baseUrl}/acme/demo.git` })
+      await new TestRepo(repoPath).setConfig('remote.origin.url', `${forge.baseUrl}/acme/demo.git`)
       expect(await service.repoAccess(repoPath)).toBeNull()
       forge = await startFakeForge()   // pour afterEach
     })

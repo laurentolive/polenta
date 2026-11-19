@@ -263,7 +263,7 @@ export class RepoProvisioningService {
       // local — contenu d'un nouveau projet, premier commit sur int-x (aucune branche main).
       try {
         await this.workspace.initProjectRepo(dir, { integrationBranch: branch, name: req.name, description })
-        // `force` d'isomorphic-git : un `origin` déjà présent est repointé, pas refusé.
+        // Un `origin` déjà présent est repointé, pas refusé.
         const g = gitFor(dir)
         if ((await g.remotes()).some(r => r.name === 'origin')) await g.setRemoteUrl('origin', remote.cloneUrl)
         else await g.addRemote('origin', remote.cloneUrl)

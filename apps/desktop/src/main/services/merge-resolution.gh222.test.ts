@@ -1,8 +1,6 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
-import git from 'isomorphic-git'
 import yaml from 'js-yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { resolveRegion } from '@polenta/merge-core'
@@ -11,6 +9,7 @@ import type { AuthService } from './auth.service'
 import { MergeResolutionService } from './merge-resolution.service'
 import { SchemaService } from './schema.service'
 import { SyncService } from './sync.service'
+import { TestRepo } from '../git/test-repo.test-util'
 
 /** GH222 — session de résolution sur le moteur générique (specs/GH222-tests.md M25), vrai repo. */
 
@@ -22,14 +21,15 @@ let repo: string
 let userData: string
 let service: MergeResolutionService
 
+const r = () => new TestRepo(repo)
+
 async function write(rel: string, content: string) {
   await fsP.mkdir(path.dirname(path.join(repo, rel)), { recursive: true })
   await fsP.writeFile(path.join(repo, rel), content)
 }
 
 async function commitAll(message: string) {
-  await git.add({ fs, dir: repo, filepath: '.' })
-  return git.commit({ fs, dir: repo, message, author: AUTHOR })
+  return r().commitAll(message, AUTHOR)
 }
 
 const schema = (labels: { priority: string }, statuses: string[]) => dump({
@@ -49,14 +49,14 @@ const dashboard = (title: string) => dump({ id: 'd1', title, widgets: [{ id: 'w1
 beforeEach(async () => {
   repo = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh222-'))
   userData = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh222-ud-'))
-  await git.init({ fs, dir: repo, defaultBranch: 'main' })
+  await TestRepo.init(repo, 'main')
   const sync = new SyncService(auth)
   service = new MergeResolutionService(userData, auth, sync, new SchemaService(auth))
 
   await write('.polenta/schema.yaml', schema({ priority: 'Priorité' }, ['draft']))
   await write('dashboards/d1/dashboard.yaml', dashboard('Base'))
   await commitAll('base')
-  await git.branch({ fs, dir: repo, ref: 'dev' })
+  await r().branch('dev')
 
   // main (destination): field label changed, dashboard title changed.
   await write('.polenta/schema.yaml', schema({ priority: 'Priorité métier' }, ['draft']))
@@ -64,11 +64,11 @@ beforeEach(async () => {
   await commitAll('right')
 
   // dev (mine): status added, dashboard title changed differently.
-  await git.checkout({ fs, dir: repo, ref: 'dev' })
+  await r().checkout('dev')
   await write('.polenta/schema.yaml', schema({ priority: 'Priorité' }, ['draft', 'obsolete']))
   await write('dashboards/d1/dashboard.yaml', dashboard('Gauche'))
   await commitAll('left')
-  await git.checkout({ fs, dir: repo, ref: 'main' })
+  await r().checkout('main')
 })
 
 afterEach(async () => {

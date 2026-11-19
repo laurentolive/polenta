@@ -31,6 +31,9 @@ Format :
 - Erreur : GH335, « Too many pending tasks in queue packed-refs » corrigé en supprimant une source de demandes (statut), testé sur ce seul chemin ; l'humain a revu l'erreur au checkout suivant, le verrou étant global au processus et alimenté par d'autres appels (index, historique, autres repos).
 - Règle : pour une erreur de limite de ressource partagée, identifier la limite elle-même et tous ses consommateurs avant de corriger ; tester la limite (charge au-delà du seuil), pas seulement le chemin qui l'a révélée.
 
+## 2026-11-19 — « Supprimer » qui ne fait que retirer une présentation
+- Erreur : GH415, « Supprimer » dans l'arbre retirait seulement l'élément de `.polenta/trees/` ; le fichier de l'objet restait et l'objet redevenait « non classé » au changement de vue. Le message de confirmation disait « sera supprimé ».
+- Règle : pour une action de suppression, vérifier sur disque ce qu'elle retire réellement, et tester le chemin de rechargement (changement de vue, retour, relecture de l'arbre) ; un libellé de confirmation doit décrire l'effet réel.
 ## 2026-11-19 — Popup de sélection dans un champ : clic qui ferme le parent
 - Erreur : GH416, le sélecteur de paramètres (`{`) est rendu hors du champ ; un clic souris dans la liste remontait aux popups et menus parents, qui se fermaient avant l'insertion. Corrigé sans reproduction ni test sur le symptôme.
 - Règle : un composant flottant rendu hors de son champ arrête la propagation de `mousedown` et `click`, et on teste le clic souris (pas seulement le clavier) avant de conclure.

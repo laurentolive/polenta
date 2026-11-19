@@ -291,6 +291,7 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
     effectiveTypeId,
     root,
     setRoot,
+    obsoleteObjects,
     generateId,
     effectiveType,
     readOnly,
@@ -504,6 +505,7 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
             onSelect={setSelectedIds}
             onDoubleClick={handleDoubleClick}
             onRootChange={handleRootChange}
+            onObsoleteObjects={obsoleteObjects}
             generateId={generateId}
             typeName={effectiveType?.label ?? effectiveTypeId}
             filter={filter || undefined}

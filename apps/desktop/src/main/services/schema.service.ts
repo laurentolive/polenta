@@ -98,6 +98,12 @@ export interface StatusMutationPreview {
 
 export class SchemaService {
   private cache = new Map<string, ProjectSchema>()
+  /**
+   * GH413 — signature (taille + date de modification) de `.polenta/schema.yaml` au moment de la
+   * lecture du cache. Un checkout, un merge ou un pull réécrit le fichier : la signature change et
+   * le cache est relu, sans dépendre d'un événement de watcher (qui peut arriver trop tôt ou manquer).
+   */
+  private cacheSig = new Map<string, string | null>()
   /** GH178 — schemas read at a commit, by `repoPath@sha`. */
   private atCache = new Map<string, ProjectSchema | null>()
 
@@ -107,10 +113,24 @@ export class SchemaService {
   ) {}
 
   async get(repoPath: string): Promise<ProjectSchema> {
-    if (this.cache.has(repoPath)) return this.cache.get(repoPath)!
+    // Signature lue avant le fichier : si le fichier change entre les deux, le cache garde une
+    // signature ancienne et sera relu à l'appel suivant.
+    const sig = await this.diskSignature(repoPath)
+    if (this.cache.has(repoPath) && this.cacheSig.get(repoPath) === sig) return this.cache.get(repoPath)!
     const schema = await this.readFromDisk(repoPath)
     this.cache.set(repoPath, schema)
+    this.cacheSig.set(repoPath, sig)
     return schema
+  }
+
+  /** GH413 — `taille:mtimeMs` de `.polenta/schema.yaml`, `null` s'il est absent. */
+  private async diskSignature(repoPath: string): Promise<string | null> {
+    try {
+      const st = await fsP.stat(path.join(repoPath, '.polenta', 'schema.yaml'))
+      return `${st.size}:${st.mtimeMs}`
+    } catch {
+      return null
+    }
   }
 
   /**
@@ -145,6 +165,7 @@ export class SchemaService {
     const filePath = path.join(dir, 'schema.yaml')
     await fsP.writeFile(filePath, yaml.dump(toWrite, { lineWidth: 120 }), 'utf-8')
     this.cache.set(repoPath, toWrite)
+    this.cacheSig.set(repoPath, await this.diskSignature(repoPath))
   }
 
   /**
@@ -370,6 +391,7 @@ export class SchemaService {
 
   invalidate(repoPath: string): void {
     this.cache.delete(repoPath)
+    this.cacheSig.delete(repoPath)
   }
 
   private mutationQueues = new Map<string, Promise<unknown>>()

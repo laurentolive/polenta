@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation, Trans } from 'react-i18next'
-import { GitMerge, X } from 'lucide-react'
+import { GitMerge, RefreshCw, X } from 'lucide-react'
 import { api } from '../../api'
 import { useTabs } from '../../contexts/TabsContext'
 import { useModificationMode } from '../../hooks/useModificationMode'
@@ -16,6 +16,7 @@ import {
 } from '../../lib/publishWorkspace'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
 import { primeMergeSession } from '../merge/useMergeSession'
+import { useOpenMergeResolution } from '../merge/useOpenMergeResolution'
 import { backdropDismiss } from '../../lib/backdropDismiss'
 
 /** Popover anchored under its trigger (T92 — replaces the old full-screen centered `Overlay`).
@@ -169,6 +170,51 @@ export function ModificationControl({ currentProjectId }: Props) {
     queryKey: ['publish-off-integration', repoPath, branch, pendingSignature],
     queryFn: () => offIntegrationRepos(publishRoots, ephemeralBranch),
     enabled: showPublishPopup && !!repoPath,
+  })
+
+  // GH414 — « Rafraîchir » : compteur de retard ; clic = fetch, puis merge de l'intégration dans la
+  // branche de travail. Un conflit ouvre la résolution existante (GH37).
+  // Le compteur lit les refs locales : il se met à jour à chaque tick de l'auto-pull (qui fetch et
+  // invalide cette requête), et au clic. Pas de fetch à l'ouverture : décision de useAutoPull.
+  const { data: refreshState } = useQuery({
+    queryKey: ['sync:refresh-state', repoPath, integrationBranch],
+    queryFn: () => api.sync.refreshState(repoPath, integrationBranch),
+    enabled: !!repoPath && !!integrationBranch && mode === 'active',
+    refetchInterval: 3000,
+  })
+  const openResolution = useOpenMergeResolution(currentProjectId)
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null)
+  function refreshResult(res: Awaited<ReturnType<typeof api.sync.refreshBranch>>): string | null {
+    switch (res.outcome) {
+      case 'offline': return t('layout.modificationControl.refreshOffline')
+      case 'access-revoked': return t('layout.modificationControl.refreshAccessRevoked')
+      case 'integration-updated': return t('layout.modificationControl.refreshIntegrationUpdated')
+      case 'up-to-date': return t('layout.modificationControl.refreshUpToDate')
+      case 'merged': return [
+        t('layout.modificationControl.refreshMerged', { count: res.pulled }),
+        res.wip ? t('layout.modificationControl.refreshWip') : null,
+      ].filter(Boolean).join(' ')
+      case 'conflicts': return null
+    }
+  }
+  const refreshMutation = useMutation({
+    mutationFn: () => api.sync.refreshBranch(repoPath, integrationBranch),
+    onSuccess: async (res) => {
+      if (res.outcome === 'conflicts') {
+        setRefreshNotice(null)
+        const ok = await openResolution.open(repoPath, res.leftRef, res.rightRef, {
+          kind: 'merge', from: res.leftRef, into: res.rightRef, wip: res.wip,
+        })
+        if (!ok) setRefreshNotice(t('layout.modificationControl.refreshOpenError'))
+        return
+      }
+      setRefreshNotice(refreshResult(res))
+    },
+    onError: err => setRefreshNotice(t('layout.modificationControl.refreshFailed', { error: errorMessage(err) })),
+    onSettled: () => {
+      invalidateAll()
+      void qc.invalidateQueries({ queryKey: ['sync:refresh-state'] })
+    },
   })
 
   // GH133 (Q2/Q3): unticked only if every repo off its integration branch was last published from
@@ -356,7 +402,7 @@ export function ModificationControl({ currentProjectId }: Props) {
     publishMutation.mutate()
   }
 
-  const showNotifications = !!pushError || unmergedNotice.length > 0
+  const showNotifications = !!pushError || !!refreshNotice || unmergedNotice.length > 0
     || (!!pinWarning && (pinWarning.conflicted.length > 0 || pinWarning.failed.length > 0))
   // GH133: one line per repo off its integration branch, prefixed with the repo name in multi-repo.
   const prefixRepo = flatNodes.length > 1 || offRepos.length > 1
@@ -410,6 +456,25 @@ export function ModificationControl({ currentProjectId }: Props) {
         </button>
       )}
 
+      {mode === 'active' && refreshState && (
+        <button
+          type="button"
+          onClick={() => { setRefreshNotice(null); refreshMutation.mutate() }}
+          disabled={refreshMutation.isPending}
+          title={
+            refreshState.onIntegration ? t('layout.modificationControl.refreshOnIntegration')
+              : refreshState.integrationState === 'diverged' ? t('layout.modificationControl.refreshDiverged')
+                : refreshState.behind > 0 ? t('layout.modificationControl.refreshBehind', { count: refreshState.behind })
+                  : t('layout.modificationControl.refreshNothing')
+          }
+          className="btn-secondary-sm flex items-center gap-1.5"
+        >
+          <RefreshCw size={12} className={refreshMutation.isPending ? 'animate-spin' : ''} />
+          {t('layout.modificationControl.refresh')}
+          {refreshState.behind > 0 && <span className="tabular-nums text-ink-3">{refreshState.behind}</span>}
+        </button>
+      )}
+
       {mode === 'active' && (
         <button
           type="button"
@@ -439,6 +504,15 @@ export function ModificationControl({ currentProjectId }: Props) {
                 ))}
               </div>
               <button type="button" onClick={() => setUnmergedNotice([])} className="text-ink-3 hover:text-ink shrink-0">
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
+          {refreshNotice && (
+            <div className="bg-surface border border-edge rounded px-2 py-1.5 max-w-xs shadow flex items-start gap-2">
+              <p className="text-xs text-ink-2 leading-snug">{refreshNotice}</p>
+              <button type="button" onClick={() => setRefreshNotice(null)} className="text-ink-3 hover:text-ink shrink-0">
                 <X size={12} />
               </button>
             </div>

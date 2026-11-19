@@ -364,6 +364,24 @@ export type AutoBranchOutcome =
   | { action: 'none' }
   | { action: 'switched' | 'returned'; branch: string }
 
+// GH414 — mirrors SyncService's RefreshState / RefreshOutcome.
+export interface RefreshState {
+  branch: string
+  integration: string
+  onIntegration: boolean
+  /** Integration commits absent from the current branch (as of the last fetch). */
+  behind: number
+  dirty: boolean
+  integrationState: IntegrationRemoteStateKind
+}
+export type RefreshOutcome =
+  | { outcome: 'offline' }
+  | { outcome: 'access-revoked' }
+  | { outcome: 'integration-updated' }
+  | { outcome: 'up-to-date' }
+  | { outcome: 'merged'; sha: string; pulled: number; wip?: string }
+  | { outcome: 'conflicts'; conflicts: string[]; wip?: string; leftRef: string; rightRef: string }
+
 export interface DeviceFlowSession {
   deviceCode: string
   userCode: string
@@ -725,6 +743,12 @@ export interface ApiClient {
     /** GH173: local only — moves pending changes on the integration onto `dev-auto`, or goes back
      *  to the integration from an idle `dev-auto` (and deletes it). */
     settleAutoBranch(repoPath: string, integrationBranch: string): Promise<AutoBranchOutcome>
+    /** GH414: local only — the « Rafraîchir » button's counter (commits behind, dirty, integration state). */
+    refreshState(repoPath: string, integrationBranch: string): Promise<RefreshState>
+    /** GH414: « Rafraîchir » — fetch, then merge the integration into the work branch (WIP commit if dirty). */
+    refreshBranch(repoPath: string, integrationBranch: string): Promise<RefreshOutcome>
+    /** GH414: « Abandonner » after a conflict — undoes the WIP commit, if it is still the branch head. */
+    undoRefreshWip(repoPath: string, wip: string): Promise<{ undone: boolean }>
     /** GH39: true when `branch` has no commit absent from `into`. */
     isMergedInto(repoPath: string, branch: string, into: string): Promise<boolean>
     log(repoPath: string, limit?: number): Promise<CommitEntry[]>

@@ -80,6 +80,8 @@ export function useAutoPull(currentProjectId: string | null): void {
       } finally {
         qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
         qc.invalidateQueries({ queryKey: ['sync:integration-state', repoPath] })
+        // GH414: the « Rafraîchir » counter reads the refs this tick has just fetched.
+        qc.invalidateQueries({ queryKey: ['sync:refresh-state', repoPath] })
       }
     }
 

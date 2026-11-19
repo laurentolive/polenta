@@ -3,7 +3,7 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import git, { type TreeEntry } from 'isomorphic-git'
+import git, { TREE, type TreeEntry } from 'isomorphic-git'
 
 import http from './git-http'
 import { isNetworkUnreachable } from './net-proxy'
@@ -100,6 +100,30 @@ export type ResyncOutcome =
 export type AutoBranchOutcome =
   | { action: 'none' }
   | { action: 'switched' | 'returned'; branch: string }
+
+/** GH414 — message of the WIP commit « Rafraîchir » makes to hold uncommitted changes while merging. */
+export const REFRESH_WIP_MESSAGE = 'WIP — Rafraîchir (GH414)'
+
+/** GH414 — what the « Rafraîchir » button shows for a repo (local refs only, no network). */
+export interface RefreshState {
+  branch: string
+  integration: string
+  onIntegration: boolean
+  /** Integration commits absent from the current branch (as of the last fetch). */
+  behind: number
+  dirty: boolean
+  integrationState: IntegrationRemoteStateKind
+}
+
+/** GH414 — outcome of `refreshBranch`. Nothing is written on `offline`, `up-to-date` nor `conflicts`
+ *  (a conflicting merge only exists as git objects until its resolution is finished). */
+export type RefreshOutcome =
+  | { outcome: 'offline' }
+  | { outcome: 'access-revoked' }
+  | { outcome: 'integration-updated' }
+  | { outcome: 'up-to-date' }
+  | { outcome: 'merged'; sha: string; pulled: number; wip?: string }
+  | { outcome: 'conflicts'; conflicts: string[]; wip?: string; leftRef: string; rightRef: string }
 
 /** GH39 — prefix of the branch `resyncIntegration` sets diverged local commits aside on. */
 export const RESYNC_BRANCH_PREFIX = 'dev-resync'
@@ -827,6 +851,132 @@ export class SyncService {
       return { action: 'returned', branch: current }
     }
     return none
+  }
+
+  /** GH414 — compteur du bouton « Rafraîchir » : aucun réseau, les refs du dernier fetch. */
+  async refreshState(repoPath: string, integrationBranch: string): Promise<RefreshState> {
+    const branch = (await git.currentBranch({ fs, dir: repoPath })) ?? ''
+    const { staged, unstaged } = await this.status(repoPath)
+    const onIntegration = branch === integrationBranch
+    const integrationState = (await this.integrationState(repoPath, integrationBranch)).state
+    const behind = branch && !onIntegration
+      ? await this.countBehind(repoPath, await this.integrationSourceRef(repoPath, integrationBranch), branch).catch(() => 0)
+      : 0
+    return {
+      branch, integration: integrationBranch, onIntegration, behind,
+      dirty: staged.length + unstaged.length > 0, integrationState,
+    }
+  }
+
+  /**
+   * GH414 — « Rafraîchir » : amène la branche de travail à jour de l'intégration, en merge
+   * uniquement (jamais de rebase). Sur l'intégration elle-même : même chemin que l'auto-pull.
+   * - fetch (hors-ligne → `offline`, rien écrit) ;
+   * - intégration divergée → `resyncIntegration` (GH39) ; en retard → fast-forward par référence ;
+   * - rien à récupérer → `up-to-date`, rien écrit ;
+   * - modifs non commitées → commit WIP sur la branche (arbre propre) ;
+   * - `mergeInto` : sans conflit, `merged` ; avec conflit, rien n'est écrit et les refs sont
+   *   renvoyées pour ouvrir la résolution (GH37).
+   */
+  async refreshBranch(repoPath: string, integrationBranch: string, remote = 'origin'): Promise<RefreshOutcome> {
+    let current = await git.currentBranch({ fs, dir: repoPath })
+    if (!current) throw new Error('Detached HEAD — cannot refresh')
+    let fetched = false
+    if (current === integrationBranch) {
+      const s = await this.autoSync(repoPath, integrationBranch, remote)
+      if (s.offline) return { outcome: 'offline' }
+      if (s.accessRevoked) return { outcome: 'access-revoked' }
+      // GH414: with pending changes, the auto-pull moves them onto `dev-auto` first (GH173) — the
+      // checkout is then no longer the integration, and the team's commits must reach that branch
+      // too, not only the integration ref.
+      current = await git.currentBranch({ fs, dir: repoPath })
+      if (!current) throw new Error('Detached HEAD — cannot refresh')
+      if (current === integrationBranch) return { outcome: 'integration-updated' }
+      fetched = true
+    }
+    if (!fetched) {
+      try {
+        await this.fetch(repoPath, '', remote)
+      } catch (err) {
+        if (isNetworkUnreachable(err)) return { outcome: 'offline' }
+        throw err
+      }
+    }
+    const { state } = await this.integrationState(repoPath, integrationBranch, remote)
+    if (state === 'diverged') await this.resyncIntegration(repoPath, integrationBranch, remote)
+    else if (state === 'behind') await this.fastForwardBranch(repoPath, integrationBranch, remote)
+
+    const pulled = await this.countBehind(repoPath, await this.integrationSourceRef(repoPath, integrationBranch), current)
+    if (pulled === 0) return { outcome: 'up-to-date' }
+
+    const { staged, unstaged } = await this.status(repoPath)
+    let wip: string | undefined
+    if (staged.length + unstaged.length > 0) {
+      await this.stageAll(repoPath)
+      wip = (await this.commit(repoPath, REFRESH_WIP_MESSAGE)).sha
+    }
+    const merge = await this.mergeInto(repoPath, integrationBranch, current)
+    if (merge.success) return { outcome: 'merged', sha: merge.sha, pulled, wip }
+    return {
+      outcome: 'conflicts', conflicts: merge.conflicts, wip,
+      leftRef: integrationBranch, rightRef: current,
+    }
+  }
+
+  /**
+   * GH414 — « Abandonner » après un conflit de « Rafraîchir » : défait le commit WIP, s'il est
+   * toujours la tête de la branche. Branche sur son parent, fichiers du WIP remis en non indexés :
+   * l'arbre de travail ne bouge pas. HEAD déjà différent (commit par-dessus, autre branche) → rien.
+   */
+  async undoRefreshWip(repoPath: string, wip: string): Promise<{ undone: boolean }> {
+    const branch = await git.currentBranch({ fs, dir: repoPath })
+    if (!branch) return { undone: false }
+    const head = await git.resolveRef({ fs, dir: repoPath, ref: branch })
+    if (head !== wip) return { undone: false }
+    const { commit } = await git.readCommit({ fs, dir: repoPath, oid: wip })
+    // Only a WIP commit « Rafraîchir » made is ever undone — never a commit the user wrote.
+    if (!commit.message.startsWith(REFRESH_WIP_MESSAGE)) return { undone: false }
+    const parent = commit.parent[0]
+    if (!parent) return { undone: false }
+
+    const changed: string[] = []
+    await git.walk({
+      fs,
+      dir: repoPath,
+      trees: [TREE({ ref: parent }), TREE({ ref: wip })],
+      map: async (filepath, entries) => {
+        if (filepath === '.') return true
+        const before = entries?.[0] ?? null
+        const after = entries?.[1] ?? null
+        if ((before && (await before.type()) === 'tree') || (after && (await after.type()) === 'tree')) return true
+        const oidBefore = before ? await before.oid() : undefined
+        const oidAfter = after ? await after.oid() : undefined
+        if (oidBefore !== oidAfter) changed.push(filepath)
+        return null
+      },
+    })
+    await git.writeRef({ fs, dir: repoPath, ref: `refs/heads/${branch}`, value: parent, force: true })
+    for (const filepath of changed) await git.resetIndex({ fs, dir: repoPath, filepath, ref: parent })
+    return { undone: true }
+  }
+
+  /** GH414 — the integration as the team has it: its remote-tracking ref when fetched (the local
+   *  branch only moves on the auto-pull), else the local branch. */
+  private async integrationSourceRef(repoPath: string, integrationBranch: string): Promise<string> {
+    const remoteRef = `refs/remotes/origin/${integrationBranch}`
+    try {
+      await git.resolveRef({ fs, dir: repoPath, ref: remoteRef })
+      return remoteRef
+    } catch {
+      return `refs/heads/${integrationBranch}`
+    }
+  }
+
+  /** GH414 — commits of `from` absent from `into`, bounded to the last 500 of each. */
+  private async countBehind(repoPath: string, from: string, into: string): Promise<number> {
+    const depth = 500
+    const intoSet = new Set((await git.log({ fs, dir: repoPath, ref: into, depth })).map(c => c.oid))
+    return (await git.log({ fs, dir: repoPath, ref: from, depth })).filter(c => !intoSet.has(c.oid)).length
   }
 
   /**

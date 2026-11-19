@@ -31,6 +31,9 @@ Format :
 - Erreur : GH335, « Too many pending tasks in queue packed-refs » corrigé en supprimant une source de demandes (statut), testé sur ce seul chemin ; l'humain a revu l'erreur au checkout suivant, le verrou étant global au processus et alimenté par d'autres appels (index, historique, autres repos).
 - Règle : pour une erreur de limite de ressource partagée, identifier la limite elle-même et tous ses consommateurs avant de corriger ; tester la limite (charge au-delà du seuil), pas seulement le chemin qui l'a révélée.
 
+## 2026-11-19 — Cache rafraîchi par événement de watcher seul
+- Erreur : GH413, après un merge dans l'intégration, le schéma servi restait l'ancien (libellés, options) jusqu'au redémarrage. Le cache `SchemaService` ne s'invalidait que sur un événement du watcher ; le merge déplace la ref avant de réécrire le répertoire de travail, et d'autres chemins d'écriture (checkout, pull) ne passent pas tous par le même appel.
+- Règle : un cache de fichier doit se valider contre le fichier lui-même (signature taille + date), ou être invalidé après chaque écriture de l'arbre ; ne pas compter sur un événement de watcher seul. Tester le symptôme avec une écriture hors app (sans watcher), pas seulement via le service qui a déclenché le bug.
 ## 2026-11-19 — « Supprimer » qui ne fait que retirer une présentation
 - Erreur : GH415, « Supprimer » dans l'arbre retirait seulement l'élément de `.polenta/trees/` ; le fichier de l'objet restait et l'objet redevenait « non classé » au changement de vue. Le message de confirmation disait « sera supprimé ».
 - Règle : pour une action de suppression, vérifier sur disque ce qu'elle retire réellement, et tester le chemin de rechargement (changement de vue, retour, relecture de l'arbre) ; un libellé de confirmation doit décrire l'effet réel.

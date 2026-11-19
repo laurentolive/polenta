@@ -13,16 +13,23 @@ import type { TestsIndexService } from './tests-index.service'
  * GH180 — objets (id + titre) d'un type `<nœud>::<type>` d'un repo. L'inventaire d'un type vient
  * des fichiers objets (index), plus du fichier d'arbre : celui-ci ne garde que le rangement curaté.
  */
-export type TreeObjectLister = (repoPath: string, objectTypeRef: string) => Promise<Array<{ id: string; title: string }>>
+/** Objet listé pour l'arbre. `terminal` : statut terminal (obsolète) — jamais « non classé » (GH415). */
+export interface TreeObject { id: string; title: string; terminal?: boolean }
+
+export type TreeObjectLister = (repoPath: string, objectTypeRef: string) => Promise<TreeObject[]>
 
 /** Lister branché sur les index exigences + tests (un type est de l'une ou l'autre catégorie). */
 export function indexObjectLister(
   reqIndex: RequirementsIndexService, testsIndex: TestsIndexService,
   /** GH244 — issues du repo. */
   issues?: (repoPath: string) => Promise<Array<{ id: string; title: string; objectTypeRef: string }>>,
+  /** GH415 — vrai si ce statut est terminal pour ce type d'exigence. */
+  isTerminal?: (repoPath: string, objectTypeRef: string, status: string) => Promise<boolean>,
 ): TreeObjectLister {
   return async (repoPath, objectTypeRef) => [
-    ...(await reqIndex.findAll(repoPath, { type: objectTypeRef })),
+    ...await Promise.all((await reqIndex.findAll(repoPath, { type: objectTypeRef })).map(async r => ({
+      id: r.id, title: r.title, terminal: isTerminal ? await isTerminal(repoPath, r.objectTypeRef, r.status) : false,
+    }))),
     ...(await testsIndex.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef),
     ...(await issues?.(repoPath) ?? []).filter(i => i.objectTypeRef === objectTypeRef),
   ]
@@ -267,7 +274,7 @@ const isMeaningfulName = (n: TypeTreeNode): boolean =>
  * absents de l'arbre suivent en fin de racine, triés par ID, avec un id de nœud stable
  * (`item-<ID>`) pour que deux lectures successives donnent le même arbre.
  */
-export function hydrateTree(root: TypeTreeNode[], objects: Array<{ id: string; title: string }>): TypeTreeNode[] {
+export function hydrateTree(root: TypeTreeNode[], objects: TreeObject[]): TypeTreeNode[] {
   const titles = new Map(objects.map(o => [o.id, o.title]))
   const placed = new Set(flattenTree(root).map(n => n.objectId).filter((id): id is string => !!id))
   const itemName = (n: TypeTreeNode, objectId: string): string => {
@@ -280,7 +287,7 @@ export function hydrateTree(root: TypeTreeNode[], objects: Array<{ id: string; t
     children: named(n.children ?? []),
   }))
   const unclassified: TypeTreeNode[] = objects
-    .filter(o => !placed.has(o.id))
+    .filter(o => !placed.has(o.id) && !o.terminal) // GH415 — un objet obsolète ne revient pas « non classé »
     .sort((a, b) => byId(a.id, b.id))
     .map(o => ({ id: `item-${o.id}`, kind: 'item', name: o.title, objectId: o.id, children: [] }))
   return [...named(root), ...unclassified]

@@ -26,6 +26,18 @@ describe('hydrateTree', () => {
     expect(root[1]).toEqual({ id: 'item-R-0001', kind: 'item', name: 'Un', objectId: 'R-0001', children: [] })
   })
 
+  it('GH415 — un objet obsolète (terminal) ne revient pas « non classé », même hors de l’arbre', () => {
+    const root = hydrateTree([], [
+      { id: 'R-0001', title: 'Vivant' }, { id: 'R-0004', title: 'toto', terminal: true },
+    ])
+    expect(root.map(n => n.objectId)).toEqual(['R-0001'])
+  })
+
+  it('GH415 — un objet obsolète rangé dans l’arbre garde sa place et son nom', () => {
+    const root = hydrateTree([item('R-0004', 'Ancien nom')], [{ id: 'R-0004', title: 'toto', terminal: true }])
+    expect(root.map(n => n.name)).toEqual(['toto'])
+  })
+
   it('garde le nom d’un ancien fichier pour un objet introuvable, sinon l’ID', () => {
     const root = hydrateTree([item('R-0009', 'Ancien'), { id: 'x', kind: 'item', objectId: 'R-0008', children: [] } as unknown as TypeTreeNode], [])
     expect(root.map(n => n.name)).toEqual(['Ancien', 'R-0008'])

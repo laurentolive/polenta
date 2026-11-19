@@ -12,6 +12,7 @@ import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
 import { ParamRefText } from '../parameters/ParamRefText'
 import { treeFindNode, treeFindParentId, treeRemoveMany, treeInsert, treeInsertAtBeginning, treeDeepCopyWithNewIds } from '../../hooks/useTreeState'
+import { objectIdsIn } from './ElementTree'
 import { isLinkTypeValid, linkColumnLabel, parseLinkColumn, type LinkColumnDirection } from './linkUtils'
 import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
@@ -82,6 +83,8 @@ interface Props {
   onRenameNode?: (nodeId: string, name: string) => void
   onEditOpen?: (nodeId: string) => void
   onRootChange?: (root: TypeTreeNode[]) => void
+  /** GH415 — « Supprimer » d'un objet : passage à obsolète avant retrait de l'arbre ; renvoie les refusés. */
+  onObsoleteObjects?: (objectIds: string[]) => Promise<string[]>
   onColumnsReorder?: (newOrder: string[]) => void
   filter?: string
   /** T166 — mode du filtre global (casse / mot entier / regex). Sans lui, le filtre global du
@@ -1241,6 +1244,7 @@ function ExcelViewInner({
   onRenameNode,
   onEditOpen,
   onRootChange,
+  onObsoleteObjects,
   onColumnsReorder,
   filter,
   filterOptions,
@@ -1738,11 +1742,22 @@ function ExcelViewInner({
     setDeleteConfirm({ ids, hasContent })
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteConfirm) return
-    onRootChange!(treeRemoveMany(root, deleteConfirm.ids))
-    effectiveOnSelect([])
+    const ids = deleteConfirm.ids
     setDeleteConfirm(null)
+    // GH415 — objets passés à obsolète d'abord ; un élément dont un objet n'a pas pu l'être reste.
+    const objectIds = ids.flatMap(id => { const n = treeFindNode(root, id); return n ? objectIdsIn(n) : [] })
+    const refused = objectIds.length > 0 && onObsoleteObjects
+      ? new Set(await onObsoleteObjects(objectIds))
+      : new Set<string>()
+    const removable = ids.filter(id => {
+      const n = treeFindNode(root, id)
+      return !n || !objectIdsIn(n).some(o => refused.has(o))
+    })
+    if (removable.length === 0) return
+    onRootChange!(treeRemoveMany(root, removable))
+    effectiveOnSelect([])
   }
 
   /** Collect all item nodes from a subtree in pre-order */
@@ -1848,7 +1863,7 @@ function ExcelViewInner({
       else if (effectiveSelectedIds.length > 0) effectiveOnSelect([])
     } else if (e.key === 'Enter' && deleteConfirm) {
       e.preventDefault()
-      confirmDelete()
+      void confirmDelete()
     }
   }
 

@@ -1,5 +1,7 @@
+import * as path from 'path'
 import { app, webContents } from 'electron'
 import { createContainer } from './container'
+import { initGitHome } from './git/git-config'
 import { registerHandlers } from './ipc/index'
 import { ipcMainRegistry, electronPlatformHost, registerDesktopOnlyHandlers } from './ipc/desktop-only.handlers'
 import { createElectronHostContext } from './host/electron-host'
@@ -66,6 +68,8 @@ if (!primaryInstance) {
 app.whenReady().then(() => {
   if (!primaryInstance) return   // seconde instance : le lien a été transmis à la première
   const container = createContainer(createElectronHostContext(), electronPrintRenderer)
+  // GH337 P3 — config git de Polenta dans userData, identité du compte connecté (terminal, auteur git).
+  void initGitHome(path.join(app.getPath('userData'), 'git'), () => container.auth.currentAccount())
   registerHandlers(ipcMainRegistry, container, electronPlatformHost)
   // GH26 — mise à jour automatique : propre au desktop, hors du noyau de services partagé.
   const update = new UpdateService(container.appSettings)

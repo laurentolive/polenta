@@ -3,6 +3,8 @@ import * as os from 'os'
 import * as path from 'path'
 
 import { gitInstall } from './git-binary'
+import { ensurePrivateDir } from './private-dir'
+import { GIT_IO_TIMEOUT_BASE_MS, scaledTimeout } from '../services/net-timeouts'
 
 /**
  * GH337 — configuration isolée de git (spec §4.2, design §2.2).
@@ -48,6 +50,23 @@ export function setGitLowSpeedTime(seconds: number): void {
   state.written = false
 }
 
+/**
+ * GH337 P3 — initialisation au démarrage : config globale dans `dir` (userData), identité du compte
+ * actif (`activeAccount` : `null` ou compte sans nom/courriel → pas de `[user]`). Écrit la config tout de
+ * suite. Le délai bas débit (GH15) passe par `applyNetworkTimeoutToGit`, appelé à chaque réglage.
+ */
+export async function initGitHome(dir: string, activeAccount: () => Promise<GitIdentity | null>): Promise<void> {
+  configureGitHome(dir)
+  const account = await activeAccount().catch(() => null)
+  setGitIdentity(account && account.name && account.email ? { name: account.name, email: account.email } : null)
+  gitGlobalConfigPath()
+}
+
+/** GH337 P3 — réglage GH15 → `http.lowSpeedTime` : délai git HTTP (300 s de base) mis à l'échelle. */
+export function applyNetworkTimeoutToGit(): void {
+  setGitLowSpeedTime(scaledTimeout(GIT_IO_TIMEOUT_BASE_MS) / 1000)
+}
+
 /** Ne pas laisser passer de retour ligne ni de guillemet dans un fichier de config git. */
 function quote(value: string): string {
   return `"${value.replace(/[\r\n]/g, ' ').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
@@ -75,6 +94,10 @@ export function renderGitConfig(hooksDir: string, identity: GitIdentity | null, 
     '\tgpgSign = false',
     '[init]',
     '\tdefaultBranch = main',
+    // GH337 P9 — `directory = *` désactive le contrôle de propriétaire de git (CVE-2022-24765) pour tous
+    // les dépôts ouverts par Polenta. Gardé : les dépôts créés par un autre compte Windows ou sur un partage
+    // réseau doivent s'ouvrir (spec §2.2), et `gitFindRoot` découvre le dépôt avant de pouvoir le lister.
+    // À restreindre (liste par dépôt) si l'humain le décide ; voir le rapport GH337.
     '[safe]',
     '\tdirectory = *',
     '[http]',
@@ -85,12 +108,19 @@ export function renderGitConfig(hooksDir: string, identity: GitIdentity | null, 
   return lines.join('\n') + '\n'
 }
 
+/**
+ * GH337 P4 — dossier vide des hooks (`core.hooksPath`) : sous le dossier privé de Polenta, jamais dans un
+ * dossier partagé de tmpdir. Sert à la config globale et aux commits/fusions de Polenta.
+ */
+export function gitHooksDir(): string {
+  return path.join(ensurePrivateDir(state.dir), 'hooks')
+}
+
 /** Chemin de la config globale, écrite si besoin. */
 export function gitGlobalConfigPath(): string {
-  const file = path.join(state.dir, 'config')
+  const file = path.join(ensurePrivateDir(state.dir), 'config')
   if (!state.written || !fs.existsSync(file)) {
-    const hooksDir = path.join(state.dir, 'hooks')
-    fs.mkdirSync(hooksDir, { recursive: true })
+    const hooksDir = gitHooksDir()
     fs.writeFileSync(file, renderGitConfig(hooksDir, state.identity, state.lowSpeedTimeSeconds), 'utf8')
     state.written = true
   }

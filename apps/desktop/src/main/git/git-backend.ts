@@ -6,9 +6,10 @@ import * as zlib from 'zlib'
 
 import { objectData, objectInfo, resolveGitDir, type ObjectInfo } from './cat-file-batch'
 import { GitError, isGitError, MergeConflictError } from './git-errors'
-import { gitText, isRepoWriteBusy, repoKey, runGit, splitZ, withRepoWriteLock, type RunOptions, type RunResult } from './git-runner'
+import { gitText, isRepoWriteBusy, repoKey, runGit, splitZ, withRepoFetchLock, withRepoWriteLock, type RunOptions, type RunResult } from './git-runner'
 import { closeRepo } from './process-registry'
 import { gitInstall } from './git-binary'
+import { gitHooksDir } from './git-config'
 import { nodeCheckout } from './node-checkout'
 import { openAskpassSession, type CredentialResolver } from './askpass'
 import { checkRemote } from '../services/forge/remote-guard'
@@ -61,6 +62,31 @@ export interface MergeTreeResult { clean: boolean; tree: string; conflicts: stri
 export const NULL_OID = '0000000000000000000000000000000000000000'
 const OID_RE = /^[0-9a-f]{40}$/
 
+/**
+ * GH337 P5 — budget de la ligne de commande par lot de chemins (Windows : ~32 Ko, `ENAMETOOLONG` au-delà).
+ * Marge de guillemets et d'espaces par chemin comprise.
+ */
+const ARGV_PATHS_BUDGET = 24_000
+
+/** Découpe `paths` en lots dont la longueur de ligne de commande reste sous `budget`. `[]` → un lot vide. */
+export function chunkPaths(paths: string[], budget = ARGV_PATHS_BUDGET): string[][] {
+  const batches: string[][] = []
+  let current: string[] = []
+  let size = 0
+  for (const p of paths) {
+    const cost = p.length + 3
+    if (current.length > 0 && size + cost > budget) {
+      batches.push(current)
+      current = []
+      size = 0
+    }
+    current.push(p)
+    size += cost
+  }
+  batches.push(current)
+  return batches
+}
+
 /** Auteur des commits de base virtuelle : jamais référencés, seul leur arbre compte. */
 const VIRTUAL_AUTHOR: GitAuthor = { name: 'Polenta', email: 'polenta@localhost' }
 
@@ -76,13 +102,9 @@ function commitConfig(author?: GitAuthor): string[] {
   return c
 }
 
-let hooksDir: string | null = null
+/** GH337 P4 — dossier vide des hooks, privé (userData/git/hooks, `0700`), même que la config globale. */
 function emptyHooksDir(): string {
-  if (!hooksDir) {
-    hooksDir = path.join(os.tmpdir(), 'polenta-git-no-hooks')
-    fs.mkdirSync(hooksDir, { recursive: true })
-  }
-  return hooksDir
+  return gitHooksDir()
 }
 
 function personEnv(prefix: 'AUTHOR' | 'COMMITTER', p: GitAuthor & { timestamp?: number }): Record<string, string> {
@@ -577,8 +599,7 @@ export class GitBackend {
   async status(opts: { prefixes?: string[]; ignored?: boolean } = {}): Promise<StatusEntry[]> {
     const args = ['status', '--porcelain=v2', '-z', '--untracked-files=all', '--no-renames']
     if (opts.ignored) args.push('--ignored=matching')
-    if (opts.prefixes?.length) args.push('--', ...opts.prefixes)
-    const entries = parseStatusV2((await this.run(args)).stdout)
+    const entries = await this.statusByBatches(args, opts.prefixes ?? [])
     const suspects = entries.filter(e => e.index === '.' && e.worktree === 'M').map(e => e.path)
     if (suspects.length === 0) return entries
     const statOnly = new Set(await this.statOnlyChanges(suspects))
@@ -604,19 +625,19 @@ export class GitBackend {
 
   private async refreshStatOnlyNow(paths: string[]): Promise<void> {
     const expected = new Map<string, { mode: string; oid: string }>()
-    for (const line of splitZ((await this.run(['ls-files', '-s', '-z', '--', ...paths])).stdout)) {
+    for (const line of await this.lsStaged(paths)) {
       const tab = line.indexOf('\t')
       const [mode, oid] = line.slice(0, tab).split(' ')
       expected.set(line.slice(tab + 1), { mode, oid })
     }
     try {
-      await runGit(this.dir, ['add', '--', ...paths])
+      for (const batch of chunkPaths(paths)) await runGit(this.dir, ['add', '--', ...batch])
     } catch (err) {
       if (isGitError(err)) return
       throw err
     }
     const raced: string[] = []
-    for (const line of splitZ((await this.run(['ls-files', '-s', '-z', '--', ...paths])).stdout)) {
+    for (const line of await this.lsStaged(paths)) {
       const tab = line.indexOf('\t')
       const p = line.slice(tab + 1)
       const e = expected.get(p)
@@ -627,9 +648,37 @@ export class GitBackend {
     }
   }
 
+  /**
+   * GH337 P5 — statut par lots de `prefixes` (ligne de commande bornée) : l'union des lots est le statut
+   * demandé ; un fichier qui matche deux préfixes est pris une fois. Sans préfixe : un seul lancement.
+   */
+  private async statusByBatches(args: string[], prefixes: string[]): Promise<StatusEntry[]> {
+    const batches = chunkPaths(prefixes)
+    if (batches.length === 1) {
+      return parseStatusV2((await this.run(prefixes.length ? [...args, '--', ...batches[0]] : args)).stdout)
+    }
+    const byPath = new Map<string, StatusEntry>()
+    for (const batch of batches) {
+      for (const e of parseStatusV2((await this.run([...args, '--', ...batch])).stdout)) {
+        if (!byPath.has(e.path)) byPath.set(e.path, e)
+      }
+    }
+    return [...byPath.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  }
+
+  /** `ls-files -s` des chemins, par lots (GH337 P5). */
+  private async lsStaged(paths: string[]): Promise<string[]> {
+    if (paths.length === 0) return [] // sans chemin, `ls-files` listerait tout l'index
+    const lines: string[] = []
+    for (const batch of chunkPaths(paths)) {
+      for (const line of splitZ((await this.run(['ls-files', '-s', '-z', '--', ...batch])).stdout)) lines.push(line)
+    }
+    return lines
+  }
+
   /** Chemins dont le contenu filtré (`.gitattributes`) est identique au blob de l'index. */
   private async statOnlyChanges(paths: string[]): Promise<string[]> {
-    const staged = splitZ((await this.run(['ls-files', '-s', '-z', '--', ...paths])).stdout)
+    const staged = await this.lsStaged(paths)
     const indexOid = new Map<string, string>()
     for (const line of staged) {
       const tab = line.indexOf('\t')
@@ -662,7 +711,12 @@ export class GitBackend {
   }
 
   async lsFiles(prefixes: string[] = []): Promise<string[]> {
-    return splitZ((await this.run(['ls-files', '-z', '--', ...prefixes])).stdout)
+    // GH337 P5 — par lots de chemins (ligne de commande bornée) ; sans préfixe, un seul lancement (tout l'index).
+    const files: string[] = []
+    for (const batch of chunkPaths(prefixes)) {
+      for (const f of splitZ((await this.run(['ls-files', '-z', '--', ...batch])).stdout)) files.push(f)
+    }
+    return [...new Set(files)]
   }
 
   /**
@@ -1056,8 +1110,9 @@ export class GitBackend {
     const args = opts.url
       ? ['fetch', '--tags', opts.url, `+refs/heads/*:refs/remotes/${remote}/*`]
       : ['fetch', '--tags', ...(opts.prune ? ['--prune'] : []), remote, ...(opts.refspecs ?? [])]
+    // GH337 P6 — pas de file d'écriture : le réseau ne doit pas figer les commits locaux (file dédiée aux fetch).
     try {
-      await netRun(this.dir, url, args, opts, true)
+      await withRepoFetchLock(this.dir, () => netRun(this.dir, url, args, opts, false))
     } catch (err) {
       if (!(isGitError(err) && /would clobber existing tag/.test(err.stderr))) throw err
     }

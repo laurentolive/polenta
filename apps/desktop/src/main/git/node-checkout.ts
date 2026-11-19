@@ -242,6 +242,16 @@ async function removeEmptyParents(root: string, file: string): Promise<void> {
   }
 }
 
+/**
+ * GH337 P10 — chemin de l'arbre sûr pour une écriture dans le dépôt (mêmes refus que `verify_path` de git) :
+ * vide, absolu, avec `\` ou `:` (préfixe de lecteur, flux NTFS), NUL, ou un composant vide, `.`, `..` ou
+ * `.git` (insensible à la casse).
+ */
+export function isSafeTreePath(p: string): boolean {
+  if (p === '' || p.startsWith('/') || /[\\:\0]/.test(p)) return false
+  return p.split('/').every(seg => seg !== '' && seg !== '.' && seg !== '..' && seg.toLowerCase() !== '.git')
+}
+
 export function nodeCheckout(dir: string, target: string, opts: NodeCheckoutOptions = {}): Promise<boolean> {
   return withRepoWriteLock(dir, async () => {
     const git = (args: string[], stdin?: string | Buffer) => runGit(dir, args, { stdin })
@@ -282,6 +292,10 @@ export function nodeCheckout(dir: string, target: string, opts: NodeCheckoutOpti
     if (swapped) return fallback(`fichier ↔ sous-module : ${swapped.path}`)
     const links = all.filter(c => isLink(c.oldMode) || isLink(c.newMode))
     const changes = all.filter(c => !isLink(c.oldMode) && !isLink(c.newMode))
+    // GH337 P10 — chemin de l'arbre non sûr (`..`, `.git`, `\`, préfixe de lecteur…) : rien n'est écrit ici ;
+    // `git checkout`, qui refuse ces chemins, prend la suite.
+    const unsafe = [...changes, ...links].find(c => !isSafeTreePath(c.path))
+    if (unsafe) return fallback(`chemin non sûr dans l'arbre : ${JSON.stringify(unsafe.path)}`)
     const writes = changes.filter(c => c.status !== 'D')
 
     // Un seul lot de processus git, en parallèle : statut, config, attributs de la cible (`check-attr`).

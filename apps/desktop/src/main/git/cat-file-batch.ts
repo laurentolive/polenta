@@ -7,7 +7,7 @@ import { gitInstall } from './git-binary'
 import { gitEnv } from './git-config'
 import { GitError } from './git-errors'
 import { countGitSpawn, gitText, repoKey, trackPending } from './git-runner'
-import { killTree, onRepoClose, track } from './process-registry'
+import { groupSpawnOptions, killTree, onRepoClose, track } from './process-registry'
 
 /**
  * GH337 — `git cat-file --batch-command`, un processus persistant par dépôt (design §3.1).
@@ -110,6 +110,7 @@ class CatFileBatch {
     countGitSpawn('cat-file(persistant)')
     const child = spawn(gitInstall().gitExe, [...(gitDir ? [`--git-dir=${gitDir}`] : []), 'cat-file', '--batch-command'], {
       cwd: gitDir ? os.tmpdir() : this.repo, env: gitEnv({ readOnly: true }), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
+      ...groupSpawnOptions(),
     })
     track(child, this.repo, true)
     let stderr = ''

@@ -6,6 +6,7 @@ import type { HostContext, TokenStore } from './host-context'
 import { resolveMcpServerLaunchConfig } from './mcp-launch'
 import { loadMachineConfig } from '../services/machine-config'
 import { setNetworkTimeoutSeconds } from '../services/net-timeouts'
+import { applyNetworkTimeoutToGit } from '../git/git-config'
 import { BRAND } from '../../shared/brand'
 
 // GH49 — comptes séparés par marque ; Polenta garde 'polenta' (comptes existants retrouvés).
@@ -46,6 +47,10 @@ export function createElectronHostContext(): HostContext {
       warn: (message) => console.warn(message),
     }),
     deviceLabel: os.hostname(),
-    applyNetworkTimeout: setNetworkTimeoutSeconds,
+    // GH337 P3 — le réglage GH15 vaut aussi pour git (http.lowSpeedTime), pas seulement Node.
+    applyNetworkTimeout: seconds => {
+      setNetworkTimeoutSeconds(seconds)
+      applyNetworkTimeoutToGit()
+    },
   }
 }

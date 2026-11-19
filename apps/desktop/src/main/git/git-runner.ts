@@ -4,7 +4,7 @@ import { appendFileSync } from 'fs'
 import { gitInstall } from './git-binary'
 import { gitEnv, type GitEnvOptions } from './git-config'
 import { classifyGitError, GitError } from './git-errors'
-import { killTree, repoKey, track } from './process-registry'
+import { groupSpawnOptions, killTree, repoKey, track } from './process-registry'
 
 /**
  * GH337 — exécution des processus git ponctuels (design §3) : sans shell, fenêtre cachée, sortie
@@ -56,6 +56,23 @@ export function withRepoWriteLock<T>(repo: string, fn: () => Promise<T>): Promis
   const tail = next.catch(() => undefined)
   writeQueues.set(key, tail)
   void tail.then(() => { if (writeQueues.get(key) === tail) writeQueues.delete(key) })
+  return next
+}
+
+/**
+ * GH337 P6 — file des fetch d'un dépôt, distincte de la file d'écriture : un fetch réseau (300 s × délai
+ * GH15) ne bloque pas les commits ni le statut locaux. Les fetch restent sérialisés entre eux (ils écrivent
+ * les refs de suivi `refs/remotes/*` et les tags).
+ */
+const fetchQueues = new Map<string, Promise<unknown>>()
+
+export function withRepoFetchLock<T>(repo: string, fn: () => Promise<T>): Promise<T> {
+  const key = repoKey(repo)
+  const prev = fetchQueues.get(key) ?? Promise.resolve()
+  const next = prev.then(fn, fn)
+  const tail = next.catch(() => undefined)
+  fetchQueues.set(key, tail)
+  void tail.then(() => { if (fetchQueues.get(key) === tail) fetchQueues.delete(key) })
   return next
 }
 
@@ -121,7 +138,7 @@ function spawnGit(cwd: string, args: string[], opts: RunOptions): Promise<RunRes
   const { gitExe } = gitInstall()
   const env = gitEnv({ readOnly: !opts.write, ...opts.env })
   return new Promise<RunResult>((resolve, reject) => {
-    const child = spawn(gitExe, args, { cwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    const child = spawn(gitExe, args, { cwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], ...groupSpawnOptions() })
     track(child, cwd)
     const out: Buffer[] = []
     const err: Buffer[] = []

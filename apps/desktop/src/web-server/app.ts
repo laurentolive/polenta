@@ -25,6 +25,7 @@ import { IMAGE_MIME_BY_EXT } from '../main/ipc/file-ops'
 import { forgejoProvider, probeAccess } from '../main/services/forge/forgejo.provider'
 import { closeAll } from '../main/git/process-registry'
 import { closeAskpassServer } from '../main/git/askpass'
+import { configureGitHome } from '../main/git/git-config'
 import { registerAdminRoutes } from './admin/admin-routes'
 
 /** Extensions acceptées en upload : celles des sélecteurs du desktop (images, draw.io, classeur). */
@@ -72,6 +73,9 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
     bodyLimit: 50 * 1024 * 1024, // payloads d'export (lignes déjà chargées par la vue)
   })
   const sessions = new SessionStore(config.sessionHours * 3_600_000)
+  // GH337 P3 — config git de Polenta dans le dossier de données (et non tmpdir). Pas d'identité globale :
+  // le serveur sert plusieurs utilisateurs, l'auteur de chaque commit est passé par opération.
+  configureGitHome(path.join(config.dataDir, 'git'))
   const auth = config.auth
   const oidc = auth.mode === 'oidc'
     ? new OidcClient(auth.forgeUrl, auth.clientId, auth.clientSecret, `${auth.publicUrl}/auth/callback`)

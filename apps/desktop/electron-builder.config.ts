@@ -7,8 +7,11 @@
  * template literals) : elles doivent rester littérales jusqu'à electron-builder.
  */
 import path from 'node:path'
-import type { Configuration, PublishConfiguration } from 'electron-builder'
+import type { Configuration } from 'electron-builder'
 import type { LoadedBrand } from './scripts/brand'
+
+// electron-builder 24.13 n'exporte plus PublishConfiguration : on dérive le type de Configuration.
+type PublishConfiguration = Exclude<NonNullable<Configuration['publish']>, unknown[]>
 
 /** Nom de fichier de l'installeur, réduit à [A-Za-z0-9._-] (accents retirés, le reste → tiret) :
  * GitHub renomme les espaces et caractères spéciaux au téléversement, latest.yml pointerait alors
@@ -102,6 +105,10 @@ export function builderConfig(brand: LoadedBrand): Configuration {
       { from: 'resources/dashboard-lib', to: 'dashboard-lib' },
       // GH120 — mentions de licences des composants tiers (pnpm build:notices).
       { from: 'out/notices/THIRD-PARTY-NOTICES.txt', to: 'THIRD-PARTY-NOTICES.txt' },
+      // GH337 P1 — shims GIT_ASKPASS (askpass.sh + askpass.js), lus par askpassDir() depuis
+      // process.resourcesPath/git/askpass. Sans cette entrée, `files` (out/**) ne les livre pas et toute
+      // opération réseau ou le terminal échouent (« Shim askpass introuvable »).
+      { from: 'src/main/git/askpass', to: 'git/askpass' },
     ],
     win: {
       icon: icons.ico,

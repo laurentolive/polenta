@@ -13,7 +13,7 @@ import { safeCheckout } from './safe-checkout.util'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
 import { assertNotVersionTag } from './version-tags.util'
 import { gitClone, gitFor, gitLsRemoteHeads, type CommitInfo, type GitBackend, type NameStatus, type StatusEntry, type TreeEntry } from '../git/git-backend'
-import type { CredentialResolver } from '../git/askpass'
+import { hostFromPrompt, hostFromRemoteUrl, type CredentialResolver } from '../git/askpass'
 import { GitError, MergeConflictError } from '../git/git-errors'
 
 /** GH337 — commit visé par `rev` (tag annoté déréférencé, comme `git.readCommit`), erreur s'il n'existe pas. */
@@ -121,9 +121,18 @@ const DIVERGENCE_LOG_DEPTH = 500
 /**
  * GH337 — identifiants d'une opération réseau : lus à chaque invite de git par le serveur askpass
  * (§6), jamais placés dans son environnement. `null` (remote absente) : aucun identifiant.
+ *
+ * GH337 P2 — les identifiants du remote ne sont donnés que pour son propre hôte : git peut demander
+ * (redirection, sous-module, URL réécrite) un identifiant pour un autre hôte, qui ne doit jamais
+ * recevoir le PAT du remote. Hôte de l'invite absent ou différent de l'hôte du remote : réponse vide.
  */
-function credentialsFor(auth: AuthService, remoteUrl: string | null): CredentialResolver {
-  return async () => (remoteUrl ? auth.getHttpsCredentials(remoteUrl) : null)
+export function credentialsFor(auth: Pick<AuthService, 'getHttpsCredentials'>, remoteUrl: string | null): CredentialResolver {
+  return async prompt => {
+    if (!remoteUrl) return null
+    const promptHost = hostFromPrompt(prompt)
+    if (!promptHost || promptHost !== hostFromRemoteUrl(remoteUrl)) return null
+    return auth.getHttpsCredentials(remoteUrl)
+  }
 }
 
 /** Progression de `git clone --progress` (« Receiving objects:  45% (…) ») → pourcentage. */

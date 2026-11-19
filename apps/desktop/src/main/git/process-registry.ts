@@ -21,6 +21,14 @@ export function track(child: ChildProcess, repo: string | null, persistent = fal
   return forget
 }
 
+/**
+ * Options de `spawn` pour un processus git : hors Windows, `detached` le place dans son propre groupe, dont
+ * `killTree` signale les descendants (`git-remote-https`, `ssh`). Sous Windows, `taskkill /T` suit l'arbre.
+ */
+export function groupSpawnOptions(): { detached: boolean } {
+  return { detached: process.platform !== 'win32' }
+}
+
 /** Arrête un processus et ses descendants. */
 export function killTree(child: ChildProcess): void {
   if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return
@@ -30,7 +38,13 @@ export function killTree(child: ChildProcess): void {
       if (child.exitCode === null) child.kill()
     })
   } else {
-    child.kill('SIGTERM')
+    // GH337 P8 — signal au groupe (le processus est chef de groupe, cf. groupSpawnOptions) : ses enfants
+    // reçoivent le même signal. Pas de groupe (ESRCH, processus lancé autrement) : le processus seul.
+    try {
+      process.kill(-child.pid, 'SIGTERM')
+    } catch {
+      child.kill('SIGTERM')
+    }
   }
 }
 

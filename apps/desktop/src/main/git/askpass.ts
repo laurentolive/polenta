@@ -119,13 +119,36 @@ export function hostFromPrompt(prompt: string): string | null {
 }
 
 /**
- * Résolveur d'une session terminal (§6) : l'hôte est lu dans l'invite, puis `lookup` (le compte connecté
- * pour cet hôte, `auth.getHttpsCredentials`) répond. Hôte absent ou sans identifiants : `null`.
+ * Hôte d'une URL de remote (`https://user@host:port/…`, `ssh://…`, `user@host:chemin` façon scp) : sans
+ * schéma, sans identifiant, sans port. `null` pour un chemin local ou une URL sans hôte.
  */
-export function terminalCredentials(lookup: (remote: string) => Promise<AskpassCredentials | null>): CredentialResolver {
+export function hostFromRemoteUrl(url: string): string | null {
+  const u = url.trim()
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) {
+    try {
+      return new URL(u).hostname || null
+    } catch {
+      return null
+    }
+  }
+  if (/^[a-z]:[\\/]/i.test(u)) return null // chemin Windows (C:\…)
+  const m = /^(?:[^@/\\]+@)?([^:/\\]+):/.exec(u)
+  return m ? m[1].toLowerCase() : null
+}
+
+/**
+ * Résolveur d'une session terminal (§6) : l'hôte est lu dans l'invite, puis `lookup` (le compte connecté
+ * pour cet hôte, `auth.getHttpsCredentials`) répond. Hôte absent, hors de `allowedHosts` (hôtes des
+ * remotes du dépôt ouvert dans le terminal) ou sans identifiants : `null`, sans appeler `lookup`.
+ */
+export function terminalCredentials(
+  lookup: (remote: string) => Promise<AskpassCredentials | null>,
+  allowedHosts: ReadonlySet<string>,
+): CredentialResolver {
   return async prompt => {
     const host = hostFromPrompt(prompt)
-    return host ? lookup(`https://${host}`) : null
+    if (!host || !allowedHosts.has(host)) return null
+    return lookup(`https://${host}`)
   }
 }
 

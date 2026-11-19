@@ -23,9 +23,20 @@ export class GitError extends Error {
     /** Code d'origine (ETIMEDOUT…) quand l'erreur vient du processus plutôt que de git. */
     readonly code?: string,
   ) {
-    super(`git ${args.filter(a => !a.startsWith('-c')).slice(0, 3).join(' ')} : ${firstLines(stderr) || `code ${exitCode}`}`)
+    super(kind === 'timeout'
+      ? `le serveur Git n'a pas répondu dans le délai imparti (opération : ${operationOf(args)})`
+      : `git ${args.filter(a => !a.startsWith('-c')).slice(0, 3).join(' ')} : ${firstLines(stderr) || `code ${exitCode}`}`)
     this.name = 'GitError'
   }
+}
+
+/** Sous-commande git d'une liste d'arguments (`-c clé=valeur` ignoré) : `fetch`, `ls-remote`… */
+function operationOf(args: readonly string[]): string {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '-c') { i++; continue }
+    if (!args[i].startsWith('-')) return args[i]
+  }
+  return 'git'
 }
 
 /**

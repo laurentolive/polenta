@@ -116,10 +116,19 @@ Non mesurés pour ce sprint (la suite n'a pas été instrumentée à la fin).
 - **Choix non prévu par la spec** : le nonce terminal n'a **pas** le plafond de 6 réponses des
   opérations (il vit toute la session, un `push` par invite consommerait sinon le quota). Les réponses
   restent bornées par la durée de la session.
-- **Limite connue, à valider** : le nonce est dans l'environnement du shell. Tout programme lancé dans le
-  terminal peut donc lancer `askpass.js` avec une invite forgée et obtenir les identifiants du compte
-  connecté pour l'hôte visé. C'est la conséquence directe de la décision du §6 (nonce de session), la même
-  exposition que pour les outils du même utilisateur que la spec rejette ailleurs (PAT dans l'environnement).
+- **Restreint à l'hôte du dépôt (décision de l'humain, 2026-11-19, point 1 de la question du jeton)** : le
+  nonce du terminal ne répond plus que pour les hôtes des remotes du dépôt ouvert dans le terminal (le
+  dossier de départ du shell). À l'ouverture de la session, `remoteHostsOf(dir)` (`terminal.service.ts`)
+  calcule cet ensemble : `rev-parse --git-dir` (hors dépôt : ensemble vide, pour ne pas lire la config
+  globale), puis `gitFor(dir).remotes()`, chaque URL réduite à son hôte par `hostFromRemoteUrl`
+  (`askpass.ts` : sans schéma, identifiant ni port ; forme scp `git@hôte:chemin` acceptée ; chemins locaux
+  ignorés). `terminalCredentials(lookup, allowedHosts)` n'appelle `auth.getHttpsCredentials` que pour un
+  hôte de cet ensemble ; une invite pour un autre hôte, ou dans un dossier sans dépôt, reçoit une réponse
+  vide, comme un hôte inconnu.
+- **Limite résiduelle** : le nonce reste dans l'environnement du shell. Un programme lancé dans le terminal
+  peut donc interroger `askpass.js` avec une invite forgée et obtenir les identifiants du compte connecté
+  pour un hôte **du dépôt** ouvert. La restriction borne l'exposition aux hôtes du dépôt, elle ne la supprime
+  pas ; c'est la conséquence de la décision du §6 (nonce de session).
 - Non vérifié : un vrai `git push` depuis le terminal vers une forge (aucun serveur HTTP authentifié en
   test). Le chemin git complet n'est couvert que pour les opérations (`network.gh337.test.ts`).
 
@@ -129,8 +138,10 @@ Non mesurés pour ce sprint (la suite n'a pas été instrumentée à la fin).
 - `git/network-timeout.gh337.test.ts` : serveur HTTP muet sur `127.0.0.1` (port libre), délai de
   1,5 s. `ls-remote`, `fetch` et `clone` s'arrêtent avec une `GitError` de kind `timeout`, en moins de 20 s,
   et `liveProcessCount()` revient à 0.
-- **Point à traiter** : le message de cette erreur est peu clair (`git fetch --tags origin : code null`,
-  stderr vide). GH15 demande une erreur claire. Non modifié ici (hors demande) : à décider.
+- **Message clair (point 2 de la suite sprint 5)** : `GitError` de kind `timeout` (toutes origines : délai
+  de `netRun`, ou classement du stderr « timed out ») a pour message « le serveur Git n'a pas répondu dans le
+  délai imparti (opération : fetch) ». Le kind ne change pas ; le stderr reste dans `err.stderr`. Le test
+  `network-timeout.gh337.test.ts` vérifie le message exact pour `ls-remote`, `fetch` et `clone`.
 
 **Vérifications (sprint 5)**
 

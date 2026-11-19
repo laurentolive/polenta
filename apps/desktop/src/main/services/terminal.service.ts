@@ -3,9 +3,11 @@ import * as fs from 'fs'
 import * as os from 'os'
 import type { IPty } from 'node-pty'
 import type { TerminalDetectResult, TerminalKind } from '@polenta/types'
-import { type AskpassCredentials, type AskpassSession, openAskpassSession, terminalCredentials } from '../git/askpass'
+import { type AskpassCredentials, type AskpassSession, hostFromRemoteUrl, openAskpassSession, terminalCredentials } from '../git/askpass'
+import { gitFor } from '../git/git-backend'
 import { gitInstall } from '../git/git-binary'
 import { gitEnv } from '../git/git-config'
+import { gitText } from '../git/git-runner'
 import { cdCommand, resolveShell, shellEnv, type ShellSpec } from './terminal-shell.util'
 
 /**
@@ -32,6 +34,21 @@ function loadNodePty(): NodePty {
     nodePty = require(unpacked !== resolved && fs.existsSync(unpacked) ? unpacked : resolved) as NodePty
   }
   return nodePty
+}
+
+/**
+ * GH337 §6 — hôtes des remotes du dépôt dans lequel le terminal démarre. Hors dépôt (ou git
+ * indisponible) : ensemble vide. `rev-parse` d'abord, pour ne pas lire la config globale de git
+ * (`remotes()` la lirait hors dépôt).
+ */
+async function remoteHostsOf(dir: string): Promise<Set<string>> {
+  try {
+    await gitText(dir, ['rev-parse', '--git-dir'])
+    const remotes = await gitFor(dir).remotes()
+    return new Set(remotes.map(r => hostFromRemoteUrl(r.url)).filter((h): h is string => h !== null))
+  } catch {
+    return new Set()
+  }
 }
 
 /** Dépendances injectables (tests) : par défaut, le compte connecté, `node-pty` et le Git Bash embarqué. */
@@ -81,14 +98,17 @@ export class TerminalService {
     const shell = this.shell()
     const lookup = (remote: string): Promise<AskpassCredentials | null> =>
       this.deps.auth ? this.deps.auth.getHttpsCredentials(remote) : Promise.resolve(null)
-    const askpass = await openAskpassSession(terminalCredentials(lookup), 'terminal')
+    const dir = cwd && fs.existsSync(cwd) ? cwd : os.homedir()
+    // GH337 — seuls les hôtes des remotes du dépôt de départ reçoivent des identifiants (ensemble vide
+    // hors dépôt).
+    const askpass = await openAskpassSession(terminalCredentials(lookup, await remoteHostsOf(dir)), 'terminal')
     let pty: IPty
     try {
       pty = this.spawnPty(shell.file, shell.args, {
         name: 'xterm-256color',
         cols: Math.max(cols, 2),
         rows: Math.max(rows, 1),
-        cwd: cwd && fs.existsSync(cwd) ? cwd : os.homedir(),
+        cwd: dir,
         env: shellEnv(gitEnv({ terminal: true }), process.platform, askpass.env),
         // ConPTY de Windows, pas celui livré par node-pty (option expérimentale, désactivée aussi par
         // défaut dans VS Code) : avec ce dernier, une frappe rapide arrivait parfois dans le désordre

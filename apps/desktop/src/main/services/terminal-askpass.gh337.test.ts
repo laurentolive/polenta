@@ -1,11 +1,13 @@
 import { execFile } from 'child_process'
+import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import type { IPty } from 'node-pty'
 import { promisify } from 'util'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { activeAskpassTokens, askpassDir, closeAskpassServer, hostFromPrompt } from '../git/askpass'
+import { activeAskpassTokens, askpassDir, closeAskpassServer, hostFromPrompt, hostFromRemoteUrl } from '../git/askpass'
+import { gitFor } from '../git/git-backend'
 import { gitInstall } from '../git/git-binary'
 import { gitEnv } from '../git/git-config'
 import { TerminalService, type TerminalDeps } from './terminal.service'
@@ -21,9 +23,24 @@ const execFileAsync = promisify(execFile)
 const PAT = 'ghp_TERMINAL_PAT_must_never_reach_env_0123'
 const ACCOUNT = { username: 'alice', password: PAT }
 
+const REMOTE = 'https://forge.example/org/repo.git'
+const tmpDirs: string[] = []
+
 afterEach(async () => {
   await closeAskpassServer()
+  for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true })
 })
+
+/** Dossier de départ du terminal : un dépôt dont `origin` vaut `remote` (ou un dossier sans dépôt). */
+async function startDir(remote: string | null): Promise<string> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gh337-askpass-'))
+  tmpDirs.push(dir)
+  if (remote !== null) {
+    await gitFor(dir).init('main')
+    await gitFor(dir).addRemote('origin', remote)
+  }
+  return dir
+}
 
 interface FakePty {
   pty: IPty
@@ -47,8 +64,11 @@ function fakePty(): FakePty {
 
 const SHELL: ShellSpec = { name: 'Git Bash', file: process.execPath, args: [] }
 
-/** Démarre une session terminal avec un faux pty ; `env()` donne l'environnement passé au shell. */
-async function startTerminal(lookups: string[], account: typeof ACCOUNT | null = ACCOUNT) {
+/**
+ * Démarre une session terminal avec un faux pty ; `env()` donne l'environnement passé au shell.
+ * Par défaut, le terminal démarre dans un dépôt dont le remote est `REMOTE` (hôte `forge.example`).
+ */
+async function startTerminal(lookups: string[], account: typeof ACCOUNT | null = ACCOUNT, remote: string | null = REMOTE, cwd?: string) {
   const fake = fakePty()
   let env: Record<string, string> = {}
   const deps: TerminalDeps = {
@@ -65,7 +85,7 @@ async function startTerminal(lookups: string[], account: typeof ACCOUNT | null =
     },
   }
   const service = new TerminalService(() => undefined, deps)
-  const { id } = await service.start('shell', os.tmpdir(), 80, 24, 1)
+  const { id } = await service.start('shell', cwd ?? await startDir(remote), 80, 24, 1)
   return { service, id, fake, env: () => env }
 }
 
@@ -119,6 +139,15 @@ describe('terminal — askpass de la session (GH337 §6)', () => {
     expect(hostFromPrompt('Enter passphrase: ')).toBeNull()
   })
 
+  it('(2ter) l\'hôte d\'un remote est lu sans schéma, identifiant ni port ; chemin local : pas d\'hôte', () => {
+    expect(hostFromRemoteUrl('https://alice@Forge.example:8443/org/repo.git')).toBe('forge.example')
+    expect(hostFromRemoteUrl('ssh://git@forge.example:2222/org/repo.git')).toBe('forge.example')
+    expect(hostFromRemoteUrl('git@forge.example:org/repo.git')).toBe('forge.example')
+    expect(hostFromRemoteUrl('C:\\depots\\repo.git')).toBeNull()
+    expect(hostFromRemoteUrl('/srv/git/repo.git')).toBeNull()
+    expect(hostFromRemoteUrl('file:///srv/git/repo.git')).toBeNull()
+  })
+
   it('(2bis) l\'invite du shim transmet l\'hôte lu et répond le compte connecté pour cet hôte', async () => {
     const lookups: string[] = []
     const { env } = await startTerminal(lookups)
@@ -127,17 +156,52 @@ describe('terminal — askpass de la session (GH337 §6)', () => {
     expect(lookups).toEqual(['https://forge.example', 'https://forge.example'])
   })
 
-  it('(3) une invite pour un hôte sans identifiants connus reçoit une réponse vide', async () => {
+  it('(3) une invite pour un hôte hors des remotes du dépôt reçoit une réponse vide, sans consulter le compte', async () => {
     const lookups: string[] = []
     const { env } = await startTerminal(lookups)
     expect(await askViaShim(env(), "Password for 'https://autre.example': ")).toBe('')
     expect(await askViaShim(env(), 'Enter passphrase for key \'/k\': ')).toBe('')
-    expect(lookups).toEqual(['https://autre.example'])
+    expect(lookups).toEqual([])
   })
 
   it('(3bis) pas de compte connecté du tout : réponse vide', async () => {
     const { env } = await startTerminal([], null)
     expect(await askViaShim(env(), "Password for 'https://forge.example': ")).toBe('')
+  })
+
+  it('(3ter) dossier de départ sans dépôt : aucun identifiant, même pour l\'hôte d\'un compte connecté', async () => {
+    const lookups: string[] = []
+    const { env } = await startTerminal(lookups, ACCOUNT, null, await startDir(null))
+    expect(await askViaShim(env(), "Password for 'https://forge.example': ")).toBe('')
+    expect(await askViaShim(env(), "Username for 'https://forge.example': ")).toBe('')
+    expect(lookups).toEqual([])
+  })
+
+  it('(3quater) dépôt avec plusieurs remotes : chaque hôte de remote est reconnu, un hôte absent des remotes non', async () => {
+    const dir = await startDir(REMOTE)
+    await gitFor(dir).addRemote('miroir', 'https://miroir.example/org/repo.git')
+    const lookups: string[] = []
+    const { env } = await startTerminal(lookups, ACCOUNT, null, dir)
+    expect(await askViaShim(env(), "Password for 'https://autre.example': ")).toBe('')
+    expect(await askViaShim(env(), "Password for 'https://forge.example': ")).toBe(PAT)
+    // miroir.example est un remote du dépôt : consulté (pas de compte pour lui dans ce faux).
+    expect(await askViaShim(env(), "Password for 'https://miroir.example': ")).toBe('')
+    expect(lookups).toEqual(['https://forge.example', 'https://miroir.example'])
+  })
+
+  it('(3quinquies) remote avec identifiant et port dans l\'URL : son hôte est reconnu, sans port ni identifiant', async () => {
+    const lookups: string[] = []
+    const { env } = await startTerminal(lookups, ACCOUNT, 'https://alice@forge.example:8443/org/repo.git')
+    expect(await askViaShim(env(), "Password for 'https://alice@forge.example:8443/': ")).toBe(PAT)
+    expect(await askViaShim(env(), "Username for 'https://forge.example': ")).toBe('alice')
+    expect(lookups).toEqual(['https://forge.example', 'https://forge.example'])
+  })
+
+  it('(3sexies) remote en forme scp (git@hôte:chemin) : l\'hôte est reconnu', async () => {
+    const lookups: string[] = []
+    const { env } = await startTerminal(lookups, ACCOUNT, 'git@forge.example:org/repo.git')
+    expect(await askViaShim(env(), "Password for 'https://forge.example': ")).toBe(PAT)
+    expect(lookups).toEqual(['https://forge.example'])
   })
 
   it('(4) le nonce est refusé après la fermeture de la session (fin du shell)', async () => {

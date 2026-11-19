@@ -45,20 +45,25 @@ afterEach(async () => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-/** Attend l'erreur de l'opération et vérifie qu'elle est un délai, arrivé dans le temps imparti. */
-async function expectTimeout(run: () => Promise<unknown>): Promise<GitError> {
+/**
+ * Attend l'erreur de l'opération et vérifie qu'elle est un délai, arrivé dans le temps imparti, avec le
+ * message clair de l'opération (et non « code null »).
+ */
+async function expectTimeout(run: () => Promise<unknown>, operation: string): Promise<GitError> {
   const started = Date.now()
   const err = await run().then(() => null, (e: unknown) => e)
   const elapsed = Date.now() - started
   expect(err).toBeInstanceOf(GitError)
   expect((err as GitError).kind).toBe('timeout')
   expect(elapsed).toBeLessThan(MUST_STOP_WITHIN_MS)
+  expect((err as GitError).message).toBe(`le serveur Git n'a pas répondu dans le délai imparti (opération : ${operation})`)
+  expect((err as GitError).message).not.toMatch(/code null/)
   return err as GitError
 }
 
 describe('délai réseau natif (GH15) — arrêt à temps avec une erreur timeout', () => {
   it('ls-remote sur un serveur muet : timeout, processus git terminé', async () => {
-    await expectTimeout(() => gitLsRemoteHeads(url, { timeoutMs: SHORT_TIMEOUT_MS }))
+    await expectTimeout(() => gitLsRemoteHeads(url, { timeoutMs: SHORT_TIMEOUT_MS }), 'ls-remote')
     expect(liveProcessCount()).toBe(0)
   })
 
@@ -67,12 +72,12 @@ describe('délai réseau natif (GH15) — arrêt à temps avec une erreur timeou
     const g = gitFor(dir)
     await g.init('main')
     await g.addRemote('origin', url)
-    await expectTimeout(() => g.fetch('origin', { timeoutMs: SHORT_TIMEOUT_MS }))
+    await expectTimeout(() => g.fetch('origin', { timeoutMs: SHORT_TIMEOUT_MS }), 'fetch')
     expect(liveProcessCount()).toBe(0)
   })
 
   it('clone sur un serveur muet : timeout, processus git terminé', async () => {
-    await expectTimeout(() => gitClone(url, path.join(root, 'clone'), { timeoutMs: SHORT_TIMEOUT_MS }))
+    await expectTimeout(() => gitClone(url, path.join(root, 'clone'), { timeoutMs: SHORT_TIMEOUT_MS }), 'clone')
     expect(liveProcessCount()).toBe(0)
   })
 })

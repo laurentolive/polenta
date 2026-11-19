@@ -680,10 +680,23 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // (obsolète), puis quitte l'arbre (sinon elle redevient « non classée »). Renvoie les IDs qui
   // n'ont pas pu l'être : type sans statut terminal (tests, issues…), transition refusée.
   const obsoleteObjects = useCallback(async (objectIds: string[]): Promise<string[]> => {
-    const terminal = effectiveType?.category === 'requirement'
-      ? effectiveType.statuses?.find(s => s.isTerminal)?.name
-      : undefined
-    if (!terminal) return objectIds
+    if (effectiveType?.category !== 'requirement') return objectIds
+    let terminal = effectiveType.statuses?.find(s => s.isTerminal)?.name
+    if (!terminal) {
+      // Type sans statut terminal : un statut « obsolete » terminal est ajouté à sa définition dans
+      // le schéma du repo, puis les exigences y passent (choix validé sur #415).
+      const schema = await api.schema.get(repoPath)
+      const def = flattenSystemNodes(schema.nodes).find(f => f.node.name === effectiveNodeId)?.node
+        .objectTypes?.find(t => t.name === effectiveTypeId)
+      if (!def) return objectIds
+      def.statuses = def.statuses ?? []
+      const existing = def.statuses.find(s => s.name === 'obsolete')
+      if (existing) existing.isTerminal = true
+      else def.statuses.push({ name: 'obsolete', label: 'Obsolète', isTerminal: true })
+      await api.schema.save(repoPath, schema)
+      await qc.invalidateQueries({ queryKey: ['schema', repoPath] })
+      terminal = 'obsolete'
+    }
     const refused: string[] = []
     for (const id of objectIds) {
       try {
@@ -697,7 +710,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     }
     qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
     return refused
-  }, [effectiveType, repoPath, project?.workspaceDir, qc])
+  }, [effectiveType, effectiveNodeId, effectiveTypeId, repoPath, project?.workspaceDir, qc])
 
   // ── Filter ─────────────────────────────────────────────────────────────────
   const [filterVisible, setFilterVisible] = useState(false)

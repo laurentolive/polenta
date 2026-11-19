@@ -69,7 +69,8 @@ test('P-3 — publier puis créer une baseline', async () => {
 
   await s.openView('Version')
   await s.page.getByRole('button', { name: 'Baselines' }).click()
-  await s.page.getByRole('button', { name: 'Rafraîchir' }).click()
+  // GH414 : le bouton « Rafraîchir » de l'en-tête porte le même nom ; celui du panneau est le dernier.
+  await s.page.getByRole('button', { name: 'Rafraîchir' }).last().click()
   await expect(s.page.getByText('Création bloquée')).toHaveCount(0)
   await s.page.getByPlaceholder('v1.0.0').fill('E2E-1')
   await s.page.getByPlaceholder('Décrire cette baseline…').fill('Baseline créée depuis le web')

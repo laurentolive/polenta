@@ -40,3 +40,11 @@ Format :
 ## 2026-11-19 — Popup de sélection dans un champ : clic qui ferme le parent
 - Erreur : GH416, le sélecteur de paramètres (`{`) est rendu hors du champ ; un clic souris dans la liste remontait aux popups et menus parents, qui se fermaient avant l'insertion. Corrigé sans reproduction ni test sur le symptôme.
 - Règle : un composant flottant rendu hors de son champ arrête la propagation de `mousedown` et `click`, et on teste le clic souris (pas seulement le clavier) avant de conclure.
+
+## 2026-11-19 — Affirmer qu'un utilisateur ne peut pas atteindre un état sans tracer les transitions automatiques
+- Erreur : GH414, j'ai affirmé qu'un utilisateur sans git ne pouvait pas être sur une branche de travail en retard ; le code (GH173, `settleAutoBranch`) crée `dev-auto` tout seul dès qu'il modifie l'intégration, et ses commits de la vue arbre y vont. Même chose pour un compteur : il lisait les refs locales, donc restait à zéro jusqu'au prochain fetch.
+- Règle : avant d'affirmer qu'un profil d'utilisateur ne peut pas atteindre un état, suivre dans le code les transitions automatiques (bascules de branche, auto-pull, fetch) ; et un compteur lu sur des refs locales doit être rafraîchi par l'événement qui fait le fetch, testé dans la séquence réelle (fetch → compteur), pas sur l'état final seul.
+
+## 2026-11-19 — Résultat « à jour » annoncé sur la ref, pas sur l'arbre de l'utilisateur
+- Erreur : GH414, « Intégration à jour » était affiché quand la ref de l'intégration avait avancé, alors que l'auto-pull avait déplacé les modifs de l'utilisateur sur `dev-auto` : son arbre ne contenait pas le commit de l'équipe.
+- Règle : pour un message de résultat de synchronisation, vérifier l'arbre de travail de l'utilisateur (pas seulement la ref) et le branche courante après l'opération ; un test de l'état « fichier présent dans l'arbre » couvre ce cas.

@@ -230,7 +230,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
   'sync:discard', 'sync:discard-all', 'sync:merge', 'sync:merge-into', 'sync:rebase', 'sync:resync-integration', 'sync:auto-sync',
-  'sync:settle-auto-branch', 'conformity:apply',
+  'sync:settle-auto-branch', 'sync:refresh-state', 'sync:refresh-branch', 'sync:undo-refresh-wip', 'conformity:apply',
   'integration:designate', 'integration:create',
   'diff:save-working-file',
 ])
@@ -355,6 +355,13 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('sync:auto-sync', (_e, repoPath: string, branch: string) => c.sync.autoSync(repoPath, branch))
   r.handle('sync:settle-auto-branch', (_e, repoPath: string, branch: string) =>
     c.sync.settleAutoBranch(repoPath, branch))
+  // GH414 — « Rafraîchir » : compteur local ; clic = fetch, puis merge de l'intégration.
+  r.handle('sync:refresh-state', (_e, repoPath: string, integrationBranch: string) =>
+    c.sync.refreshState(repoPath, integrationBranch))
+  r.handle('sync:refresh-branch', (_e, repoPath: string, integrationBranch: string) =>
+    c.sync.refreshBranch(repoPath, integrationBranch))
+  r.handle('sync:undo-refresh-wip', (_e, repoPath: string, wip: string) =>
+    c.sync.undoRefreshWip(repoPath, wip))
   r.handle('sync:is-merged', (_e, repoPath: string, branch: string, into: string) =>
     c.sync.isMergedInto(repoPath, branch, into))
   r.handle('sync:log', async (_e, repoPath: string, limit = 20) => {

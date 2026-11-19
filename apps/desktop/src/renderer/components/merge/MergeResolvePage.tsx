@@ -140,6 +140,13 @@ export function MergeResolvePage({ id, projectId, selected, onSelect: setSelecte
   async function abandon() {
     if (!session) return
     await api.mergeResolution.abandon(session.id)
+    // GH414 — « Rafraîchir » a posé un commit WIP pour pouvoir fusionner : abandonner le défait,
+    // les modifs en cours reviennent dans l'arbre (non indexées).
+    if (session.origin.kind === 'merge' && session.origin.wip) {
+      await api.sync.undoRefreshWip(session.repoPath, session.origin.wip)
+      void qc.invalidateQueries({ queryKey: ['sync:status'] })
+      void qc.invalidateQueries({ queryKey: ['sync:refresh-state'] })
+    }
     // GH234 — forgotten, not cached as `null`: reopening the same merge gets the same id back.
     qc.removeQueries({ queryKey: ['merge-resolution', session.id] })
     void qc.invalidateQueries({ queryKey: ['merge-resolution', 'list'] })

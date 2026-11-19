@@ -223,6 +223,8 @@ export interface SystemViewState {
   // Tree
   root: TypeTreeNode[]
   setRoot: (root: TypeTreeNode[]) => void
+  /** GH415 — passe des exigences à obsolète avant suppression de l'arbre ; renvoie les refusées. */
+  obsoleteObjects: (objectIds: string[]) => Promise<string[]>
   canUndo: boolean
   canRedo: boolean
   undo: () => void
@@ -674,6 +676,29 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     if (!readOnly) saveMutation.mutate()
   }, [readOnly, saveMutation])
 
+  // GH415 — « Supprimer » d'un objet de l'arbre : l'exigence passe d'abord au statut terminal
+  // (obsolète), puis quitte l'arbre (sinon elle redevient « non classée »). Renvoie les IDs qui
+  // n'ont pas pu l'être : type sans statut terminal (tests, issues…), transition refusée.
+  const obsoleteObjects = useCallback(async (objectIds: string[]): Promise<string[]> => {
+    const terminal = effectiveType?.category === 'requirement'
+      ? effectiveType.statuses?.find(s => s.isTerminal)?.name
+      : undefined
+    if (!terminal) return objectIds
+    const refused: string[] = []
+    for (const id of objectIds) {
+      try {
+        const req = await api.requirements.get(repoPath, id)
+        if (req.status !== terminal) {
+          await api.requirements.transition(repoPath, id, { toStatus: terminal }, project?.workspaceDir || undefined)
+        }
+      } catch {
+        refused.push(id)
+      }
+    }
+    qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
+    return refused
+  }, [effectiveType, repoPath, project?.workspaceDir, qc])
+
   // ── Filter ─────────────────────────────────────────────────────────────────
   const [filterVisible, setFilterVisible] = useState(false)
   const [filter, setFilter] = useState('')
@@ -1013,6 +1038,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     repoNameOf,
     root,
     setRoot,
+    obsoleteObjects,
     canUndo,
     canRedo,
     undo,

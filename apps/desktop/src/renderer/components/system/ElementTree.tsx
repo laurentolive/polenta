@@ -65,6 +65,15 @@ interface Props {
    *  défilée dans la vue ; `revealSeq` rejoue la même cible. */
   revealNodeId?: string | null
   revealSeq?: number
+  /** GH415 — « Supprimer » d'un objet : il passe d'abord au statut terminal (obsolète), puis
+   *  quitte l'arbre. Renvoie les IDs d'objets qui n'ont pas pu l'être : leur élément reste en place. */
+  onObsoleteObjects?: (objectIds: string[]) => Promise<string[]>
+}
+
+/** GH415 — IDs d'objets des éléments d'un sous-arbre (lui compris). */
+export function objectIdsIn(node: TypeTreeNode): string[] {
+  const own = node.kind === 'item' && node.objectId ? [node.objectId] : []
+  return [...own, ...node.children.flatMap(objectIdsIn)]
 }
 
 // ── BgContextMenu ─────────────────────────────────────────────────────────────
@@ -321,6 +330,7 @@ export function ElementTree({
   onSelect,
   onDoubleClick,
   onRootChange,
+  onObsoleteObjects,
   generateId,
   filter,
   filterOptions,
@@ -465,7 +475,7 @@ export function ElementTree({
     // Enter would fall through to "open selected item" and Escape wouldn't cancel it.
     if (deleteConfirm) {
       if (e.key === 'Escape') { e.preventDefault(); setDeleteConfirm(null) }
-      else if (e.key === 'Enter') { e.preventDefault(); confirmDelete() }
+      else if (e.key === 'Enter') { e.preventDefault(); void confirmDelete() }
       return
     }
 
@@ -575,11 +585,22 @@ export function ElementTree({
     setDeleteConfirm({ ids, hasContent })
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteConfirm) return
-    onRootChange(treeRemoveMany(root, deleteConfirm.ids))
-    onSelect([])
+    const ids = deleteConfirm.ids
     setDeleteConfirm(null)
+    // GH415 — objets passés à obsolète d'abord ; un élément dont un objet n'a pas pu l'être reste.
+    const objectIds = ids.flatMap(id => { const n = treeFindNode(root, id); return n ? objectIdsIn(n) : [] })
+    const refused = objectIds.length > 0 && onObsoleteObjects
+      ? new Set(await onObsoleteObjects(objectIds))
+      : new Set<string>()
+    const removable = ids.filter(id => {
+      const n = treeFindNode(root, id)
+      return !n || !objectIdsIn(n).some(o => refused.has(o))
+    })
+    if (removable.length === 0) return
+    onRootChange(treeRemoveMany(root, removable))
+    onSelect([])
   }
 
   function copyToClipboard(ids: string[], cut: boolean) {

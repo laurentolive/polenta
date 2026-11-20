@@ -207,8 +207,14 @@ export class AuthService {
   /**
    * Compte courant, sans appel réseau : le compte par défaut s'il a un jeton, sinon le premier
    * compte qui en a un (même critère que `hasAnyAccount`) ; `null` si aucun compte n'est connecté.
+   * GH343 — avec l'URL du remote d'un projet : le compte connecté de son hôte (celui des opérations
+   * git), sinon le compte par défaut.
    */
-  async currentAccount(): Promise<ForgeAccount | null> {
+  async currentAccount(remoteUrl?: string): Promise<ForgeAccount | null> {
+    if (remoteUrl && /^https?:\/\//i.test(remoteUrl)) {
+      const forHost = await this.accountForHost(extractHost(remoteUrl))
+      if (forHost && (await this.tokenFor(forHost))) return toForgeAccount(forHost)
+    }
     const account = await this.connectedAccount()
     return account ? toForgeAccount(account) : null
   }
@@ -278,9 +284,14 @@ export class AuthService {
    * devient compte par défaut. Le jeton reste valide côté forge (révocable dans ses paramètres) —
    * le supprimer exigerait le mot de passe.
    */
-  async logout(): Promise<void> {
+  async logout(key?: string): Promise<void> {
     const store = await this.readStore()
-    const account = (await this.connectedAccount()) ?? store.accounts.find(a => keyOf(a) === store.defaultAccount) ?? store.accounts[0]
+    // GH343 — compte désigné (celui du projet affiché dans la fenêtre), sinon le compte courant.
+    // Compte désigné déjà retiré (déconnecté depuis une autre fenêtre) : rien à faire — surtout pas
+    // déconnecter un autre compte à sa place.
+    const chosen = key ? store.accounts.find(a => keyOf(a) === key) : undefined
+    if (key && !chosen) return
+    const account = chosen ??(await this.connectedAccount()) ?? store.accounts.find(a => keyOf(a) === store.defaultAccount) ?? store.accounts[0]
     if (!account) {
       // Jetons « nus » d'anciennes versions, sans compte : la déconnexion doit les retirer aussi.
       for (const h of LEGACY_BARE_TOKEN_HOSTS) await this.host.tokenStore.delete(h)
@@ -293,8 +304,11 @@ export class AuthService {
     if (bare && (bare === own || !store.accounts.some(a => keyOf(a) !== keyOf(account) && a.remoteHost === account.remoteHost))) {
       await this.host.tokenStore.delete(account.remoteHost)
     }
+    const wasDefault = store.defaultAccount === keyOf(account)
     store.accounts = store.accounts.filter(a => keyOf(a) !== keyOf(account))
-    store.defaultAccount = store.accounts[0] ? keyOf(store.accounts[0]) : null
+    if (wasDefault || !store.accounts.some(a => keyOf(a) === store.defaultAccount)) {
+      store.defaultAccount = store.accounts[0] ? keyOf(store.accounts[0]) : null
+    }
     await this.writeStore(store)
     await this.syncGitIdentity()
   }

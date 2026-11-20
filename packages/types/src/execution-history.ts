@@ -7,7 +7,24 @@ import type { TestedDriftItem } from './tested-config'
 // tests qui couvrent une exigence (règle T179), plus les entrées en attente des campagnes ouvertes.
 // Données brutes assemblées par le main ; aucun indicateur calculé (GH79).
 
-export type ExecutionHistoryTarget = { testId: string } | { requirementId: string }
+/**
+ * GH400 — `objectTypeRef` : exécutions de tous les tests d'un type (vue Exécutions).
+ * GH399 — `runId` : une seule exécution (popup, navigation d'un lien d'exécution) ; `testId` : son
+ * test, connu de l'index des liens (sinon lu dans l'ID, `runTestId`).
+ */
+export type ExecutionHistoryTarget =
+  | { testId: string } | { requirementId: string } | { objectTypeRef: string } | { runId: string; testId?: string }
+
+/** GH399 — exécution de l'index des liens : son ID et son test. */
+export interface RunRef {
+  id: string
+  testCaseId: string
+}
+
+/** GH399 — test d'une exécution, lu dans son ID (`<ID du test>-run-NNNN`). */
+export function runTestId(runId: string): string {
+  return runId.replace(/-run-\d+$/, '')
+}
 
 export interface ExecutionHistoryRow {
   /** Id du run, ou `pending:<campagne>:<entrée>` pour une entrée en attente. */

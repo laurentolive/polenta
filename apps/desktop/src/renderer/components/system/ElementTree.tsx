@@ -65,6 +65,15 @@ interface Props {
    *  défilée dans la vue ; `revealSeq` rejoue la même cible. */
   revealNodeId?: string | null
   revealSeq?: number
+  /** GH415 — « Supprimer » d'un objet : il passe d'abord au statut terminal (obsolète), puis
+   *  quitte l'arbre. Renvoie les IDs d'objets qui n'ont pas pu l'être : leur élément reste en place. */
+  onObsoleteObjects?: (objectIds: string[]) => Promise<string[]>
+}
+
+/** GH415 — IDs d'objets des éléments d'un sous-arbre (lui compris). */
+export function objectIdsIn(node: TypeTreeNode): string[] {
+  const own = node.kind === 'item' && node.objectId ? [node.objectId] : []
+  return [...own, ...node.children.flatMap(objectIdsIn)]
 }
 
 // ── BgContextMenu ─────────────────────────────────────────────────────────────
@@ -96,7 +105,7 @@ function BgContextMenu({
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-44 text-xs"
+      data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-44 text-xs"
       style={{ left: x, top: y }}
     >
       {items.map(item => (
@@ -116,7 +125,7 @@ function BgContextMenu({
 // ── ContextMenu ───────────────────────────────────────────────────────────────
 
 function ContextMenu({
-  x, y, nodeId, node, clipboard, onAction, onClose,
+  x, y, clipboard, onAction, onClose,
 }: {
   x: number; y: number; nodeId: string; node: TypeTreeNode | null
   clipboard: ClipboardData | null
@@ -149,7 +158,7 @@ function ContextMenu({
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-44 text-xs"
+      data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-44 text-xs"
       style={{ left: x, top: y }}
     >
       {items.map((item, i) =>
@@ -321,8 +330,8 @@ export function ElementTree({
   onSelect,
   onDoubleClick,
   onRootChange,
+  onObsoleteObjects,
   generateId,
-  typeName,
   filter,
   filterOptions,
   searchTextByObjectId,
@@ -466,7 +475,7 @@ export function ElementTree({
     // Enter would fall through to "open selected item" and Escape wouldn't cancel it.
     if (deleteConfirm) {
       if (e.key === 'Escape') { e.preventDefault(); setDeleteConfirm(null) }
-      else if (e.key === 'Enter') { e.preventDefault(); confirmDelete() }
+      else if (e.key === 'Enter') { e.preventDefault(); void confirmDelete() }
       return
     }
 
@@ -538,6 +547,9 @@ export function ElementTree({
         document.dispatchEvent(new Event('dragend'))
       }
     }
+    // GH395 — copyToClipboard / initiateDelete / paste sont des fonctions locales recréées à chaque
+    // rendu ; les ajouter rendrait ce useCallback inopérant. Leurs entrées sont dans la liste.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleNodes, selectedIds, root, expandedIds, renamingId, draggingIds, clipboard, readOnly, onSelect, onDoubleClick, deleteConfirm, confirmDelete])
 
   // ── CRUD operations ───────────────────────────────────────────────────────
@@ -573,11 +585,22 @@ export function ElementTree({
     setDeleteConfirm({ ids, hasContent })
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteConfirm) return
-    onRootChange(treeRemoveMany(root, deleteConfirm.ids))
-    onSelect([])
+    const ids = deleteConfirm.ids
     setDeleteConfirm(null)
+    // GH415 — objets passés à obsolète d'abord ; un élément dont un objet n'a pas pu l'être reste.
+    const objectIds = ids.flatMap(id => { const n = treeFindNode(root, id); return n ? objectIdsIn(n) : [] })
+    const refused = objectIds.length > 0 && onObsoleteObjects
+      ? new Set(await onObsoleteObjects(objectIds))
+      : new Set<string>()
+    const removable = ids.filter(id => {
+      const n = treeFindNode(root, id)
+      return !n || !objectIdsIn(n).some(o => refused.has(o))
+    })
+    if (removable.length === 0) return
+    onRootChange(treeRemoveMany(root, removable))
+    onSelect([])
   }
 
   function copyToClipboard(ids: string[], cut: boolean) {
@@ -806,7 +829,7 @@ export function ElementTree({
     }
   }
 
-  function handleDrop(e: React.DragEvent, nodeId: string) {
+  function handleDrop(e: React.DragEvent, _nodeId: string) {
     e.preventDefault()
     if (!dropIndicator) return
     const ids = e.dataTransfer.getData('text/plain').split(',').filter(Boolean)

@@ -229,7 +229,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
   'sync:discard', 'sync:discard-all', 'sync:merge', 'sync:merge-into', 'sync:rebase', 'sync:resync-integration', 'sync:auto-sync',
-  'sync:settle-auto-branch', 'conformity:apply',
+  'sync:settle-auto-branch', 'sync:refresh-state', 'sync:refresh-branch', 'sync:undo-refresh-wip', 'conformity:apply',
   'integration:designate', 'integration:create',
   'diff:save-working-file',
 ])
@@ -266,7 +266,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('workspace:mark-recent', (_e, workspaceDir: string) =>
     c.workspace.markRecent(workspaceDir))
   r.handle('workspace:get-last-opened', () => c.workspace.getLastOpened())
-  r.handle('workspace:clear-last-opened', () => c.workspace.clearLastOpened())
+  r.handle('workspace:clear-last-opened', (_e, workspaceDir?: string) =>
+    c.workspace.clearLastOpened(typeof workspaceDir === 'string' ? workspaceDir : undefined))
   r.handle('workspace:resolve', (_e, workspaceDir: string) =>
     c.workspace.resolve(workspaceDir))
   r.handle('workspace:open-project', (_e, dir: string) =>
@@ -312,7 +313,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('auth:detect-forge', (_e, serverUrl: string) => c.auth.detectForge(serverUrl))
   r.handle('auth:login-password', (_e, serverUrl: string, login: string, password: string, otp?: string) =>
     c.auth.loginWithPassword(serverUrl, login, password, otp))
-  r.handle('auth:current-account', () => c.auth.currentAccount())
+  r.handle('auth:current-account', (_e, remoteUrl?: string) =>
+    c.auth.currentAccount(typeof remoteUrl === 'string' ? remoteUrl : undefined))
   r.handle('app:get-machine-config', () => c.machineConfig)
   r.handle('app:get-team-config', () => c.forgeConfig.status())
   r.handle('app:refresh-team-config', () => c.forgeConfig.refresh())
@@ -352,6 +354,13 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('sync:auto-sync', (_e, repoPath: string, branch: string) => c.sync.autoSync(repoPath, branch))
   r.handle('sync:settle-auto-branch', (_e, repoPath: string, branch: string) =>
     c.sync.settleAutoBranch(repoPath, branch))
+  // GH414 — « Rafraîchir » : compteur local ; clic = fetch, puis merge de l'intégration.
+  r.handle('sync:refresh-state', (_e, repoPath: string, integrationBranch: string) =>
+    c.sync.refreshState(repoPath, integrationBranch))
+  r.handle('sync:refresh-branch', (_e, repoPath: string, integrationBranch: string) =>
+    c.sync.refreshBranch(repoPath, integrationBranch))
+  r.handle('sync:undo-refresh-wip', (_e, repoPath: string, wip: string) =>
+    c.sync.undoRefreshWip(repoPath, wip))
   r.handle('sync:is-merged', (_e, repoPath: string, branch: string, into: string) =>
     c.sync.isMergedInto(repoPath, branch, into))
   r.handle('sync:log', async (_e, repoPath: string, limit = 20) => {
@@ -545,6 +554,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   // GH200 — diff d'un élément entre deux états (départ → commit, ou disque).
   r.handle('sync:diff-element', (_e, repoPath: string, filepath: string, baseSha: string | null, newSha: string | null) =>
     c.sync.diffElement(repoPath, filepath, baseSha, newSha))
+  // GH399 — ID des exécutions du repo (index des liens d'exécution).
+  r.handle('executions:run-ids', (_e, repoPath: string) => c.executionHistory.runIds(repoPath))
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
     c.executionHistory.history(repoPath, target, workspaceDir))

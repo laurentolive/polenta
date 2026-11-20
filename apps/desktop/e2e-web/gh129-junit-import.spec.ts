@@ -66,14 +66,16 @@ test('GH129-2 — section Exécutions du test : origine « import JUnit »', asy
   await navigate(p, s.projectUrl(`/test/${testId}`, { repoPath: s.project.localPath }))
   const section = p.getByTestId('executions-section')
   await section.locator('summary').click()
-  const row = section.getByTestId('execution-row')
+  const row = section.locator('[data-testid^="execution-row-"]')
   await expect(row).toHaveCount(1)
-  await section.getByTestId('execution-columns-button').click()
+  // GH389 — panneau 👁 Colonnes commun (hors de la section).
+  await section.getByTestId('execution-columns').click()
   for (const key of ['origin', 'duration']) {
-    const column = section.getByTestId(`execution-column-${key}`)
+    const column = p.getByTestId(`execution-column-${key}`)
     if (!(await column.isChecked())) await column.click()
     await expect(column).toBeChecked()
   }
+  await p.getByTestId('column-picker-close').click()
   await expect(row).toContainText('import JUnit')
   await expect(row).toContainText('5 s')
 })

@@ -121,7 +121,7 @@ export function TerminalPanel() {
       </div>
       {menu && (
         <div
-          className="fixed z-50 min-w-[140px] rounded border border-edge bg-surface shadow-lg py-1 text-xs"
+          data-floating-menu className="fixed z-50 min-w-[140px] rounded border border-edge bg-surface shadow-lg py-1 text-xs"
           style={{ left: menu.x, top: menu.y }}
           onMouseDown={e => e.stopPropagation()}
         >

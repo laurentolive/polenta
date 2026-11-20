@@ -27,7 +27,7 @@ import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { WORKSPACE_LINK_QUERY_KEYS } from '../hooks/useWorkspaceLinks'
 import { normRepoPath } from '../components/system/linkUtils'
-import { useTreeState, treeUpdateObjectId, treeFindNode, treeFindByObjectId, treeRemove } from '../hooks/useTreeState'
+import { useTreeState, treeUpdateObjectId, treeFindNode, treeFindByObjectId } from '../hooks/useTreeState'
 import { useVersioning } from './VersioningContext'
 import { isEditableTarget } from '../lib/editableTarget'
 import type { TypeTreeNode, ObjectTypeDefinition, ObjectCategory, SystemNode, LinkTypeDefinition, TestCase } from '@polenta/types'
@@ -35,6 +35,7 @@ import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { DEFAULT_OBJECT_TITLE, findSystemNode, flattenSystemNodes } from '@polenta/types'
 import type { FilterOptions } from '../lib/textFilter'
 import { typeChoiceLabel } from '../lib/typeLabels'
+import { EXECUTIONS_PATH } from '../lib/executionsRoute'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -110,11 +111,15 @@ interface LastSelection {
 // Keyed per (project, category): the activity bar now has three tabs (Exigences/Tests/
 // Campagnes) sharing the same /product route, each with its own last-browsed repo/node/type —
 // without the category suffix, switching tabs would clobber the other tabs' remembered selection.
-function lastSelectionKey(projectId: string, category: ObjectCategory): string {
+// GH400 — la vue Exécutions choisit aussi un type de test, mais garde sa propre sélection : y changer
+// de type ne change pas celle de l'onglet Tests.
+type SelectionScope = ObjectCategory | 'executions'
+
+function lastSelectionKey(projectId: string, category: SelectionScope): string {
   return `${LAST_SELECTION_PREFIX}${projectId}:${category}`
 }
 
-function readLastSelection(projectId: string, category: ObjectCategory): LastSelection | null {
+function readLastSelection(projectId: string, category: SelectionScope): LastSelection | null {
   try {
     const raw = localStorage.getItem(lastSelectionKey(projectId, category))
     if (!raw) return null
@@ -132,7 +137,7 @@ function readLastSelection(projectId: string, category: ObjectCategory): LastSel
   }
 }
 
-function writeLastSelection(projectId: string, category: ObjectCategory, selection: LastSelection): void {
+function writeLastSelection(projectId: string, category: SelectionScope, selection: LastSelection): void {
   try {
     localStorage.setItem(lastSelectionKey(projectId, category), JSON.stringify(selection))
   } catch {
@@ -218,6 +223,8 @@ export interface SystemViewState {
   // Tree
   root: TypeTreeNode[]
   setRoot: (root: TypeTreeNode[]) => void
+  /** GH415 — passe des exigences à obsolète avant suppression de l'arbre ; renvoie les refusées. */
+  obsoleteObjects: (objectIds: string[]) => Promise<string[]>
   canUndo: boolean
   canRedo: boolean
   undo: () => void
@@ -319,14 +326,19 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const urlItem = sp.get('item') || null
   // GH230 — ancrage : objet aligné en haut de la vue Tableau / Document (sans `item`).
   const urlTop = sp.get('top') || null
+  // GH400 — vue Exécutions : filtre de la colonne Campagne prérempli.
+  const urlCampaign = sp.get('campaign') || null
   // Which of the three activity-bar tabs (Exigences/Tests/Campagnes) is active — defaults to
   // 'requirement' for old links/tabs saved before that param existed rather than leaving it
   // unset, so every selection/filtering step below can assume a valid category.
   // Doc routes (/req/, /test/, /campaign/) carry no ?category= — their path names the kind
   // (GH72 — opening a campaign used to flip the sidebar header/combobox to Exigences).
+  // GH400 — vue Exécutions : le sélecteur propose les types de test.
+  const isExecutionsPage = pathname === EXECUTIONS_PATH
   const urlCategory: ObjectCategory =
     (sp.get('category') as ObjectCategory | null) ??
-    (pathname.startsWith('/campaign/') ? 'campaign' : pathname.startsWith('/test/') ? 'test' : 'requirement')
+    (pathname.startsWith('/campaign/') ? 'campaign' : pathname.startsWith('/test/') || isExecutionsPage ? 'test' : 'requirement')
+  const selectionScope: SelectionScope = isExecutionsPage ? 'executions' : urlCategory
 
   // ── Root repo path (project root, always editable) ────────────────────────
   const { data: project } = useQuery({
@@ -437,7 +449,19 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
       const item = keep ? (urlItem ?? undefined) : page?.item
       const top = keep ? (urlTop ?? undefined) : page?.top
       const category = page?.category ?? urlCategory
-      if (pathname === '/components') {
+      if (pathname === EXECUTIONS_PATH && !page?.category) {
+        // GH400 — autre type choisi : nouvelle page de la vue, même mode, sans le filtre prérempli ;
+        // URL complétée (type par défaut) : filtre gardé.
+        navigate({
+          to: EXECUTIONS_PATH,
+          search: {
+            projectId, repo: repoName, node: nodeId, type: typeId,
+            view: urlView === 'word' ? 'word' : undefined,
+            campaign: keep ? (urlCampaign ?? undefined) : undefined,
+          },
+          replace,
+        } as never)
+      } else if (pathname === '/components') {
         navigate({
           to: '/components',
           search: { projectId, repo: repoName, component: nodeId, type: typeId, level: undefined, tab: undefined, category, view, item, top },
@@ -452,7 +476,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
         })
       }
     },
-    [navigate, pathname, projectId, urlCategory, urlView, urlItem, urlTop],
+    [navigate, pathname, projectId, urlCategory, urlView, urlItem, urlTop, urlCampaign],
   )
 
   // Set URL defaults when schema loads (first visit with no URL params, or an
@@ -471,7 +495,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     // paramètre) et l'effet redirigeait vers /product à chaque fois, empêchant toute
     // navigation directe vers une fiche depuis l'extérieur de la section Système
     // (ex: cliquer un élément impacté depuis /impact-analysis).
-    if (pathname !== '/product' && pathname !== '/components') return
+    if (pathname !== '/product' && pathname !== '/components' && pathname !== EXECUTIONS_PATH) return
     if (!schema || nodes.length === 0 || componentOptions.length === 0) return
 
     const applyFirstNode = () => {
@@ -502,7 +526,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
       // would never be retried, permanently overwriting the saved selection
       // once the write-effect below persists that wrong default.
       if (!allSchemasLoaded) return
-      const saved = readLastSelection(projectId, urlCategory)
+      const saved = readLastSelection(projectId, selectionScope)
       const savedRepoPath = saved ? componentOptions.find(o => o.repoName === saved.repo)?.repoPath : undefined
       const savedSchema = savedRepoPath ? schemasByRepoPath.get(savedRepoPath) : undefined
       const savedNode = saved && savedSchema ? findSystemNode(savedSchema.nodes, saved.node) : undefined
@@ -535,8 +559,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   useEffect(() => {
     if (!projectId || !urlRepo || !urlNode || !urlType) return
     if (!selectedRepoName || !effectiveNodeId || !effectiveTypeId) return
-    writeLastSelection(projectId, urlCategory, { repo: selectedRepoName, node: effectiveNodeId, type: effectiveTypeId })
-  }, [projectId, urlCategory, urlRepo, urlNode, urlType, selectedRepoName, effectiveNodeId, effectiveTypeId])
+    writeLastSelection(projectId, selectionScope, { repo: selectedRepoName, node: effectiveNodeId, type: effectiveTypeId })
+  }, [projectId, selectionScope, urlRepo, urlNode, urlType, selectedRepoName, effectiveNodeId, effectiveTypeId])
 
   // Replaces the former handleComponentChange/handleTypeChange pair (T120) — the merged combobox
   // (T129) always knows the repo, the target SystemNode and the target type at once (an entry is
@@ -652,6 +676,42 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     if (!readOnly) saveMutation.mutate()
   }, [readOnly, saveMutation])
 
+  // GH415 — « Supprimer » d'un objet de l'arbre : l'exigence passe d'abord au statut terminal
+  // (obsolète), puis quitte l'arbre (sinon elle redevient « non classée »). Renvoie les IDs qui
+  // n'ont pas pu l'être : type sans statut terminal (tests, issues…), transition refusée.
+  const obsoleteObjects = useCallback(async (objectIds: string[]): Promise<string[]> => {
+    if (effectiveType?.category !== 'requirement') return objectIds
+    let terminal = effectiveType.statuses?.find(s => s.isTerminal)?.name
+    if (!terminal) {
+      // Type sans statut terminal : un statut « obsolete » terminal est ajouté à sa définition dans
+      // le schéma du repo, puis les exigences y passent (choix validé sur #415).
+      const schema = await api.schema.get(repoPath)
+      const def = flattenSystemNodes(schema.nodes).find(f => f.node.name === effectiveNodeId)?.node
+        .objectTypes?.find(t => t.name === effectiveTypeId)
+      if (!def) return objectIds
+      def.statuses = def.statuses ?? []
+      const existing = def.statuses.find(s => s.name === 'obsolete')
+      if (existing) existing.isTerminal = true
+      else def.statuses.push({ name: 'obsolete', label: 'Obsolète', isTerminal: true })
+      await api.schema.save(repoPath, schema)
+      await qc.invalidateQueries({ queryKey: ['schema', repoPath] })
+      terminal = 'obsolete'
+    }
+    const refused: string[] = []
+    for (const id of objectIds) {
+      try {
+        const req = await api.requirements.get(repoPath, id)
+        if (req.status !== terminal) {
+          await api.requirements.transition(repoPath, id, { toStatus: terminal }, project?.workspaceDir || undefined)
+        }
+      } catch {
+        refused.push(id)
+      }
+    }
+    qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
+    return refused
+  }, [effectiveType, effectiveNodeId, effectiveTypeId, repoPath, project?.workspaceDir, qc])
+
   // ── Filter ─────────────────────────────────────────────────────────────────
   const [filterVisible, setFilterVisible] = useState(false)
   const [filter, setFilter] = useState('')
@@ -673,6 +733,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
 
   // ── Page affichée : mode, élément édité, goto (GH228) ────────────────────────
   // Relu à chaque changement de `view` : l'effet ci-dessous a écrit le mode de la page précédente.
+  // GH395 — `urlView` voulu dans les dépendances : déclenche la relecture du localStorage.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const storedViewMode = useMemo(() => readStoredViewMode(repoPath) ?? 'excel', [repoPath, urlView])
   useEffect(() => {
     if (repoPath && (urlView === 'excel' || urlView === 'word')) localStorage.setItem(`polenta:viewMode:${repoPath}`, urlView)
@@ -989,6 +1051,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     repoNameOf,
     root,
     setRoot,
+    obsoleteObjects,
     canUndo,
     canRedo,
     undo,

@@ -376,6 +376,9 @@ equipmentUsed:
 > **Historique des exécutions (GH197)** : tous les runs d'un test (ou des tests reliés à une
 > exigence, règle T179) se consultent dans la section « Exécutions » de l'éditeur
 > (SPEC-SYSTEM-VIEW §Vue Édition), avec campagne, entrée, champs d'exécution et étapes.
+> **Vue Exécutions (GH400)** : tous les runs des tests d'un type, toutes campagnes confondues
+> (remplacés, retirés, isolés compris), en Tableau ou en Document, depuis le panneau Campagnes
+> (SPEC-SYSTEM-VIEW § Vue Exécutions).
 
 ### 3.3 Résultats possibles
 
@@ -800,6 +803,13 @@ d'avancement (préparation du test → prêt → résultat) restent disponibles 
 par la bibliothèque projet (`entryStep`, widget « Avancement par campagne »), comme le suivi
 multi-campagnes (% exécuté, % PASS, exécutions par jour, avancement dans le temps : dashboard
 « Campagnes », SPEC-DASHBOARDS §7.1). La pastille « Non approuvé » (GH68, §4.2) est conservée.
+
+**Grilles (GH389)** : la liste des entrées est une grille commune (GH389, SPEC-SYSTEM-VIEW § Grilles communes) — colonnes Test, Titre,
+Exigence, Reportée depuis, Paramètres, Statut, Actions (dupliquer, paramètres, voir, exécuter, retirer) ;
+pastilles en tête de barre d'outils, combinées en ET aux filtres de colonne ; saisie des paramètres et
+duplicata dans la ligne dépliée ; double-clic / Entrée / « Voir » ouvrent l'entrée ; exports de cahier
+et de rapport inchangés. Onglet « Depuis une campagne » du sélecteur (§4.2, GH64) et liste des campagnes
+de la vue système : grilles communes (cases pour le report ; une entrée indisponible n'a pas de case).
 
 ### 4.4 Substitution des paramètres à l'exécution (T97, T171)
 

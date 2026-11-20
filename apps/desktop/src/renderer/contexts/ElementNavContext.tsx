@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import type { ObjectCategory } from '@polenta/types'
 import { api } from '../api'
+import { runPage } from '../lib/executionsRoute'
 import { useWorkspaceLinks, type WorkspaceLinks } from '../hooks/useWorkspaceLinks'
 import { normRepoPath } from '../components/system/linkUtils'
 import { treeFindByObjectId } from '../hooks/useTreeState'
@@ -22,17 +24,27 @@ import { useTabs } from './TabsContext'
  * seule) : ouvrir ou fermer la popup ne re-rend pas les liens de la page.
  */
 
+/** Cible d'un lien : catégorie d'objet, ou exécution (GH399). */
+export type NavCategory = ObjectCategory | 'run'
+
 export interface ElementRef {
   id: string
   /** Texte des liens : `displayIdField` du type, sinon l'ID. */
   displayId: string
   title: string
   status: string
-  category: ObjectCategory
+  category: NavCategory
+  /** Exécution : type de son test (réglage `runPopup`). */
   objectTypeRef: string
   repoPath: string
   repoLabel?: string
+  /** GH399 — exécution : son test. */
+  testId?: string
 }
+
+/** GH399 — ligne d'historique d'une exécution (popup, navigation) : même clé pour les deux. */
+export const runQueryKey = (repoPath: string, runId: string, workspaceDir: string | undefined) =>
+  ['execution-run', repoPath, runId, workspaceDir ?? null] as const
 
 export interface ElementPreviewTarget {
   id: string
@@ -84,7 +96,9 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
     wsLive.rootRepoPath, wsLive.workspaceDir, wsLive.repoLabelOf, wsLive.linksPending,
   ])
   const sv = useSystemView()
-  const { openTab } = useTabs()
+  const qc = useQueryClient()
+  // GH407 — ouverture gardée : un Ctrl+clic depuis une page modifiée passe par « Quitter cette page ? ».
+  const { attemptOpenTab } = useTabs()
   const navigate = useNavigate()
   const { pathname, searchStr } = useRouterState({ select: s => ({ pathname: s.location.pathname, searchStr: s.location.searchStr }) })
 
@@ -103,6 +117,33 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
     })),
   })
   const campaignsKey = campaignQueries.map(q => q.dataUpdatedAt).join('|')
+  // GH389 — versions et validations : liens vers leur page, popup en-tête seul. Clés propres à l'index
+  // (`element-nav`), relues par `useLiveFileSync` une fois une rafale de changements passée : actives
+  // sur toutes les pages, les clés des écrans (`versions`, `validations`) seraient relues à chaque
+  // fichier écrit (des centaines de requêtes à l'amorçage de Suivi).
+  const versionQueries = useQueries({
+    queries: repoPaths.map(repoPath => ({
+      queryKey: ['element-nav', 'versions', repoPath],
+      queryFn: () => api.versions.list(repoPath),
+      enabled: !!repoPath,
+    })),
+  })
+  const validationQueries = useQueries({
+    queries: repoPaths.map(repoPath => ({
+      queryKey: ['element-nav', 'validations', repoPath],
+      queryFn: () => api.validations.versions(repoPath),
+      enabled: !!repoPath,
+    })),
+  })
+  // GH399 — exécutions : ID de chaque repo (rangées dans le repo de leur test), même rythme de relecture.
+  const runQueries = useQueries({
+    queries: repoPaths.map(repoPath => ({
+      queryKey: ['element-nav', 'runs', repoPath],
+      queryFn: () => api.executions.runIds(repoPath),
+      enabled: !!repoPath,
+    })),
+  })
+  const versionsKey = [...versionQueries, ...validationQueries, ...runQueries].map(q => q.dataUpdatedAt).join('|')
 
   const index = useMemo(() => {
     const map = new Map<string, ElementRef>()
@@ -121,9 +162,31 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
         })
       }
     })
+    const add = (ref: ElementRef) => { if (!map.has(ref.id)) map.set(ref.id, ref) }
+    versionQueries.forEach((q, i) => {
+      for (const v of q.data ?? []) {
+        add({ id: v.id, displayId: v.id, title: v.title, status: v.state, category: 'version', objectTypeRef: '', repoPath: repoPaths[i], repoLabel: ws.repoLabelOf(repoPaths[i]) })
+      }
+    })
+    validationQueries.forEach((q, i) => {
+      for (const { validation: val } of q.data ?? []) {
+        if (val) add({ id: val.id, displayId: val.id, title: val.title, status: val.state, category: 'validation', objectTypeRef: '', repoPath: repoPaths[i], repoLabel: ws.repoLabelOf(repoPaths[i]) })
+      }
+    })
+    // GH399 — exécution d'un test connu (test supprimé : non indexée, l'ID reste du texte).
+    runQueries.forEach((q, i) => {
+      for (const r of q.data ?? []) {
+        const test = map.get(r.testCaseId)
+        if (!test || test.category !== 'test') continue
+        add({
+          id: r.id, displayId: r.id, title: test.title, status: '', category: 'run', objectTypeRef: test.objectTypeRef,
+          repoPath: repoPaths[i], repoLabel: ws.repoLabelOf(repoPaths[i]), testId: r.testCaseId,
+        })
+      }
+    })
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ws.objects, campaignsKey, repoPaths, ws.repoLabelOf])
+  }, [ws.objects, campaignsKey, versionsKey, repoPaths, ws.repoLabelOf])
 
   const versionRef = useRef(0)
   const version = useMemo(() => ++versionRef.current, [index]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -174,8 +237,28 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
     if (active instanceof HTMLElement && active !== document.body) active.blur()
 
     let page: { pathname: string; search: Record<string, string> }
-    if (target.category === 'campaign') {
+    if (target.category === 'run') {
+      // GH399 — page de l'exécution selon sa campagne et son entrée (ligne relue, en cache après un survol).
+      // Page quittée entre-temps (autre lien, autre onglet) : la navigation tardive est abandonnée.
+      const from = window.location.href
+      void qc.fetchQuery({
+        queryKey: runQueryKey(target.repoPath, id, ws.workspaceDir),
+        queryFn: () => api.executions.history(target.repoPath, { runId: id, testId: target.testId }, ws.workspaceDir),
+        staleTime: 5_000,
+      }).then(history => {
+        const row = history.rows[0]
+        const runTarget = row ? runPage(row, target.repoPath, currentProjectId) : null
+        if (!runTarget || window.location.href !== from) return
+        // Après un `await` : sous flushSync (GH37, `openTab` de TabsContext).
+        if (opts?.newTab) { flushSync(() => attemptOpenTab(runTarget.pathname, runTarget.search)); return }
+        if (window.location.pathname.endsWith(runTarget.pathname)) return
+        navigate({ to: runTarget.pathname as never, search: runTarget.search as never })
+      }).catch(err => console.error('[ElementNav] exécution', id, err))
+      return
+    } else if (target.category === 'campaign') {
       page = { pathname: `/campaign/${id}`, search: { repoPath: target.repoPath, projectId: currentProjectId } }
+    } else if (target.category === 'version' || target.category === 'validation') {
+      page = { pathname: `/${target.category}/${id}`, search: { projectId: currentProjectId, repoPath: target.repoPath } }
     } else {
       const [nodeId, typeId] = target.objectTypeRef.split('::')
       if (!nodeId || !typeId) return
@@ -183,7 +266,7 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
       page = s.objectPage(target.repoPath, nodeId, typeId, s.viewModeForLink(target.repoPath), id, target.category)
     }
     if (opts?.newTab) {
-      openTab(page.pathname, page.search)
+      attemptOpenTab(page.pathname, page.search)
       return
     }
     // Lien vers la page affichée : re-goto (re-défilement), pas de nouvelle entrée d'historique.
@@ -191,13 +274,14 @@ export function ElementNavProvider({ currentProjectId, children }: { currentProj
     const same = window.location.pathname.endsWith(page.pathname)
       && Object.entries(page.search).every(([k, v]) => (current.get(k) ?? '') === v)
     if (same) {
+      if (target.category === 'version' || target.category === 'validation') return
       const s = svRef.current
       const node = treeFindByObjectId(s.root, id)
       if (node && s.viewMode !== 'edit') s.requestGoto(node.id)
       return
     }
     navigate({ to: page.pathname as never, search: page.search as never })
-  }, [index, closePreview, currentProjectId, openTab, navigate])
+  }, [index, closePreview, currentProjectId, attemptOpenTab, navigate, qc, ws.workspaceDir])
 
   const value = useMemo<ElementNav>(() => ({
     ready: ws.objectsLoaded,

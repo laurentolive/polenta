@@ -49,8 +49,13 @@ export function ParamPicker({ anchor, candidates, canCreate, onPick, onCreate, o
   return (
     <div
       ref={rootRef}
-      className="fixed z-50 w-[340px] bg-surface border border-edge rounded-lg shadow-xl flex flex-col"
+      data-floating-menu className="fixed z-50 w-[340px] bg-surface border border-edge rounded-lg shadow-xl flex flex-col"
       style={{ top, left }}
+      // Un clic dans le sélecteur ne doit ni fermer la popup/le menu qui contient le champ
+      // (fond cliquable, menu contextuel, éditeur de cellule), ni le faire perdre à l'éditeur
+      // avant l'insertion.
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
       onKeyDown={e => {
         if (e.key === 'Escape') { e.preventDefault(); onClose() }
         else if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, shown.length - 1)) }

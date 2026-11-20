@@ -81,7 +81,7 @@ function statementOf(req: Requirement | undefined, typeDef: ObjectTypeDefinition
 function ConstellationPage() {
   const { t } = useTranslation()
   const { projectId } = Route.useSearch()
-  const { openTab } = useTabs()
+  const { attemptOpenTab } = useTabs()
   const ws = useWorkspaceLinks(projectId)
   const repoPath = ws.rootRepoPath
   const { data: schema } = useProjectSchema(repoPath)
@@ -199,7 +199,7 @@ function ConstellationPage() {
 
   function openRequirement(id: string) {
     const target = ws.objectsById.get(id)
-    openTab(`/req/${id}`, { repoPath: target?.repoPath ?? repoPath, projectId })
+    attemptOpenTab(`/req/${id}`, { repoPath: target?.repoPath ?? repoPath, projectId })
   }
 
   function onHover(n: ConstellationNode | null, ev?: ReactMouseEvent) {

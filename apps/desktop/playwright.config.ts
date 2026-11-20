@@ -17,8 +17,9 @@ export default defineConfig({
   testDir: './e2e-web',
   outputDir: './e2e-web/.results',
   globalSetup: './e2e-web/support/global-setup.ts',
-  // Un seul serveur, un seul utilisateur, un projet partagé entre les étapes : exécution en série.
-  workers: 1,
+  // GH387 — une pile par worker (support/stack.ts, démarrée par le global setup) : les fichiers se
+  // répartissent entre les workers, les tests d'un même fichier restent en série dans un worker.
+  workers: Number(process.env['POLENTA_E2E_WORKERS'] ?? 4),
   fullyParallel: false,
   timeout: 120_000,
   expect: { timeout: 15_000 },
@@ -31,35 +32,15 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  webServer: [
-    // GH63 — faux service d'administration (API interne de polenta-admin), avant le serveur web.
-    {
-      command: 'node e2e-web/support/fake-admin-service.mjs',
-      url: `${E2E.adminUrl}/healthz`,
-      reuseExistingServer: false,
-      timeout: 30_000,
-      stdout: 'ignore',
-      stderr: 'pipe',
-      env: { POLENTA_E2E_ADMIN_PORT: String(E2E.adminPort), POLENTA_E2E_ADMIN_TOKEN: E2E.adminToken },
-    },
-    {
-      command: 'node e2e-web/support/run-server.mjs out/web-server/index.cjs',
-      url: `${E2E.baseUrl}/healthz`,
-      reuseExistingServer: false,
-      timeout: 60_000,
-      stdout: 'ignore',
-      stderr: 'pipe',
-      env: E2E.serverEnv,
-    },
-    // GH44 S3 — serveur en mode oidc, branché sur la forge de test (POLENTA_E2E_SSH).
-    ...(OIDC.enabled ? [{
-      command: 'node e2e-web/support/run-server.mjs out/web-server/index.cjs',
-      url: `${OIDC.baseUrl}/healthz`,
-      reuseExistingServer: false,
-      timeout: 60_000,
-      stdout: 'ignore' as const,
-      stderr: 'pipe' as const,
-      env: OIDC.serverEnv,
-    }] : []),
-  ],
+  // GH387 — serveurs web, forges et services d'administration : un jeu par worker (global setup).
+  // Seul le serveur en mode oidc reste unique : son port est l'adresse de retour enregistrée sur la forge.
+  webServer: OIDC.enabled ? [{
+    command: 'node e2e-web/support/run-server.mjs out/web-server/index.cjs',
+    url: `${OIDC.baseUrl}/healthz`,
+    reuseExistingServer: false,
+    timeout: 60_000,
+    stdout: 'ignore' as const,
+    stderr: 'pipe' as const,
+    env: OIDC.serverEnv,
+  }] : [],
 })

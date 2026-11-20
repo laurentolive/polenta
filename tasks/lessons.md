@@ -34,3 +34,20 @@ Format :
 ## 2026-11-18 — Dépassements de délai au hasard traités comme de la lenteur
 - Erreur : GH337 sprint 1, des tests qui passaient seuls en quelques secondes dépassaient 20 s dans la suite complète ; l'agent a conclu à une lenteur, relevé les délais à 60 s et réduit un test. L'humain a jugé le résultat « pas top » : c'étaient des blocages (tuyaux hérités entre threads de vitest sous Windows), visibles dès qu'on regardait ce qui attendait.
 - Règle : avant de relever un délai, établir si le test est lent ou bloqué (journal de ce qui attend, durée seul vs en suite) ; un test sans rapport qui dépasse au hasard est un blocage à expliquer, pas un délai à augmenter.
+## 2026-11-19 — Cache rafraîchi par événement de watcher seul
+- Erreur : GH413, après un merge dans l'intégration, le schéma servi restait l'ancien (libellés, options) jusqu'au redémarrage. Le cache `SchemaService` ne s'invalidait que sur un événement du watcher ; le merge déplace la ref avant de réécrire le répertoire de travail, et d'autres chemins d'écriture (checkout, pull) ne passent pas tous par le même appel.
+- Règle : un cache de fichier doit se valider contre le fichier lui-même (signature taille + date), ou être invalidé après chaque écriture de l'arbre ; ne pas compter sur un événement de watcher seul. Tester le symptôme avec une écriture hors app (sans watcher), pas seulement via le service qui a déclenché le bug.
+## 2026-11-19 — « Supprimer » qui ne fait que retirer une présentation
+- Erreur : GH415, « Supprimer » dans l'arbre retirait seulement l'élément de `.polenta/trees/` ; le fichier de l'objet restait et l'objet redevenait « non classé » au changement de vue. Le message de confirmation disait « sera supprimé ».
+- Règle : pour une action de suppression, vérifier sur disque ce qu'elle retire réellement, et tester le chemin de rechargement (changement de vue, retour, relecture de l'arbre) ; un libellé de confirmation doit décrire l'effet réel.
+## 2026-11-19 — Popup de sélection dans un champ : clic qui ferme le parent
+- Erreur : GH416, le sélecteur de paramètres (`{`) est rendu hors du champ ; un clic souris dans la liste remontait aux popups et menus parents, qui se fermaient avant l'insertion. Corrigé sans reproduction ni test sur le symptôme.
+- Règle : un composant flottant rendu hors de son champ arrête la propagation de `mousedown` et `click`, et on teste le clic souris (pas seulement le clavier) avant de conclure.
+
+## 2026-11-19 — Affirmer qu'un utilisateur ne peut pas atteindre un état sans tracer les transitions automatiques
+- Erreur : GH414, j'ai affirmé qu'un utilisateur sans git ne pouvait pas être sur une branche de travail en retard ; le code (GH173, `settleAutoBranch`) crée `dev-auto` tout seul dès qu'il modifie l'intégration, et ses commits de la vue arbre y vont. Même chose pour un compteur : il lisait les refs locales, donc restait à zéro jusqu'au prochain fetch.
+- Règle : avant d'affirmer qu'un profil d'utilisateur ne peut pas atteindre un état, suivre dans le code les transitions automatiques (bascules de branche, auto-pull, fetch) ; et un compteur lu sur des refs locales doit être rafraîchi par l'événement qui fait le fetch, testé dans la séquence réelle (fetch → compteur), pas sur l'état final seul.
+
+## 2026-11-19 — Résultat « à jour » annoncé sur la ref, pas sur l'arbre de l'utilisateur
+- Erreur : GH414, « Intégration à jour » était affiché quand la ref de l'intégration avait avancé, alors que l'auto-pull avait déplacé les modifs de l'utilisateur sur `dev-auto` : son arbre ne contenait pas le commit de l'équipe.
+- Règle : pour un message de résultat de synchronisation, vérifier l'arbre de travail de l'utilisateur (pas seulement la ref) et le branche courante après l'opération ; un test de l'état « fichier présent dans l'arbre » couvre ce cas.

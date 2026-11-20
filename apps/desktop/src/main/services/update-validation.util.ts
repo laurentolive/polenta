@@ -3,12 +3,14 @@ import type { ObjectCategory, ProjectSchema } from '@polenta/types'
 import { findLocalNodeByRefPrefix, findObjectTypeDef, findOwningNode } from './schema-lookup.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
 import { mergeFields } from './field-merge.util'
-import { fieldValuesError } from './field-values.util'
+import { fieldValuesErrors } from './field-values.util'
 
 /**
  * GH150 — validation d'une entrée `update_requirements` / `update_tests` (MCP) contre l'objet
  * existant et son type. Logique pure, comme `bulk-import-validation.util.ts` : la lecture du schéma
- * et de l'objet reste à l'appelant. Première règle en échec :
+ * et de l'objet reste à l'appelant. Les règles 1-2 arrêtent le contrôle ; les règles 3-5 sont
+ * indépendantes et toutes leurs erreurs sont rapportées (`errors`, GH384), la règle 6 n'est
+ * contrôlée que si elles passent :
  *
  * 1. type de l'objet connu (`'unresolvable'` — ref cross-composant — accepté, sans contrôle de champs) ;
  * 2. nœud propriétaire pas `readonly` ;
@@ -42,7 +44,12 @@ export interface FieldChange {
 
 export type UpdatePlan =
   | { ok: true; changes: Record<string, FieldChange> }
-  | { ok: false; reason: string; field?: string }
+  | { ok: false; reason: string; field?: string; errors: Array<{ reason: string; field?: string }> }
+
+/** Refus : première erreur en `reason` / `field`, toutes dans `errors`. */
+function refused(errors: Array<{ reason: string; field?: string }>): UpdatePlan & { ok: false } {
+  return { ok: false, ...errors[0], errors }
+}
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 
@@ -59,34 +66,38 @@ export function planUpdate(
 ): UpdatePlan {
   const resolved = findObjectTypeDef(schema, existing.objectTypeRef, category)
   if (resolved === null) {
-    return { ok: false, reason: `type de l'objet introuvable dans schema.yaml : "${existing.objectTypeRef}"` }
+    return refused([{ reason: `type de l'objet introuvable dans schema.yaml : "${existing.objectTypeRef}"` }])
   }
   const node = resolved === 'unresolvable'
     ? findLocalNodeByRefPrefix(schema, existing.objectTypeRef)
     : findOwningNode(schema, existing.objectTypeRef, resolved)
-  if (node?.readonly) return { ok: false, reason: `nœud '${node.name}' en lecture seule — écriture refusée` }
+  if (node?.readonly) return refused([{ reason: `nœud '${node.name}' en lecture seule — écriture refusée` }])
 
   if (resolved !== 'unresolvable') {
+    const errors: Array<{ reason: string; field?: string }> = []
     // Même règle que `isUnknownStatus` de GH149 (#160), recopiée ici tant que #160 n'est pas mergée.
     if (entry.status !== undefined && resolved.statuses?.length && !resolved.statuses.some(s => s.name === entry.status)) {
-      return {
-        ok: false, field: 'status',
+      errors.push({
+        field: 'status',
         reason: `statut inconnu : "${entry.status}" (statuts du type : ${resolved.statuses!.map(s => s.name).join(', ')})`,
-      }
+      })
     }
-    const valueError = fieldValuesError(schema, resolved, existing.objectTypeRef, entry.fields)
-    if (valueError) return { ok: false, ...valueError }
+    const valueErrors = fieldValuesErrors(schema, resolved, existing.objectTypeRef, entry.fields)
+    errors.push(...valueErrors)
     for (const name of Object.keys(entry.fields ?? {})) {
-      const def = resolved.fields.find(f => f.name === name)!
+      const def = resolved.fields.find(f => f.name === name)
+      // Champ non déclaré ou valeur mal formée : déjà signalé.
+      if (!def || valueErrors.some(e => e.field === name)) continue
       const value = entry.fields![name]
-      if (def.required && !isFilled(value)) return { ok: false, field: name, reason: `champ requis vidé : ${name}` }
-      if (def.validator === 'EARS' && value !== null && !isEarsCompliant(value)) {
-        return {
-          ok: false, field: name,
+      if (def.required && !isFilled(value)) errors.push({ field: name, reason: `champ requis vidé : ${name}` })
+      else if (def.validator === 'EARS' && value !== null && !isEarsCompliant(value)) {
+        errors.push({
+          field: name,
           reason: `le champ '${name}' ne respecte pas la syntaxe EARS (WHEN/WHILE/WHERE/IF...THEN/THE ... SHALL ...)`,
-        }
+        })
       }
     }
+    if (errors.length > 0) return refused(errors)
   }
 
   const changes: Record<string, FieldChange> = {}
@@ -98,7 +109,7 @@ export function planUpdate(
   let merged = mergeFields(existing.fields, entry.fields)
   if (resolved !== 'unresolvable') {
     const prepared = prepareFieldsWrite(resolved, existing, { status: entry.status ?? existing.status, fields: merged })
-    if (!prepared.ok) return { ok: false, field: prepared.field, reason: prepared.reason }
+    if (!prepared.ok) return refused([{ field: prepared.field, reason: prepared.reason }])
     merged = prepared.fields
   }
   for (const name of Object.keys(entry.fields ?? {})) {

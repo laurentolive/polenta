@@ -140,6 +140,13 @@ export function MergeResolvePage({ id, projectId, selected, onSelect: setSelecte
   async function abandon() {
     if (!session) return
     await api.mergeResolution.abandon(session.id)
+    // GH414 — « Rafraîchir » a posé un commit WIP pour pouvoir fusionner : abandonner le défait,
+    // les modifs en cours reviennent dans l'arbre (non indexées).
+    if (session.origin.kind === 'merge' && session.origin.wip) {
+      await api.sync.undoRefreshWip(session.repoPath, session.origin.wip)
+      void qc.invalidateQueries({ queryKey: ['sync:status'] })
+      void qc.invalidateQueries({ queryKey: ['sync:refresh-state'] })
+    }
     // GH234 — forgotten, not cached as `null`: reopening the same merge gets the same id back.
     qc.removeQueries({ queryKey: ['merge-resolution', session.id] })
     void qc.invalidateQueries({ queryKey: ['merge-resolution', 'list'] })
@@ -164,7 +171,7 @@ export function MergeResolvePage({ id, projectId, selected, onSelect: setSelecte
             {t('mergeResolve.abandon')}
           </button>
           {confirmAbandon && (
-            <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-surface border border-edge rounded-lg shadow-xl p-4">
+            <div data-floating-menu className="absolute right-0 top-full mt-1 z-50 w-72 bg-surface border border-edge rounded-lg shadow-xl p-4">
               <p className="text-xs text-ink-2 mb-3">{t('mergeResolve.abandonConfirm', { count: mergedCount })}</p>
               <div className="flex justify-end gap-2">
                 <button type="button" className="btn-secondary-sm" onClick={() => setConfirmAbandon(false)}>{t('common.cancel')}</button>

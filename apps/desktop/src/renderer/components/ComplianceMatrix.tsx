@@ -7,13 +7,20 @@
  *   Cells   = covered / missing / validated / na (greyed-out)
  */
 
-import React from 'react'
+import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, XCircle, AlertCircle, Minus } from 'lucide-react'
 import type { ComplianceMatrix as ComplianceMatrixData, ComplianceCellStatus } from '@polenta/types'
+import { ElementLink } from './element/ElementLink'
+import { DataGrid } from './grid/DataGrid'
+import type { GridColumn } from './grid/gridTypes'
+import type { GridPrefsSource } from './grid/useGridPrefs'
+import { useGridScrollKey } from './grid/useGridScrollKey'
 
 interface ComplianceMatrixProps {
   matrix: ComplianceMatrixData
+  /** Repo des préférences de la grille et de l'export ; absent : préférences locales, pas d'export. */
+  repoPath?: string
 }
 
 // ── Cell rendering ────────────────────────────────────────────────────────────
@@ -73,114 +80,103 @@ function Legend() {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ComplianceMatrixComponent({ matrix }: ComplianceMatrixProps) {
+type Row = ComplianceMatrixData['requirements'][number] & { group: string }
+const COMMON = 'commun'
+const rowId = (r: Row) => r.id
+const groupOf = (r: Row) => r.group
+const compKey = (name: string) => `comp::${name}`
+
+/**
+ * GH389 §4 — matrice sur la grille commune (`DataGrid`) : filtre par colonne, largeurs, gel (en-tête
+ * et première colonne par défaut), clavier, liens d'élément, export ; ni 👁 ni réordonnancement ;
+ * lignes de groupe par rôle. Préférences `grid::compliance` du repo affiché (`repoPath`).
+ */
+export function ComplianceMatrixComponent({ matrix, repoPath }: ComplianceMatrixProps) {
   const { t } = useTranslation()
+
+  // Exigences groupées par rôle(s), groupes dans l'ordre de première apparition.
+  const rows = useMemo<Row[]>(() => {
+    const groups = new Map<string, Row[]>()
+    for (const req of matrix.requirements) {
+      const group = req.roles.length > 0 ? req.roles.join(', ') : COMMON
+      if (!groups.has(group)) groups.set(group, [])
+      groups.get(group)!.push({ ...req, group })
+    }
+    return [...groups.values()].flat()
+  }, [matrix.requirements])
+
+  const columns = useMemo<GridColumn<Row>[]>(() => {
+    const cellMap = new Map<string, ComplianceCellStatus>()
+    for (const cell of matrix.cells) cellMap.set(`${cell.requirementId}|${cell.componentName}`, cell.status)
+    const statusOf = (reqId: string, comp: string): ComplianceCellStatus => cellMap.get(`${reqId}|${comp}`) ?? 'na'
+    const label = (status: ComplianceCellStatus) => (status === 'na' ? '—' : t(`complianceMatrix.${status}`))
+    return [
+      {
+        key: 'requirement', label: t('complianceMatrix.requirement'), locked: true,
+        getText: r => `${r.id} ${r.title}`,
+        render: r => (
+          <>
+            <ElementLink id={r.id} className="font-mono text-xs text-prim" />
+            <div className="text-ink">{r.title}</div>
+          </>
+        ),
+        elementId: r => r.id,
+      },
+      { key: 'roles', label: t('complianceMatrix.roles'), getText: r => (r.roles.length > 0 ? r.roles.join(', ') : '—') },
+      ...matrix.components.map((comp): GridColumn<Row> => ({
+        key: compKey(comp.name),
+        label: comp.roles.length > 0 ? `${comp.name} (${comp.roles.join(', ')})` : comp.name,
+        getText: r => label(statusOf(r.id, comp.name)),
+        render: r => {
+          const status = statusOf(r.id, comp.name)
+          return (
+            <span className="flex flex-col items-center gap-0.5">
+              <CellIcon status={status} />
+              <CellLabel status={status} />
+            </span>
+          )
+        },
+      })),
+    ]
+  }, [matrix, t])
+  const keys = useMemo(() => columns.map(c => c.key), [columns])
+  // Colonnes = composants de l'interface : toutes affichées, dans l'ordre du calcul.
+  const migrateColumns = useCallback(() => keys, [keys])
+  const prefs = useMemo<GridPrefsSource>(() => (repoPath
+    ? { repoPath, prefKey: 'grid::compliance', view: 'columns', defaults: keys, defaultFreeze: 1 }
+    : { local: true, defaults: keys, defaultFreeze: 1 }), [repoPath, keys])
+  const renderGroup = useCallback(
+    (group: string) => (group === COMMON ? t('complianceMatrix.commonRequirements') : t('complianceMatrix.roleGroup', { role: group })),
+    [t],
+  )
+  const scrollKey = useGridScrollKey(`compliance-${matrix.interfaceName}`)
+
   if (matrix.requirements.length === 0) {
-    return (
-      <p className="text-sm text-ink-3 italic">
-        {t('complianceMatrix.noApprovedRequirement')}
-      </p>
-    )
+    return <p className="text-sm text-ink-3 italic">{t('complianceMatrix.noApprovedRequirement')}</p>
   }
-
   if (matrix.components.length === 0) {
-    return (
-      <p className="text-sm text-ink-3 italic">
-        {t('complianceMatrix.noImplementingComponent')}
-      </p>
-    )
-  }
-
-  // Group requirements by their first role (or 'commun' if no roles)
-  const roleGroups = new Map<string, typeof matrix.requirements>()
-  for (const req of matrix.requirements) {
-    const groupKey = req.roles.length > 0 ? req.roles.join(', ') : 'commun'
-    if (!roleGroups.has(groupKey)) roleGroups.set(groupKey, [])
-    roleGroups.get(groupKey)!.push(req)
-  }
-
-  // Build cell lookup: requirementId → componentName → ComplianceCellStatus
-  const cellMap = new Map<string, Map<string, { status: ComplianceCellStatus; linkId?: string }>>()
-  for (const cell of matrix.cells) {
-    if (!cellMap.has(cell.requirementId)) cellMap.set(cell.requirementId, new Map())
-    cellMap.get(cell.requirementId)!.set(cell.componentName, {
-      status: cell.status,
-      linkId: cell.linkId,
-    })
-  }
-
-  const getCell = (reqId: string, compName: string): ComplianceCellStatus => {
-    return cellMap.get(reqId)?.get(compName)?.status ?? 'na'
+    return <p className="text-sm text-ink-3 italic">{t('complianceMatrix.noImplementingComponent')}</p>
   }
 
   return (
     <div className="space-y-3">
       <Legend />
-
-      <div className="overflow-x-auto rounded-xl border border-edge">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-surface border-b border-edge">
-              <th className="text-left py-2 px-3 text-xs text-ink-3 font-medium min-w-[200px]">
-                {t('complianceMatrix.requirement')}
-              </th>
-              <th className="text-left py-2 px-3 text-xs text-ink-3 font-medium w-24">
-                {t('complianceMatrix.roles')}
-              </th>
-              {matrix.components.map(comp => (
-                <th
-                  key={comp.name}
-                  className="py-2 px-3 text-xs text-ink-3 font-medium text-center min-w-[120px]"
-                >
-                  <div className="font-medium text-ink">{comp.name}</div>
-                  {comp.roles.length > 0 && (
-                    <div className="text-ink-3 font-normal">{comp.roles.join(', ')}</div>
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from(roleGroups.entries()).map(([groupKey, reqs]) => (
-              <React.Fragment key={groupKey}>
-                {/* Role group header */}
-                <tr className="bg-surface/60">
-                  <td
-                    colSpan={2 + matrix.components.length}
-                    className="py-1.5 px-3 text-xs font-semibold text-ink-2 uppercase tracking-wide border-b border-edge/50"
-                  >
-                    {groupKey === 'commun' ? t('complianceMatrix.commonRequirements') : t('complianceMatrix.roleGroup', { role: groupKey })}
-                  </td>
-                </tr>
-                {reqs.map(req => (
-                  <tr key={req.id} className="border-b border-edge/40 hover:bg-hover transition-colors">
-                    <td className="py-2 px-3 text-ink">
-                      <div className="font-mono text-xs text-ink-3 mb-0.5">{req.id}</div>
-                      <div className="text-sm line-clamp-2">{req.title}</div>
-                    </td>
-                    <td className="py-2 px-3 text-xs text-ink-3">
-                      {req.roles.length > 0 ? req.roles.join(', ') : '—'}
-                    </td>
-                    {matrix.components.map(comp => {
-                      const status = getCell(req.id, comp.name)
-                      return (
-                        <td
-                          key={comp.name}
-                          className={`py-2 px-3 text-center ${status === 'na' ? 'bg-surface/30' : ''}`}
-                        >
-                          <div className="flex flex-col items-center gap-0.5">
-                            <CellIcon status={status} />
-                            <CellLabel status={status} />
-                          </div>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
+      <div className="flex flex-col max-h-[70vh] min-h-0" data-testid="compliance-matrix">
+        <DataGrid
+          gridId="compliance"
+          title={t('compliancePage.tabTitle', { name: matrix.interfaceName })}
+          rows={rows}
+          getRowId={rowId}
+          columns={columns}
+          prefs={prefs}
+          migrateColumns={migrateColumns}
+          groupOf={groupOf}
+          renderGroup={renderGroup}
+          noColumnPicker
+          noReorder
+          exportRepoPath={repoPath || undefined}
+          scrollMemoryKey={scrollKey}
+        />
       </div>
     </div>
   )

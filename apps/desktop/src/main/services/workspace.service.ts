@@ -313,8 +313,12 @@ export class WorkspaceService {
   }
 
   /** Clear the "currently open" pointer (closing a project) without touching recents history. */
-  async clearLastOpened(): Promise<void> {
+  /** GH343 — avec `workspaceDir` : n'efface le pointeur que s'il désigne ce projet (fermer un projet
+   *  dans une fenêtre ne touche pas au dernier projet ouvert d'une autre). */
+  async clearLastOpened(workspaceDir?: string): Promise<void> {
     const store = await this.readRecents()
+    if (!store.lastOpenedDir) return
+    if (workspaceDir !== undefined && path.resolve(store.lastOpenedDir) !== path.resolve(workspaceDir)) return
     store.lastOpenedDir = undefined
     await this.writeRecents(store)
   }

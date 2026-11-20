@@ -38,6 +38,13 @@ child.on('exit', (code, signal) => {
     `[e2e] serveur web (pid ${child.pid}) arrêté après ${Math.round((Date.now() - started) / 1000)} s : `
     + `${signal ? `signal ${signal}` : `code ${code}`} ; mémoire : ${memory}\n`,
   )
+  // GH396 — 0xC0000409 sans message : arrêt natif de Node lui-même (libuv sous Windows), pas du serveur.
+  if (code === 0xC0000409) {
+    process.stderr.write(
+      `[e2e] 0xC0000409 : arrêt natif de Node ${process.version} (libuv ${process.versions.uv}), `
+      + 'connu sous Windows avec Node 24.15 (libuv 1.51) — voir specs/GH396.md\n',
+    )
+  }
   process.exit(code ?? 1)
 })
 child.on('error', (err) => {

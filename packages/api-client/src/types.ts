@@ -1,7 +1,7 @@
 import type {
-  AdoptRepoRequest, ReadmeState, ReadmeSyncOutcome, RepoAccessLevel, RepoSettings, RepoVisibility, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, ForgeMemberSuggestion, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  AdoptRepoRequest, ReadmeState, ReadmeSyncOutcome, RepoAccessLevel, RepoSettings, RepoVisibility, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, ForgeMemberSuggestion, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, WidgetParamValues, QueryParameterDef, QueryColumnDef,
-  ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
+  ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget, RunRef,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
   VersionReleasePreview, VersionSummary, VersionAnalysis, VersionTestsToRun, ImpactAnalysisStatus,
@@ -364,6 +364,24 @@ export type AutoBranchOutcome =
   | { action: 'none' }
   | { action: 'switched' | 'returned'; branch: string }
 
+// GH414 — mirrors SyncService's RefreshState / RefreshOutcome.
+export interface RefreshState {
+  branch: string
+  integration: string
+  onIntegration: boolean
+  /** Integration commits absent from the current branch (as of the last fetch). */
+  behind: number
+  dirty: boolean
+  integrationState: IntegrationRemoteStateKind
+}
+export type RefreshOutcome =
+  | { outcome: 'offline' }
+  | { outcome: 'access-revoked' }
+  | { outcome: 'integration-updated' }
+  | { outcome: 'up-to-date' }
+  | { outcome: 'merged'; sha: string; pulled: number; wip?: string }
+  | { outcome: 'conflicts'; conflicts: string[]; wip?: string; leftRef: string; rightRef: string }
+
 export interface DeviceFlowSession {
   deviceCode: string
   userCode: string
@@ -401,6 +419,21 @@ export interface FieldVisibilityPref {
   picker?: string[]
   /** GH197 — colonnes de la grille d'historique des exécutions. Absent ⇒ défaut (verdict, date…). */
   executions?: string[]
+  /** GH389 — largeurs (px) et colonnes figées de la grille d'historique des exécutions. */
+  colWidthsExecutions?: Record<string, number>
+  freezeColCountExecutions?: number
+  /** GH400 — vue Exécutions (type de test affiché) : colonnes, largeurs et gel du Tableau. */
+  runExcel?: string[]
+  colWidthsRunExcel?: Record<string, number>
+  freezeColCountRunExcel?: number
+  /** GH400 — vue Exécutions : champs des fiches du Document (`steps` : tableau des étapes). */
+  runWord?: string[]
+  /** GH400 — champs de la popup d'aperçu d'une exécution d'un test du type (#399). Absent ⇒ aucun. */
+  runPopup?: string[]
+  /** GH389 — grille sans type (`prefKey` = `grid::<gridId>`) : colonnes visibles ordonnées, largeurs, gel. */
+  columns?: string[]
+  colWidthsColumns?: Record<string, number>
+  freezeColCountColumns?: number
   /** GH176 — titres de dossiers affichés dans le sélecteur de tests. Absent ⇒ ceux de la vue Tableau. */
   showFoldersPicker?: boolean
   /** GH229 — champs de la popup d'aperçu (survol d'un lien vers un objet du type). Absent ⇒ aucun. */
@@ -473,6 +506,16 @@ export interface ApiClient {
     /** GH342 — pull automatique une fois par projet : cette fenêtre le fait-elle (desktop : la plus
      *  ancienne ouverte sur le projet ; web : toujours) ? */
     isAutoPullOwner(): Promise<boolean>
+    /** GH343 — une autre fenêtre affiche-t-elle ce projet (desktop) ? Web : toujours faux. */
+    projectShownElsewhere(projectId: string): Promise<boolean>
+    /** GH343 — desktop : glisser un onglet hors de la fenêtre / vers une autre fenêtre. Le contenu
+     *  (`TabDragPayload`, `apps/desktop/src/shared/tab-drag.ts`) passe par le main ; seul l'id voyage
+     *  dans le glisser HTML5. Fin du geste : `app:tab-moved` (id) à la source quand l'onglet est pris. */
+    startTabDrag(id: string, payload: unknown): Promise<void>
+    tabDragReady(id: string): Promise<void>
+    tabDragInfo(): Promise<{ accept: boolean; sameWindow: boolean } | null>
+    takeTabDrag(id: string): Promise<unknown>
+    endTabDrag(id: string, dropped: boolean): Promise<void>
   }
   /** GH26 — mise à jour automatique ; les changements d'état arrivent par l'événement
    *  'update:state-changed' (window.polenta.on). */
@@ -576,7 +619,8 @@ export interface ApiClient {
     listRecents(): Promise<ProjectRecent[]>
     markRecent(workspaceDir: string): Promise<void>
     getLastOpened(): Promise<ProjectRecent | null>
-    clearLastOpened(): Promise<void>
+    /** GH343 — avec `workspaceDir` : n'efface le dernier projet ouvert que s'il désigne ce projet. */
+    clearLastOpened(workspaceDir?: string): Promise<void>
     resolve(workspaceDir: string): Promise<ProjectInfo>
     openProject(dir: string): Promise<WorkspaceOpenResult>
     createNew(containerDir: string, name: string): Promise<WorkspaceOpenResult>
@@ -618,9 +662,10 @@ export interface ApiClient {
     /** GH45 — connexion identifiant + mot de passe (+ 2FA) : la forge crée un jeton, seul conservé. */
     loginWithPassword(serverUrl: string, login: string, password: string, otp?: string): Promise<PasswordLoginResult>
     /** GH45 — compte courant, sans réseau ; null si aucun compte connecté. */
-    currentAccount(): Promise<ForgeAccount | null>
-    /** GH45 — desktop : déconnexion du compte courant (jetons locaux supprimés). */
-    logout(): Promise<void>
+    currentAccount(remoteUrl?: string): Promise<ForgeAccount | null>
+    /** GH45 — desktop : déconnexion du compte courant (jetons locaux supprimés) ; GH343 : ou du
+     *  compte désigné par sa clé `<hôte>:<login>`. */
+    logout(key?: string): Promise<void>
     /** GH45 — desktop : ouvre la page de changement de mot de passe annoncée par la forge à la dernière connexion. */
     openPasswordChange(): Promise<void>
   }
@@ -631,6 +676,8 @@ export interface ApiClient {
   /** GH197 — historique des exécutions d'un test ou d'une exigence. */
   executions: {
     history(repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string): Promise<ExecutionHistory>
+    /** GH399 — ID des exécutions du repo (index des liens). */
+    runIds(repoPath: string): Promise<RunRef[]>
   }
   drawio: {
     /**
@@ -694,6 +741,12 @@ export interface ApiClient {
     /** GH173: local only — moves pending changes on the integration onto `dev-auto`, or goes back
      *  to the integration from an idle `dev-auto` (and deletes it). */
     settleAutoBranch(repoPath: string, integrationBranch: string): Promise<AutoBranchOutcome>
+    /** GH414: local only — the « Rafraîchir » button's counter (commits behind, dirty, integration state). */
+    refreshState(repoPath: string, integrationBranch: string): Promise<RefreshState>
+    /** GH414: « Rafraîchir » — fetch, then merge the integration into the work branch (WIP commit if dirty). */
+    refreshBranch(repoPath: string, integrationBranch: string): Promise<RefreshOutcome>
+    /** GH414: « Abandonner » after a conflict — undoes the WIP commit, if it is still the branch head. */
+    undoRefreshWip(repoPath: string, wip: string): Promise<{ undone: boolean }>
     /** GH39: true when `branch` has no commit absent from `into`. */
     isMergedInto(repoPath: string, branch: string, into: string): Promise<boolean>
     log(repoPath: string, limit?: number): Promise<CommitEntry[]>

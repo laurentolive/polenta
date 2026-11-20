@@ -58,6 +58,12 @@ export function createIpcClient(
       setWindowState: (patch) => invoke('app:window-state', patch),
       closeWindow: (action) => invoke('app:close-window', action),
       isAutoPullOwner: () => invoke('app:auto-pull-owner') as Promise<boolean>,
+      projectShownElsewhere: (projectId) => invoke('app:project-shown-elsewhere', projectId) as Promise<boolean>,
+      startTabDrag: (id, payload) => invoke('app:tab-drag-start', id, payload),
+      tabDragReady: (id) => invoke('app:tab-drag-ready', id),
+      tabDragInfo: () => invoke('app:tab-drag-info') as Promise<{ accept: boolean; sameWindow: boolean } | null>,
+      takeTabDrag: (id) => invoke('app:tab-drag-take', id),
+      endTabDrag: (id, dropped) => invoke('app:tab-drag-end', id, dropped),
     },
     update: {
       getState: () => invoke('update:get-state'),
@@ -123,7 +129,7 @@ export function createIpcClient(
       listRecents: () => invoke('workspace:list-recents'),
       markRecent: (workspaceDir) => invoke('workspace:mark-recent', workspaceDir),
       getLastOpened: () => invoke('workspace:get-last-opened'),
-      clearLastOpened: () => invoke('workspace:clear-last-opened'),
+      clearLastOpened: (workspaceDir) => invoke('workspace:clear-last-opened', workspaceDir),
       resolve: (workspaceDir) => invoke('workspace:resolve', workspaceDir),
       openProject: (dir) => invoke('workspace:open-project', dir),
       createNew: (containerDir, name) => invoke('workspace:create-new', containerDir, name),
@@ -161,8 +167,8 @@ export function createIpcClient(
       pollDeviceFlow: (r, d) => invoke('auth:device-flow-poll', r, d),
       detectForge: (serverUrl) => invoke('auth:detect-forge', serverUrl),
       loginWithPassword: (serverUrl, login, password, otp) => invoke('auth:login-password', serverUrl, login, password, otp),
-      currentAccount: () => invoke('auth:current-account'),
-      logout: () => invoke('auth:logout'),
+      currentAccount: (remoteUrl) => invoke('auth:current-account', remoteUrl),
+      logout: (key) => invoke('auth:logout', key),
       openPasswordChange: () => invoke('auth:open-password-change'),
     },
     conformity: {
@@ -182,6 +188,9 @@ export function createIpcClient(
       resyncIntegration: (p, branch) => invoke('sync:resync-integration', p, branch),
       autoSync: (p, branch) => invoke('sync:auto-sync', p, branch),
       settleAutoBranch: (p, branch) => invoke('sync:settle-auto-branch', p, branch),
+      refreshState: (p, branch) => invoke('sync:refresh-state', p, branch),
+      refreshBranch: (p, branch) => invoke('sync:refresh-branch', p, branch),
+      undoRefreshWip: (p, wip) => invoke('sync:undo-refresh-wip', p, wip),
       isMergedInto: (p, branch, into) => invoke('sync:is-merged', p, branch, into),
       log: (p, limit) => invoke('sync:log', p, limit),
       checkoutCommit: (p, sha) => invoke('sync:checkout-commit', p, sha),
@@ -381,6 +390,7 @@ export function createIpcClient(
     // GH197 — historique des exécutions
     executions: {
       history: (p, target, workspaceDir) => invoke('executions:history', p, target, workspaceDir ?? null),
+      runIds: p => invoke('executions:run-ids', p),
     },
     drawio: {
       pickFile: (repoPath) => invoke('dialog:pick-drawio-file', repoPath),

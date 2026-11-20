@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSelectedRepo } from '../../contexts/SelectedRepoContext'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
@@ -8,6 +8,10 @@ import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
 import { CLOSED_STATUSES, ImpactTreeView } from '../impact/ImpactTrees'
 import { RequirementEditModal } from '../impact/RequirementEditModal'
 import { TestCaseEditModal } from '../impact/TestCaseEditModal'
+import { ElementLink } from '../element/ElementLink'
+import { DataGrid } from '../grid/DataGrid'
+import type { GridColumn } from '../grid/gridTypes'
+import { useGridScrollKey } from '../grid/useGridScrollKey'
 import { useSectionOpen } from './useVersions'
 
 /** Au-delà, les racines sont repliées à l'ouverture. */
@@ -16,13 +20,15 @@ const EXPANDED_ROOTS_MAX = 5
 /**
  * GH245 §1 — analyse d'impact d'une version : racines et leurs arbres (statut éditable sur les nœuds),
  * puis les statuts saisis sur des éléments qui ne sont plus atteints. Une analyse figée (version
- * released) n'a plus d'arbres : ses lignes s'affichent en tableau, en lecture seule.
+ * released) n'a plus d'arbres : ses lignes s'affichent en tableau (GH389 §4 : `DataGrid`), en lecture
+ * seule ; les statuts hors arbres d'une analyse en cours, dans le même tableau, restent modifiables.
  */
 export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetImpact, repoPath, repoOfComponent, editable }: {
   analysis: VersionAnalysis | undefined
   isFetching: boolean
   onRefresh: () => void
-  onSetImpact: (id: string, status: ImpactAnalysisStatus, comment: string | null) => void
+  /** Écriture d'un statut d'impact ; attendue avant la suivante (même fichier de version). */
+  onSetImpact: (id: string, status: ImpactAnalysisStatus, comment: string | null) => Promise<unknown>
   repoPath: string
   /** Repo de chaque composant (nom de montage) : une racine peut appartenir à un composant. */
   repoOfComponent: Map<string, string>
@@ -37,13 +43,14 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
   const rows = analysis?.rows ?? []
   const openCount = rows.filter(r => !CLOSED_STATUSES.has(r.status)).length
   const when = analysis?.computedAt ? new Date(analysis.computedAt).toLocaleString(i18n.language) : ''
-  const titleOf = new Map<string, string>([
+  // Mémoïsés : colonnes et lignes stables pour la grille (cellules mémoïsées).
+  const titleOf = useMemo(() => new Map<string, string>([
     ...(analysis?.roots ?? []).map(r => [r.elementId, r.title] as [string, string]),
-    ...rows.map(r => [r.id, r.title ?? ''] as [string, string]),
-  ])
+    ...(analysis?.rows ?? []).map(r => [r.id, r.title ?? ''] as [string, string]),
+  ]), [analysis])
   const readOnly = !editable || !!analysis?.frozen
   // Statut saisi sur un élément que les arbres n'atteignent plus : seule trace hors arbres.
-  const unreached = rows.filter(r => !r.reached)
+  const unreached = useMemo(() => (analysis?.rows ?? []).filter(r => !r.reached), [analysis])
 
   return (
     <section className="flex flex-col gap-2" data-testid="version-analysis">
@@ -77,24 +84,7 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
               <>
                 {analysis.frozen && (rows.length === 0
                   ? <p className="text-xs text-ink-3 italic">{t('versions.analysis.noImpact')}</p>
-                  : (
-                    <table className="w-full text-xs border-collapse" data-testid="version-impact-rows">
-                      <thead>
-                        <tr className="text-left text-ink-3 border-b border-edge">
-                          <th className="py-1 pr-3 font-medium">{t('versions.columns.id')}</th>
-                          <th className="py-1 pr-3 font-medium">{t('versions.columns.label')}</th>
-                          <th className="py-1 pr-3 font-medium">{t('versions.analysis.status')}</th>
-                          <th className="py-1 pr-3 font-medium">{t('versions.analysis.comment')}</th>
-                          <th className="py-1 font-medium">{t('versions.analysis.source')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map(r => (
-                          <ImpactRow key={r.id} row={r} readOnly={readOnly} titleOf={titleOf} onOpen={openElement} onSetImpact={onSetImpact} />
-                        ))}
-                      </tbody>
-                    </table>
-                  ))}
+                  : <ImpactRowsGrid rows={rows} readOnly={readOnly} titleOf={titleOf} repoPath={repoPath} title={t('versions.analysis.title')} onSetImpact={onSetImpact} />)}
                 {!analysis.frozen && (
                   <div className="border border-edge-subtle rounded py-0.5" data-testid="version-impact-roots">
                     {analysis.roots.map(root => (
@@ -106,19 +96,13 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
                         defaultExpanded={analysis.roots.length <= EXPANDED_ROOTS_MAX}
                         readOnly={readOnly}
                         onOpen={openElement}
-                        onUpdateStatus={(node, status, comment) => onSetImpact(node.elementId, status, comment)}
+                        onUpdateStatus={(node, status, comment) => void onSetImpact(node.elementId, status, comment)}
                       />
                     ))}
                   </div>
                 )}
                 {!analysis.frozen && unreached.length > 0 && (
-                  <table className="w-full text-xs border-collapse" data-testid="version-impact-rows">
-                    <tbody>
-                      {unreached.map(r => (
-                        <ImpactRow key={r.id} row={r} readOnly={readOnly} titleOf={titleOf} onOpen={openElement} onSetImpact={onSetImpact} />
-                      ))}
-                    </tbody>
-                  </table>
+                  <ImpactRowsGrid rows={unreached} readOnly={readOnly} titleOf={titleOf} repoPath={repoPath} title={t('versions.analysis.title')} onSetImpact={onSetImpact} />
                 )}
               </>
             )
@@ -130,55 +114,85 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
   )
 }
 
-function ImpactRow({ row, readOnly, titleOf, onOpen, onSetImpact }: {
-  row: VersionImpactRow
+const IMPACT_DEFAULTS = ['id', 'label', 'status', 'comment', 'source']
+const impactRowId = (r: VersionImpactRow) => r.id
+const impactRowClass = (r: VersionImpactRow) => (r.reached ? undefined : 'opacity-60')
+const pathText = (src: VersionImpactRow['sources'][number]) => [src.rootId, ...src.path.map(p => p.id)].join(' → ')
+
+/**
+ * Lignes de l'analyse en tableau (GH389 §4) : ID en lien d'élément, statut (liste) et commentaire
+ * éditables dans la cellule quand l'analyse l'est — en lot sur la sélection, comme la Vue Excel.
+ */
+function ImpactRowsGrid({ rows, readOnly, titleOf, repoPath, title, onSetImpact }: {
+  rows: VersionImpactRow[]
   readOnly: boolean
   titleOf: Map<string, string>
-  onOpen: (type: 'requirement' | 'test_case', id: string) => void
-  onSetImpact: (id: string, status: ImpactAnalysisStatus, comment: string | null) => void
+  repoPath: string
+  title: string
+  onSetImpact: (id: string, status: ImpactAnalysisStatus, comment: string | null) => Promise<unknown>
 }) {
   const { t } = useTranslation()
-  const [comment, setComment] = useState(row.comment ?? '')
-  useEffect(() => { setComment(row.comment ?? '') }, [row.comment])
-  const [first, ...others] = row.sources
-  const pathText = (s: typeof first) => [s.rootId, ...s.path.map(p => p.id)].join(' → ')
-  return (
-    <tr className={`border-b border-edge-subtle ${row.reached ? '' : 'opacity-60'}`} data-testid={`version-impact-${row.id}`}>
-      <td className="py-1 pr-3">
-        {row.elementType
-          ? <button type="button" onClick={() => onOpen(row.elementType!, row.id)} className="font-mono text-prim hover:underline">{row.id}</button>
-          : <span className="font-mono text-ink-3">{row.id}</span>}
-      </td>
-      <td className="py-1 pr-3 text-ink">
-        {row.title}
-        {!row.reached && <span className="ml-2 text-[10px] text-ink-3 italic">{t('versions.analysis.notReached')}</span>}
-      </td>
-      <td className="py-1 pr-3">
-        {readOnly ? <span className={CLOSED_STATUSES.has(row.status) ? 'text-status-success' : 'text-ink-2'}>{t(STATUS_LABEL_KEY[row.status])}</span> : (
-          <select value={row.status} onChange={e => onSetImpact(row.id, e.target.value as ImpactAnalysisStatus, comment.trim() || null)} className="input-field text-xs py-0.5" data-testid={`version-impact-status-${row.id}`}>
-            {IMPACT_ANALYSIS_STATUSES.map(s => <option key={s} value={s}>{t(STATUS_LABEL_KEY[s])}</option>)}
-          </select>
-        )}
-      </td>
-      <td className="py-1 pr-3">
-        {readOnly ? <span className="text-ink-2">{row.comment}</span> : (
-          <input
-            value={comment}
-            onChange={e => setComment(e.target.value)}
-            onBlur={() => { if ((row.comment ?? '') !== comment.trim()) onSetImpact(row.id, row.status, comment.trim() || null) }}
-            placeholder={t('impactAnalysisPage.commentPlaceholder')}
-            className="input-field text-xs py-0.5 w-full"
-          />
-        )}
-      </td>
-      <td className="py-1 text-ink-3 font-mono text-[11px]">
-        {first && (
-          <span title={row.sources.map(s => [s.rootId, ...s.path.map(p => p.id)].map(id => `${id} ${titleOf.get(id) ?? ''}`.trim()).join(' → ')).join('\n')}>
+  const scrollKey = useGridScrollKey('version-analysis')
+  const columns = useMemo<GridColumn<VersionImpactRow>[]>(() => [
+    {
+      key: 'id', label: t('versions.columns.id'), locked: true, getText: r => r.id,
+      render: r => (r.elementType ? <ElementLink id={r.id} className="font-mono text-prim" /> : <span className="font-mono text-ink-3">{r.id}</span>),
+      elementId: r => (r.elementType ? r.id : undefined),
+    },
+    {
+      key: 'label', label: t('versions.columns.label'),
+      getText: r => [r.title ?? '', r.reached ? '' : t('versions.analysis.notReached')].filter(Boolean).join(' '),
+      render: r => <>{r.title}{!r.reached && <span className="ml-2 text-[10px] text-ink-3 italic">{t('versions.analysis.notReached')}</span>}</>,
+    },
+    {
+      key: 'status', label: t('versions.analysis.status'),
+      getText: r => t(STATUS_LABEL_KEY[r.status]),
+      render: r => <span className={CLOSED_STATUSES.has(r.status) ? 'text-status-success' : 'text-ink-2'}>{t(STATUS_LABEL_KEY[r.status])}</span>,
+      editValue: r => r.status,
+      editor: { kind: 'enum', options: IMPACT_ANALYSIS_STATUSES.map(st => ({ value: st, label: t(STATUS_LABEL_KEY[st]) })) },
+    },
+    { key: 'comment', label: t('versions.analysis.comment'), getText: r => r.comment ?? '', editor: { kind: 'text' } },
+    {
+      key: 'source', label: t('versions.analysis.source'),
+      getText: r => r.sources.map(pathText).join(' ; '),
+      render: r => {
+        const [first, ...others] = r.sources
+        return first && (
+          <span className="font-mono text-[11px] text-ink-3"
+            title={r.sources.map(src => [src.rootId, ...src.path.map(p => p.id)].map(id => `${id} ${titleOf.get(id) ?? ''}`.trim()).join(' → ')).join('\n')}>
             {pathText(first)}{others.length > 0 && <span className="ml-1 text-ink-2">+{others.length}</span>}
           </span>
-        )}
-      </td>
-    </tr>
+        )
+      },
+    },
+  ], [t, titleOf])
+  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::version-analysis', view: 'columns', defaults: IMPACT_DEFAULTS }), [repoPath])
+  const byId = useMemo(() => new Map(rows.map(r => [r.id, r])), [rows])
+  // Une ligne après l'autre : chaque écriture relit et réécrit le même fichier de version. Un échec
+  // est affiché par la page (message d'erreur de la version).
+  const onCellEdit = async (ids: string[], key: string, value: string) => {
+    for (const id of ids) {
+      const row = byId.get(id)
+      if (!row) continue
+      if (key === 'status') await onSetImpact(id, value as ImpactAnalysisStatus, row.comment?.trim() || null)
+      else await onSetImpact(id, row.status, value.trim() || null)
+    }
+    return { failed: [] }
+  }
+  return (
+    <div className="flex flex-col max-h-[60vh] min-h-0" data-testid="version-impact-rows">
+      <DataGrid
+        gridId="version-analysis"
+        title={title}
+        rows={rows}
+        getRowId={impactRowId}
+        columns={columns}
+        prefs={prefs}
+        onCellEdit={readOnly ? undefined : onCellEdit}
+        rowClassName={impactRowClass}
+        scrollMemoryKey={scrollKey}
+      />
+    </div>
   )
 }
 

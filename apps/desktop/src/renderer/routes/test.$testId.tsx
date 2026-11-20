@@ -1,5 +1,5 @@
 import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -118,7 +118,7 @@ function TestCaseDetailPage() {
         ...(Object.keys(changedFields).length > 0 ? { fields: changedFields } : {}),
       }, projectId ? decodeProjectId(projectId) : undefined)
     },
-    onSuccess: (result, values) => {
+    onSuccess: (result) => {
       // GH206 — passage de statut notifié : motifs affichés, sans confirmation.
       notifyTransitionResult(result, testId)
       qc.invalidateQueries({ queryKey: transitionPreviewKey(repoPath) })

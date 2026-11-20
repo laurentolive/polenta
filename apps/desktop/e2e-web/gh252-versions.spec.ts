@@ -124,7 +124,9 @@ test('U6, U7 — validation : création, popup d\'issue, signature par le compte
   await p.getByTestId('new-validation-submit').click()
   await expect(p.getByTestId('validation-page')).toBeVisible()
 
-  await p.getByTestId(`validation-decision-${reqB}`).selectOption('non_conforme')
+  // GH389 — la décision s'édite dans la cellule (double-clic), comme une colonne enum de la Vue Excel.
+  await p.getByTestId(`validation-decision-${reqB}`).dblclick()
+  await p.getByTestId(`validation-decision-${reqB}-editor`).selectOption('non_conforme')
   await expect(p.getByTestId('issue-proposal')).toBeVisible()
   await p.getByTestId('issue-proposal-submit').click()
   await expect(p.getByTestId('issue-proposal')).toHaveCount(0)

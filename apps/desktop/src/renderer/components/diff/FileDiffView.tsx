@@ -14,6 +14,7 @@ import { keyedKindOf, LINKS_DESC, OBJECT_DESC, PARAMETERS_DESC, yamlStyleOf, typ
 import { isAppMaintainedFile, type DiffSaveResult } from '@polenta/types'
 import { api } from '../../api'
 import { useRegisterTabDirty } from '../../contexts/TabsContext'
+import { useTabDraft } from '../../lib/tabDraft'
 import { TreeDiffView } from '../treediff/TreeDiffView'
 import { genericPresentation, typedPresentation } from '../treediff/presentation'
 import { DrawioFileDiffView } from './DrawioFileDiffView'
@@ -58,6 +59,14 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
   const afterText = draft?.text ?? contents?.newContent ?? ''
   const dirty = editable && draft !== null && draft.text !== draft.baseline
   useRegisterTabDirty(dirty)
+  // GH343 — le texte en cours d'édition suit l'onglet glissé dans une autre fenêtre (après la remise à
+  // zéro ci-dessus : effet déclaré après, exécuté après).
+  useTabDraft<{ text: string; baseline: string }>(
+    `diff:${repoPath}::${filepath}`,
+    () => (dirty ? draft : null),
+    incoming => setDraft(incoming),
+    editable,
+  )
   const qc = useQueryClient()
   const editDraft = (text: string) => {
     setDraft(d => ({ text, baseline: d?.baseline ?? contents?.newContent ?? '' }))

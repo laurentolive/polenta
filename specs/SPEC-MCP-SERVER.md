@@ -233,14 +233,28 @@ une liste par champ suivi, avec l'entrée `implicit: true` quand la valeur coura
 dernière entrée. Données brutes — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77).
 
 **Écritures MCP et historique (GH77)** : `createMcpContainer` injecte un acteur
-`{ by: --user ?? POLENTA_USER ?? 'local', source: 'mcp' }` dans `HistoryService` — toute création
-ou modification par un tool porte `source: mcp`.
+`{ by: --user ?? POLENTA_USER ?? 'mcp', source: 'mcp' }` dans `HistoryService` — toute création
+ou modification par un tool porte `source: mcp`. **GH384** : sans utilisateur, l'auteur est `mcp` (et non
+plus `local`), pour l'historique, `createdBy` / `updatedBy` des objets et `createdBy` des liens
+(`create_links`, auparavant toujours `mcp`) — une seule convention, `mcpActor` (`container.ts`).
 
 ### 4.2 Import massif (`tools/bulk-import.tools.ts`)
 
 > **GH196** — `add_field` accepte `list: fields | runFields | stepFields` (champs d'exécution / d'étape, types de test seulement ; nom unique dans le projet : `RUN_FIELD_INVALID`). Aucun outil n'écrit de run.
 
 > **GH195** — un champ `link` accepte l'objet `{label?, url}`, la liste, ou la forme texte `libellé | URL` (une ligne par lien), convertie avant écriture ; URL hors `http(s)://`, `file://`, `\\serveur\partage` refusée. `requiredWhen` est contrôlé comme à l'écriture réelle (`prepareFieldsWrite`), en `dryRun` comme en écriture, et pour `update_requirements` / `update_tests`. `add_field` accepte `type: link`, `multiple`, `requiredWhen` (référence ou valeur inconnue refusée : `REQUIRED_WHEN_INVALID`).
+
+> **GH384** — **toutes** les erreurs d'une entrée sont rapportées (plusieurs `{ index, field, reason }` pour un
+> même `index`) : champs requis manquants (une erreur par champ), EARS, statut inconnu, valeurs (une par champ,
+> `fieldValuesErrors`) ; type inconnu et nœud `readonly` arrêtent l'entrée, `prepareFieldsWrite` (liens,
+> `requiredWhen`) n'est contrôlé que si le reste passe. `summary.failed` compte les **entrées** en erreur.
+> Même règle pour `update_requirements` / `update_tests` (§4.6).
+>
+> **GH384 — `multi_enum`** : stocké au format de l'application, la chaîne « a, b »
+> (`serializeMultiEnumValue` — cases à cocher, vues Excel / Word, champs d'exécution, contrat de données).
+> Une liste (`["a", "b"]`) ou une chaîne mal espacée (`"a,b"`) est réécrite avant contrôle et écriture
+> (`canonicalMultiEnumFields`), à l'import comme à la modification ; une liste aux éléments non chaînes est
+> refusée par le contrôle des valeurs.
 
 > **GH372** — valeurs des `fields` contrôlées par entrée, à l'import (`bulk_import_*`, en `dryRun` comme en écriture) comme à la modification (`update_requirements` / `update_tests`), par une seule règle (`field-values.util.ts::fieldValuesError`) : clé déclarée par le type ; `enum` / `multi_enum` dans `values` (catalogue de rôles pour `roles`, T110 ; pas de contrôle si la liste est vide) ; `number` = nombre fini ou chaîne numérique (format enregistré par l'éditeur) ; `boolean` = `true`/`false` ; `date` = `AAAA-MM-JJ` valide. Valeur vide non contrôlée (obligation : contrôle `required`). Refus : `{ index, field, reason }`.
 
@@ -253,8 +267,9 @@ ou modification par un tool porte `source: mcp`.
 - `entries` : mêmes DTOs que la création UI (`CreateRequirementDto`/
   `CreateTestCaseDto` — zod schemas réutilisés tel quel depuis `@polenta/zod-schemas` ;
   `CreateCampaignDto` — zod schema local à ce fichier, pas encore exporté ailleurs).
-- **`dryRun: true` (défaut)** : valide chaque entrée, DANS L'ORDRE, la première règle
-  en échec arrêtant la validation de CETTE entrée (n'empêche pas les autres) :
+- **`dryRun: true` (défaut)** : valide chaque entrée ; les règles 1-2 arrêtent la validation de
+  CETTE entrée, les suivantes rapportent toutes leurs erreurs (GH384) ; une entrée en erreur
+  n'empêche pas les autres :
   1. `objectTypeRef` résout vers un type existant — `'unresolvable'` (ref
      cross-composant non vérifiable localement) est **accepté** avec avertissement
      implicite, pas une erreur (une entrée sans `objectTypeRef` du tout, ex.
@@ -316,9 +331,41 @@ réponse précédente).
 |---|---|---|
 | `add_component` | `{ name, label, description?, readonly?, parentName? }` | `name` déjà pris par un `SystemNode` existant à n'importe quelle profondeur (y compris `"root"`) — `NODE_NAME_TAKEN` ; `parentName` fourni mais introuvable dans le repo courant — `NODE_NOT_FOUND` |
 | `add_object_type` | `{ nodeName, objectType: ObjectTypeDefinition }` | nœud introuvable (`NODE_NOT_FOUND`) ou `readonly` (`NODE_READONLY`) ; `objectType.name` déjà pris dans ce nœud (`TYPE_NAME_TAKEN`) ; `objectType.prefix` déjà utilisé par un type de **n'importe quel** nœud du projet (`PREFIX_TAKEN`, règle 10 CLAUDE.md) ; type version / validation (GH377, ci-dessous) mal formé (`VERSION_TYPE_INVALID` / `VALIDATION_TYPE_INVALID`, `FIELD_NAME_TAKEN`, `REQUIRED_WHEN_INVALID`) |
-| `add_field` | `{ nodeName, typeName, field: SchemaField }` | nœud/type introuvables, nœud `readonly`, `field.name` déjà présent (`FIELD_NAME_TAKEN`) |
+| `add_field` | `{ nodeName, typeName, field: SchemaField, list?: 'fields' \| 'runFields' \| 'stepFields' \| 'entryFields' }` | nœud/type introuvables, nœud `readonly`, `field.name` déjà présent (`FIELD_NAME_TAKEN`) ; GH371 — `entryFields` : type non validation (`VALIDATION_TYPE_INVALID`), nom `decision` réservé (`FIELD_NAME_TAKEN`), `requiredWhen` avec clé ou valeur inconnue — clés : autres `entryFields` et pseudo-champ `decision` (valeurs = décisions du type) — (`REQUIRED_WHEN_INVALID`) |
 | `add_status` | `{ nodeName, typeName, status: SchemaStatus }` | nœud/type introuvables, nœud `readonly`, `status.name` déjà présent (`STATUS_NAME_TAKEN`) |
 | `add_link_type` | `{ linkType: LinkTypeDefinition }` | `linkType.name` déjà pris (`LINK_TYPE_NAME_TAKEN`) |
+| `update_link_type` (GH384) | `{ name, labelSourceToTarget?, labelTargetToSource?, defaultVisible?, sourceRefs?: string[] \| null, targetRefs?: string[] \| null }` | type introuvable (`LINK_TYPE_NOT_FOUND`) ; liste de refs vide (`LINK_TYPE_INVALID` — `null` retire la restriction) ; liens existants du type (tous les repos du workspace) qui ne seraient plus acceptés dans aucun sens par les nouvelles refs (`LINK_TYPE_IN_USE`, IDs cités — `delete_links` d'abord ; extrémité introuvable ignorée). `defaultVisible: false` retire la clé. Le nom n'est pas modifiable (écrit dans chaque `links.yaml`). Réponse : le type de lien modifié |
+
+**GH371 — modification d'un type existant.** Méthodes `SchemaService.addDecision`, `updateDecision`,
+`removeDecision`, `reorderStatuses`, `updateObjectType`, `updateStatus`, `removeStatus`, sous la même file
+`withMutationQueue` ; la migration des objets (`FieldRenameService.renameValues`, port `SchemaValueMigrator`
+passé en argument) est faite **dans la même entrée de file**, après l'écriture du schéma. Tout refus est levé
+avant la moindre écriture ; le schéma résultant passe par tous les garde-fous de `save` (`assertSaveable`,
+aussi appelé seul en `dryRun`). Refus communs : `NODE_NOT_FOUND`, `NODE_READONLY`, `TYPE_NOT_FOUND`. Les
+messages citent 5 éléments au plus, puis « … et N autres ». « Au moins une propriété à modifier »
+(`update_decision`, `update_status`, `update_object_type`) : erreur d'entrée (`Input validation error`).
+
+| Tool | Entrée | Effet / refuse si |
+|---|---|---|
+| `add_decision` | `{ nodeName, typeName, decision: { name, label?, color?, isPending?, proposesIssue? } }` | ajout en fin de `decisions` ; type non validation, ou seconde décision en attente (`VALIDATION_TYPE_INVALID`) ; nom pris (`DECISION_NAME_TAKEN`) |
+| `update_decision` | `{ nodeName, typeName, name, to?, label?: string \| null, color?: string \| null, isPending?: true, proposesIssue?: boolean }` | `null` / `false` retirent la clé ; `isPending: true` déplace la marque ; `to` renomme la décision et les `requiredWhen.decision` des `entryFields` (aucun objet réécrit). `DECISION_NOT_FOUND`, `DECISION_NAME_TAKEN` ; renommage ou `isPending` d'une décision portée par une entrée (confirmée ou proposée) d'une validation, signées comprises : `DECISION_IN_USE` (IDs) |
+| `remove_decision` | `{ nodeName, typeName, name }` | `DECISION_NOT_FOUND` ; décision en attente (`VALIDATION_TYPE_INVALID`) ; portée par une entrée (`DECISION_IN_USE`) ; citée par un `requiredWhen` d'`entryFields` (`REQUIRED_WHEN_INVALID`) |
+| `reorder_statuses` | `{ nodeName, typeName, order: string[] }` | permutation exacte, sinon `STATUS_LIST_INVALID` ; premier statut marqué du type validation (`VALIDATION_TYPE_INVALID`) ; aucun objet modifié |
+| `update_status` | `{ nodeName, typeName, name, to?, label?: string \| null, color?: string \| null, isApproval?, isTerminal?, dryRun?, includeSchema? }` | `null` / `false` retirent la clé. `to` : transitions, `requiredWhen.status` des `fields` et objets du type migrés (statut courant, `history.status` des exigences, tests, campagnes, issues, validations, versions — GH381 ; copies `testSnapshot` pour un type de test). `STATUS_NOT_FOUND`, `STATUS_NAME_TAKEN`, `VALIDATION_TYPE_INVALID` / `VERSION_TYPE_INVALID` (marques ; statuts marqués figés tant que des validations / versions existent), `TRANSITION_INVALID` |
+| `remove_status` | `{ nodeName, typeName, name, replaceWith?, dryRun?, includeSchema? }` | statut courant d'au moins un objet du type sans `replaceWith` : `STATUS_IN_USE` (nombre, IDs) ; avec `replaceWith` : objets migrés (fusion GH82 D4), transitions et `requiredWhen` réécrits vers `replaceWith` (règle devenue invalide : `TRANSITION_INVALID`) ; sans `replaceWith`, statut cité par une transition (`TRANSITION_INVALID`) ou un `requiredWhen` (`REQUIRED_WHEN_INVALID`). `STATUS_NOT_FOUND` ; dernier statut ou `replaceWith = name` (`STATUS_LIST_INVALID`) ; `VALIDATION_TYPE_INVALID` / `VERSION_TYPE_INVALID` |
+| `update_object_type` | `{ nodeName, typeName, label?, color?, displayIdField?, trackStatusHistory? }` (`null` retire) | `displayIdField` ni `title` ni champ text / number / enum (`DISPLAY_ID_FIELD_INVALID`) ; `trackStatusHistory: false` (seule valeur écrite) sur le type validation (`VALIDATION_TYPE_INVALID`) |
+
+Statuts d'un type `campaign` (fixes) : `STATUS_LIST_INVALID` ; décisions sur un type non validation :
+`VALIDATION_TYPE_INVALID`. Réponse de `update_status` / `remove_status` : `{ type, migration }`
+(`FieldRenameResult` : `migrated`, `skipped`, `failed`, `snapshots?` ; vide sans migration) ; `dryRun: true` :
+`{ dryRun: true, type, preview: { withOld, withNew } }`, rien d'écrit. `type` = le type modifié seul (GH384 : le
+schéma résolu complet saturait le contexte de l'agent) ; `includeSchema: true` rend `schema` à la place. Échec partiel de migration : schéma
+enregistré, objets listés dans `failed` / `skipped`. Ces deux outils invalident d'abord les index exigences /
+tests / issues du repo (objets écrits par l'application depuis le dernier appel). GH381 : les versions
+(`versions/*.yaml`) sont comptées par `STATUS_IN_USE` et l'aperçu, et migrées comme les autres objets, dans
+l'éditeur comme ici ; une version released / abandonnée l'est comme une validation signée (son statut marqué ne
+change pas, seul son historique suit). Vues
+enregistrées, requêtes et dashboards citant un statut ou une décision renommés : non modifiés.
 
 `add_component` mappe vers `SchemaService.addNode` (nom de tool aligné sur le
 vocabulaire "composant" du spec/UI, nom de méthode aligné sur `SystemNode`).
@@ -331,7 +378,10 @@ refus : `{ isError: true, content: [{ type: 'text', text: '[<CODE>] <message>' }
 
 `SchemaValidationErrorCode` : `NODE_NAME_TAKEN | NODE_NOT_FOUND | NODE_READONLY |
 TYPE_NAME_TAKEN | TYPE_NOT_FOUND | PREFIX_TAKEN | FIELD_NAME_TAKEN |
-STATUS_NAME_TAKEN | LINK_TYPE_NAME_TAKEN`.
+STATUS_NAME_TAKEN | LINK_TYPE_NAME_TAKEN | REQUIRED_WHEN_INVALID | RUN_FIELD_INVALID |
+VERSION_TYPE_INVALID | VALIDATION_TYPE_INVALID | DECISION_IN_USE | DISPLAY_ID_FIELD_INVALID |
+TRANSITION_INVALID | STATUS_NOT_FOUND | STATUS_IN_USE | STATUS_LIST_INVALID | DECISION_NOT_FOUND |
+DECISION_NAME_TAKEN` (les cinq derniers : GH371).
 
 **GH377 — type version ou validation par `add_object_type`.** Catégories `version` et `validation` admises,
 ainsi que `decisions` (`ValidationDecisionDef[]`) et `entryFields` (`SchemaField[]`) pour le type validation.
@@ -507,10 +557,25 @@ Entrée `{ entries: [{ id, title?, status?, fields? }], dryRun? }` ; pour un tes
 `preconditions`, `postconditions`, `steps`, `equipment` (remplacés en bloc). `fields` est fusionné
 avec l'existant, une clé à `null` retire le champ (`mergeFields`, `field-merge.util.ts`).
 
-Validation (`update-validation.util.ts::planUpdate`, première règle en échec) : type de l'objet connu
-(`'unresolvable'` accepté sans contrôle de champs), nœud pas `readonly`, `status` parmi les statuts
-du type, clés de `fields` déclarées, valeurs d'`enum` / `multi_enum` dans `values`, et pour les seuls
-champs modifiés : `required` non vidé, `validator: EARS` conforme.
+Validation (`update-validation.util.ts::planUpdate`) : type de l'objet connu
+(`'unresolvable'` accepté sans contrôle de champs), nœud pas `readonly` (ces deux règles arrêtent
+l'entrée) ; puis, toutes les erreurs rapportées (GH384, une ligne d'`errors` par erreur, `failed`
+compte les entrées) : `status` parmi les statuts du type, valeurs de `fields` (§4.2, GH372), et pour
+les seuls champs modifiés : `required` non vidé, `validator: EARS` conforme.
+
+#### `delete_requirements` / `delete_tests` (GH384, `tools/delete-objects.tools.ts`)
+
+Entrée `{ ids: string[], dryRun? }` (défaut `true`). Pour corriger un import (doublon, mauvais lot) :
+l'application n'a pas de suppression d'un objet seul (un objet abandonné prend le statut terminal de son
+type), ces outils ne suppriment donc qu'un objet **inutilisé** du repo ouvert. Refus par objet, sans
+bloquer les autres : `OBJECT_NOT_FOUND` (aussi : ID en double dans le lot), `NODE_READONLY`,
+`OBJECT_IN_USE` — lié à un objet (liens de tous les repos du workspace : `delete_links` d'abord), présent
+dans une campagne (`testCaseIds` ou exécution), inclus dans une version (`changes`), cité par une entrée
+de validation ; le motif liste les usages. `dryRun` : `wouldDelete: [{ index, id, title }]`, rien d'écrit.
+Écriture, en série, best-effort : pierre tombale puis fichier (`deleteWithTombstone`, GH20 — l'ID n'est
+jamais réattribué), puis `test-runs/<ID>` (test) ou `impact-acks/<ID>` (exigence) ; échec :
+`DELETE_FAILED`. Réponse `{ dryRun, summary, wouldDelete, deleted: string[], errors: [{ index, id, code,
+reason }] }`. Le rangement en dossiers n'est pas réécrit (un objet disparu y est ignoré).
 
 `dryRun: true` → `preview: [{ index, id, changes: { <champ>: { before, after } } }]` (champs de
 `fields` notés `fields.<nom>`). `dryRun: false` → contenu écrit par `update()` du service

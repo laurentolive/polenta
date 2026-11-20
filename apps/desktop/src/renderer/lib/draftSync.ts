@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { takeStagedDraft, useTabDraft } from './tabDraft'
 
 /**
  * GH342 — brouillon d'un formulaire d'édition face aux modifications faites ailleurs (autre fenêtre,
@@ -92,10 +93,36 @@ export function useDraftForm(server: Draft | undefined, resetKey: string): Draft
   const stateRef = useRef<FormState | null>(null)
   stateRef.current = state
 
+  // GH343 — la saisie suit l'onglet glissé dans une autre fenêtre : base + brouillon, réconciliés à
+  // l'arrivée avec l'objet relu (bandeau « modifié ailleurs » si un champ saisi a changé entre-temps).
+  const transferKey = `form:${resetKey}`
+  useTabDraft<{ base: Draft; draft: Draft }>(
+    transferKey,
+    () => {
+      const s = stateRef.current
+      return s && changedKeys(s.base, s.draft).length > 0 ? { base: s.base, draft: s.draft } : null
+    },
+    // Même page déjà affichée dans la fenêtre d'arrivée (pas de nouvel amorçage).
+    incoming => setState(prev => {
+      if (!prev) return prev
+      const { base, draft, conflicts } = adoptExternal(incoming.base, incoming.draft, prev.server)
+      return { ...prev, base, draft, conflicts }
+    }),
+    // GH407 — prêt pour CET objet seulement : même page, autre objet (/req/A → /req/B sans remontage),
+    // l'état de A ne doit pas recevoir la saisie de B, consommée ensuite par l'amorçage de B.
+    state !== null && seededFor.current === resetKey,
+  )
+
   useEffect(() => {
     if (!server) return
     if (seededFor.current !== resetKey) {
       seededFor.current = resetKey
+      const incoming = takeStagedDraft<{ base: Draft; draft: Draft }>(transferKey)
+      if (incoming) {
+        const { base, draft, conflicts } = adoptExternal(incoming.base, incoming.draft, server)
+        setState({ base, draft, server: { ...server }, conflicts })
+        return
+      }
       setState({ base: { ...server }, draft: { ...server }, server: { ...server }, conflicts: [] })
       return
     }

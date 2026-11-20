@@ -514,7 +514,7 @@ function QueryPage() {
                   {scriptErrorText(run.error)}
                 </p>
               )}
-              <ResultTable result={result} />
+              <ResultTable result={result} repoPath={repoPath} title={current?.title || undefined} />
             </div>
           )}
 

@@ -1,291 +1,129 @@
-import { Fragment, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { fieldValueToText, isOpenCampaignStatus, testedDeviations, type ExecutionHistory, type ExecutionHistoryRow, type StepResultValue, type TestedConfigNode, stripRichTextColorTags } from '@polenta/types'
-import type { FieldVisibilityPref } from '@polenta/api-client'
-import { api } from '../../api'
+import type { ExecutionHistory, ExecutionHistoryRow, SchemaField } from '@polenta/types'
 import { RichTextViewer } from '../RichTextViewer'
 import { RunFieldValue } from '../runs/RunFieldValues'
-import { driftText, testedValueText } from './TestedConfigView'
-import {
-  availableColumns, defaultExecutionColumns, isSortable, sortValue, unionRunFields, type ExecutionColumn, type ExecutionColumnGroup,
-} from './executionColumns'
+import { DataGrid } from '../grid/DataGrid'
+import type { ControlledColumnFilters } from '../grid/useColumnFilters'
+import { useGridScrollKey } from '../grid/useGridScrollKey'
+import { defaultExecutionColumns, unionRunFields } from './executionColumns'
+import { buildExecutionColumns, STEP_KEY, VERDICT_CLASS, type ExecutionGestures } from './executionColumnDefs'
 
-/** Libellé de l'origine d'un run (GH36 classeur, GH129 JUnit) ; absente : saisie dans l'outil. */
-const ORIGIN_LABEL_KEY: Record<string, string> = {
-  'excel-import': 'executionHistory.originExcel',
-  'junit-import': 'executionHistory.originJunit',
-}
+export { VERDICT_CLASS, VERDICT_KEY } from './executionColumnDefs'
 
 // GH197 — grille d'historique des exécutions (specs/GH197.md §1–§3) : une ligne par run (ou entrée en
-// attente), colonnes au choix (préférence `executions` du type), tri par en-tête, étapes dépliables.
-// Réutilisée par la vue Validation (GH204, `ValidationRuns`).
+// attente), colonnes au choix (préférence `executions` du type), étapes dépliables. GH389 §4 : sur la
+// grille commune (`DataGrid`), sans tri (D4) ; test, campagne, exigence et version testée en liens.
+// GH400 — même grille pour le Tableau de la vue Exécutions (préférence `runExcel`, filtres de la vue).
 
-export const VERDICT_KEY: Record<string, string> = {
-  pending: 'campaignPage.runStatus.pending', PASS: 'campaignPage.runStatus.pass', FAIL: 'campaignPage.runStatus.fail',
-  BLOCKED: 'campaignPage.runStatus.blocked', INCOMPLETE: 'campaignPage.runStatus.incomplete',
-}
-const STEP_KEY: Record<StepResultValue, string> = {
-  PASS: 'campaignPage.runStatus.pass', FAIL: 'campaignPage.runStatus.fail', BLOCKED: 'campaignPage.runStatus.blocked',
-  SKIP: 'campaignPage.stepResult.skip', NOT_EXECUTED: 'campaignPage.stepResult.notExecuted',
-}
-export const VERDICT_CLASS: Record<string, string> = {
-  pending: 'bg-status-neutral-bg text-status-neutral', PASS: 'bg-status-success-bg text-status-success',
-  FAIL: 'bg-status-danger-bg text-status-danger', BLOCKED: 'bg-status-warning-bg text-status-warning',
-  INCOMPLETE: 'bg-status-warning-bg text-status-warning', SKIP: 'bg-status-warning-bg text-status-warning',
-  NOT_EXECUTED: 'bg-status-neutral-bg text-status-neutral',
-}
-const GROUPS: ExecutionColumnGroup[] = ['execution', 'campaign', 'entry', 'test']
+const getRowKey = (row: ExecutionHistoryRow) => row.key
+const hasSteps = (row: ExecutionHistoryRow) => (row.run?.stepResults ?? []).length > 0
+const rowClass = (row: ExecutionHistoryRow) => (row.removed ? 'opacity-70' : undefined)
 
-/** GH202 — composants de la copie, à plat : `chemin = valeur`. */
-function structureLines(node: TestedConfigNode, prefix = ''): string[] {
-  return Object.entries(node.components ?? {}).flatMap(([name, child]) => {
-    const path = prefix ? `${prefix}/${name}` : name
-    return [`${path} = ${testedValueText(child)}`, ...structureLines(child, path)]
-  })
+/** Étapes d'un run : n°, verdict, commentaire, champs d'étape (dépli de la grille, fiche du Document). */
+export function ExecutionSteps({ row, stepFields, repoPath }: { row: ExecutionHistoryRow; stepFields: SchemaField[]; repoPath: string }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex flex-col gap-1">
+      {(row.run?.stepResults ?? []).map(sr => (
+        <div key={sr.order} className="flex items-start gap-3" data-testid="execution-step-row">
+          <span className="font-mono text-ink-3 shrink-0">#{sr.order}</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${VERDICT_CLASS[sr.result]}`}>{t(STEP_KEY[sr.result])}</span>
+          {sr.comment && <div className="min-w-0 flex-1"><RichTextViewer value={sr.comment} repoPath={repoPath} /></div>}
+          {sr.fields && stepFields.filter(f => sr.fields![f.name] !== undefined).map(f => (
+            <span key={f.name} className="shrink-0"><span className="text-ink-3">{f.label ?? f.name} : </span>
+              <RunFieldValue def={f} value={sr.fields![f.name]} repoPath={repoPath} /></span>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Gestes des cellules : page d'une version testée hors de l'index, page d'exécution d'une entrée en
+ * attente. L'ouverture d'une exécution passe par son lien d'exécution (GH399, `ElementNav.follow`).
+ */
+export function useExecutionCellGestures(repoPath: string, projectId?: string) {
+  const navigate = useNavigate()
+  const openVersion = (versionId: string, versionRepo: string) =>
+    void navigate({ to: '/version/$versionId', params: { versionId }, search: { projectId: projectId ?? '', repoPath: versionRepo } } as never)
+  const openPending = (row: ExecutionHistoryRow) => {
+    if (!row.campaign || !row.entry) return
+    void navigate({
+      to: '/campaign/$campaignId/execute/$testId',
+      params: { campaignId: row.campaign.id, testId: row.entry.entryId },
+      search: { repoPath, projectId: projectId ?? '' },
+    } as never)
+  }
+  // Gestes lus par une ref : colonnes stables (cellules mémoïsées).
+  const gestures = useRef<ExecutionGestures>({ openVersion, openPending })
+  gestures.current = { openVersion, openPending }
+  return gestures
 }
 
 interface Props {
   repoPath: string
   projectId?: string
   history: ExecutionHistory
-  /** Clé de préférence (`<nœud>::<type>` du test ou de l'exigence). */
+  /** Clé de préférence (`<nœud>::<type>` du test, de l'exigence ou du type de test affiché). */
   typeKey: string
-  /** Grille d'une exigence : colonne Test proposée (lignes de plusieurs tests). */
+  /** Colonne Test proposée (lignes de plusieurs tests). */
   withTestColumn: boolean
+  /** Titre de l'export (feuille et fichier). */
+  title: string
+  /** GH400 — vue de la préférence (`executions` par défaut ; `runExcel` dans la vue Exécutions). */
+  prefView?: string
+  /** GH400 — colonnes par défaut de cette vue. */
+  defaults?: string[]
+  /** GH400 — filtres tenus par la vue. */
+  columnFilters?: ControlledColumnFilters
+  /** GH400 — colonnes affichées sans être écrites dans la préférence. */
+  forceVisible?: readonly string[]
+  /** GH400 — panneau 👁 propre à l'écran. */
+  noColumnPicker?: boolean
+  /** Grille à la hauteur de son conteneur (vue pleine page) plutôt que 70 % de la fenêtre. */
+  fill?: boolean
 }
 
-export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, withTestColumn }: Props) {
+export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, withTestColumn, title, prefView = 'executions', defaults: viewDefaults, columnFilters, forceVisible, noColumnPicker, fill }: Props) {
   const { t, i18n } = useTranslation()
-  const navigate = useNavigate()
-  const qc = useQueryClient()
-  const { data: username } = useQuery({
-    queryKey: ['project-username', repoPath],
-    queryFn: () => api.auth.projectUsername(repoPath),
-    enabled: !!repoPath,
-    retry: false,
-  })
-  const prefsKey = ['pref-visibility', repoPath, username ?? 'local', typeKey]
-  const { data: prefs } = useQuery({
-    queryKey: prefsKey,
-    queryFn: () => api.pref.getFieldVisibility(repoPath, username ?? 'local', typeKey),
-    enabled: !!repoPath && username !== undefined,
-  })
-  const columns = useMemo(() => availableColumns(history, withTestColumn), [history, withTestColumn])
-  const visibleKeys = prefs?.executions ?? defaultExecutionColumns(history, withTestColumn)
-  const visible = visibleKeys.map(k => columns.find(c => c.key === k)).filter((c): c is ExecutionColumn => !!c)
-  const stepFields = unionRunFields(history.runFieldDefs, 'stepFields')
+  const scrollKey = useGridScrollKey(prefView === 'executions' ? 'executions' : `executions-${prefView}`)
+  const gestures = useExecutionCellGestures(repoPath, projectId)
 
-  // Mise à jour immédiate du cache (la case suit le clic), puis écriture du `.pref`.
-  const savePrefs = async (executions: string[] | null) => {
-    qc.setQueryData<FieldVisibilityPref | null>(prefsKey, prev => {
-      const next = { ...(prev ?? {}) } as FieldVisibilityPref
-      if (executions === null) delete next.executions
-      else next.executions = executions
-      return next
-    })
-    await api.pref.setFieldVisibility(repoPath, username ?? 'local', typeKey, { executions })
-  }
-
-  const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
-  const rows = useMemo(() => {
-    if (!sort) return history.rows
-    return [...history.rows].sort((a, b) => {
-      const va = sortValue(a, sort.key)
-      const vb = sortValue(b, sort.key)
-      return va.localeCompare(vb, undefined, { numeric: true }) * sort.dir
-    })
-  }, [history.rows, sort])
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [panelOpen, setPanelOpen] = useState(false)
-
-  const open = (row: ExecutionHistoryRow) => {
-    if (!row.campaign || !row.entry || row.removed || row.superseded) return
-    const execute = isOpenCampaignStatus(row.campaign.status)        // Q5 — campagne ouverte : exécution
-    void navigate({
-      to: execute ? '/campaign/$campaignId/execute/$testId' : '/campaign/$campaignId/run/$testId',
-      params: { campaignId: row.campaign.id, testId: row.entry.entryId },
-      search: { repoPath, projectId: projectId ?? '' },
-    } as never)
-  }
-
-  const label = (c: ExecutionColumn) => (c.literal ? c.label : t(`executionHistory.col.${c.label}`))
-  const fieldDefOf = (row: ExecutionHistoryRow, name: string) =>
-    history.runFieldDefs[row.objectTypeRef]?.runFields.find(f => f.name === name)
-
-  const cell = (row: ExecutionHistoryRow, c: ExecutionColumn) => {
-    const run = row.run
-    switch (c.key) {
-      case 'verdict': {
-        const v = run?.result ?? 'pending'
-        return <span className={`text-xs px-2 py-0.5 rounded-full ${VERDICT_CLASS[v]}`}>{t(VERDICT_KEY[v])}</span>
-      }
-      case 'date': return run ? new Date(run.executedAt).toLocaleString(i18n.language === 'en' ? 'en-GB' : 'fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : ''
-      case 'tester': return run?.executedBy ?? ''
-      case 'duration': return run?.duration ? `${run.duration} s` : ''
-      case 'origin': return run ? t(ORIGIN_LABEL_KEY[run.origin ?? ''] ?? 'executionHistory.originApp') : ''
-      case 'notes': return run?.notes ? <RichTextViewer value={run.notes} repoPath={repoPath} /> : ''
-      case 'equipment': return (run?.equipmentUsed ?? []).map(e => `${e.role} : ${(e as { identification?: string }).identification ?? ''}`).join('\n')
-      case 'campaign': {
-        if (row.campaignMissing) return <span className="text-ink-3 italic">{t('executionHistory.campaignMissing')}</span>
-        if (!row.campaign) return <span className="text-ink-3">{t('executionHistory.isolated')}</span>
-        return <span title={row.campaign.title}>{row.campaign.id} — {row.campaign.title}</span>
-      }
-      case 'campaignStatus': return row.campaign ? t(`executionHistory.campaignStatus.${row.campaign.status}`) : ''
-      case 'entry': {
-        if (!row.entry) return ''
-        const clickable = !!row.campaign && !row.removed && !row.superseded
-        return (
-          <span className="inline-flex items-center gap-1">
-            {clickable
-              ? <button type="button" className="font-mono text-status-info hover:underline" onClick={() => open(row)}>{row.entry.entryId}</button>
-              : <span className="font-mono">{row.entry.entryId}</span>}
-            {row.removed && <span className="text-[10px] px-1 rounded bg-status-neutral-bg text-status-neutral">{t('executionHistory.removed')}</span>}
-            {row.superseded && <span className="text-[10px] px-1 rounded bg-status-neutral-bg text-status-neutral" title={t('executionHistory.supersededTitle')}>{t('executionHistory.superseded')}</span>}
-          </span>
-        )
-      }
-      case 'entryRequirement': return row.entry?.requirementId ?? ''
-      case 'params': {
-        const values = { ...(row.entry?.paramValues ?? {}), ...(row.entry?.resolvedParams ?? {}) }
-        return Object.keys(values).sort().map(k => `${k} = ${values[k]}`).join('\n')
-      }
-      case 'testVersion': return row.entry?.testVersion !== undefined ? `v${row.entry.testVersion}` : ''
-      case 'carriedFrom': return row.entry?.carriedFrom ? `${row.entry.carriedFrom.campaignId} / ${row.entry.carriedFrom.entryId}` : ''
-      case 'testedVersion': {
-        const config = run?.testedConfig
-        if (!run) return ''
-        if (!config) return <span className="text-ink-3">—</span>
-        return (
-          <span className="inline-flex items-center gap-1 flex-wrap">
-            {config.ref
-              ? <button type="button" className="text-status-info hover:underline" onClick={() => void navigate({ to: '/version/$versionId', params: { versionId: config.ref! }, search: { projectId: projectId ?? '', repoPath: row.testedRepoPath ?? repoPath } } as never)}>{testedValueText(config)}</button>
-              : <span className="px-1 rounded bg-status-danger-bg text-status-danger">{config.undocumented}</span>}
-            {row.testedDrift && (
-              <span className="text-[10px] px-1 rounded bg-status-warning-bg text-status-warning" data-testid="execution-tested-evolved"
-                title={row.testedDrift.map(d => driftText(t, d)).join('\n')}>{t('testedConfig.evolved')}</span>
-            )}
-          </span>
-        )
-      }
-      case 'testedStructure': return run?.testedConfig ? structureLines(run.testedConfig).join('\n') : ''
-      case 'testedCommit': return run?.testedConfig?.commit ? <span className="font-mono" title={run.testedConfig.commit}>{run.testedConfig.commit.slice(0, 7)}</span> : ''
-      case 'testedDeviations': {
-        if (!run?.testedConfig) return ''
-        return (
-          <span className="flex flex-col gap-0.5">
-            {testedDeviations(run.testedConfig).map(({ path, node }) => (
-              <span key={path} className={`px-1 rounded ${node.undocumented ? 'bg-status-danger-bg text-status-danger' : 'bg-status-warning-bg text-status-warning'}`}>
-                {path ? `${path} : ` : ''}{testedValueText(node)}
-                {node.expected !== undefined && ` (${t('testedConfig.expected', { ref: node.expected ?? t('testedConfig.none') })})`}
-              </span>
-            ))}
-          </span>
-        )
-      }
-      case 'test': return <span title={row.testTitle}><span className="font-mono">{row.testCaseId}</span> — {row.testTitle}</span>
-      default: {
-        if (c.key.startsWith('run:')) {
-          const name = c.key.slice(4)
-          const value = run?.fields?.[name]
-          if (value === undefined) return ''
-          const def = fieldDefOf(row, name) ?? c.field
-          return def ? <RunFieldValue def={def} value={value} repoPath={repoPath} /> : fieldValueToText(value)
-        }
-        // GH299 — cellule texte : sans les balises de couleur d'un richtext.
-        if (c.key.startsWith('campaign:')) return stripRichTextColorTags(fieldValueToText(row.campaign?.fields[c.key.slice(9)]))
-        return ''
-      }
-    }
-  }
+  const columns = useMemo(
+    () => buildExecutionColumns({ history, withTestColumn, t, language: i18n.language, repoPath, gestures }),
+    [history, withTestColumn, t, i18n.language, repoPath, gestures],
+  )
+  const defaults = useMemo(() => viewDefaults ?? defaultExecutionColumns(history, withTestColumn), [viewDefaults, history, withTestColumn])
+  const prefs = useMemo(() => ({ repoPath, prefKey: typeKey, view: prefView, defaults }), [repoPath, typeKey, prefView, defaults])
+  const stepFields = useMemo(() => unionRunFields(history.runFieldDefs, 'stepFields'), [history.runFieldDefs])
+  const renderSteps = useCallback(
+    (row: ExecutionHistoryRow) => <ExecutionSteps row={row} stepFields={stepFields} repoPath={repoPath} />,
+    [stepFields, repoPath],
+  )
 
   if (history.rows.length === 0) return <p className="text-xs text-ink-3 italic">{t('executionHistory.empty')}</p>
 
   return (
-    <div className="relative" data-testid="execution-history">
-      <div className="flex justify-end mb-1">
-        <button type="button" onClick={() => setPanelOpen(o => !o)} className="text-xs text-ink-2 hover:text-ink" title={t('executionHistory.configure')}
-          data-testid="execution-columns-button">⚙️ {t('executionHistory.columns')}</button>
-      </div>
-      {panelOpen && (
-        <div className="absolute right-0 top-6 z-20 bg-surface border border-edge rounded shadow-lg p-3 w-72 max-h-96 overflow-y-auto" data-testid="execution-columns-panel">
-          {GROUPS.map(g => {
-            const inGroup = columns.filter(c => c.group === g)
-            if (inGroup.length === 0) return null
-            return (
-              <div key={g} className="mb-2">
-                <p className="section-label mb-1">{t(`executionHistory.group.${g}`)}</p>
-                {inGroup.map(c => (
-                  <label key={c.key} className="flex items-center gap-1.5 text-xs text-ink py-0.5 cursor-pointer">
-                    <input type="checkbox" className="h-3 w-3 accent-ink" checked={visibleKeys.includes(c.key)}
-                      data-testid={`execution-column-${c.key}`}
-                      onChange={e => void savePrefs(e.target.checked
-                        ? [...visibleKeys.filter(k => columns.some(x => x.key === k)), c.key]
-                        : visibleKeys.filter(k => k !== c.key))} />
-                    {label(c)}
-                  </label>
-                ))}
-              </div>
-            )
-          })}
-          <button type="button" className="text-xs text-ink-3 hover:text-ink underline" onClick={() => void savePrefs(null)}>
-            {t('system.fieldConfig.reset')}
-          </button>
-        </div>
-      )}
-      <div className="overflow-x-auto border border-edge rounded">
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="bg-hover">
-              <th className="w-6" />
-              {visible.map(c => (
-                <th key={c.key} className={`text-left font-medium text-ink-2 px-2 py-1 border-b border-edge select-none whitespace-nowrap ${isSortable(c.key) ? 'cursor-pointer' : ''}`}
-                  onClick={isSortable(c.key) ? () => setSort(s => (s?.key === c.key ? { key: c.key, dir: s.dir === 1 ? -1 : 1 } : { key: c.key, dir: 1 })) : undefined}>
-                  {label(c)}{sort?.key === c.key ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(row => {
-              const isOpen = expanded.has(row.key)
-              const steps = row.run?.stepResults ?? []
-              return (
-                <Fragment key={row.key}>
-                  <tr className={`border-b border-edge hover:bg-hover/50 ${row.removed ? 'opacity-70' : ''}`} data-testid="execution-row" data-key={row.key}>
-                    <td className="px-1 align-top">
-                      {steps.length > 0 && (
-                        <button type="button" className="text-ink-3 hover:text-ink" aria-label={t('executionHistory.toggleSteps')}
-                          onClick={() => setExpanded(prev => { const n = new Set(prev); if (n.has(row.key)) n.delete(row.key); else n.add(row.key); return n })}>
-                          {isOpen ? '▾' : '▸'}
-                        </button>
-                      )}
-                    </td>
-                    {visible.map(c => <td key={c.key} className="px-2 py-1 align-top whitespace-pre-wrap">{cell(row, c)}</td>)}
-                  </tr>
-                  {isOpen && steps.map(sr => (
-                    <tr key={`${row.key}#${sr.order}`} className="bg-hover/30 border-b border-edge" data-testid="execution-step-row">
-                      <td />
-                      <td colSpan={Math.max(visible.length, 1)} className="px-2 py-1">
-                        <div className="flex items-start gap-3">
-                          <span className="font-mono text-ink-3 shrink-0">#{sr.order}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${VERDICT_CLASS[sr.result]}`}>{t(STEP_KEY[sr.result])}</span>
-                          {sr.comment && <div className="min-w-0 flex-1"><RichTextViewer value={sr.comment} repoPath={repoPath} /></div>}
-                          {sr.fields && stepFields.filter(f => sr.fields![f.name] !== undefined).map(f => (
-                            <span key={f.name} className="shrink-0"><span className="text-ink-3">{f.label ?? f.name} : </span>
-                              <RunFieldValue def={f} value={sr.fields![f.name]} repoPath={repoPath} /></span>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </Fragment>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+    <div className={`flex flex-col min-h-0 ${fill ? 'flex-1' : 'max-h-[70vh]'}`} data-testid="execution-history">
+      <DataGrid
+        gridId="execution"
+        title={title}
+        rows={history.rows}
+        getRowId={getRowKey}
+        columns={columns}
+        prefs={prefs}
+        renderExpanded={renderSteps}
+        canExpand={hasSteps}
+        expandLabel={t('executionHistory.toggleSteps')}
+        rowClassName={rowClass}
+        scrollMemoryKey={scrollKey}
+        columnFilters={columnFilters}
+        forceVisible={forceVisible}
+        noColumnPicker={noColumnPicker}
+      />
     </div>
   )
 }

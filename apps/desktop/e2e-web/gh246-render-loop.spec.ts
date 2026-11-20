@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { rpc } from './support/helpers'
 
 /**
  * GH246 — une boucle de rendu dans la barre du haut occupait le thread en continu : les transitions
@@ -45,11 +46,15 @@ test('GH246-1 — vue Tableau : toutes les lignes sont rendues au-delà des 50 p
   const { localPath } = s.project
   const schema = await s.invoke<SchemaLike>('schema:get', localPath)
   const type = schema.nodes.find(n => n.name === 'root')!.objectTypes!.find(t => t.category === 'requirement')!
+  // GH387 — créées page fermée : l'application ouverte relirait le projet à chaque fichier écrit
+  // (54 s pour 60 créations, contre 1,4 s sans page). Elle est rechargée ensuite : ses lectures
+  // en cache sont refaites, comme si les exigences avaient été créées hors de l'application.
+  const url = s.page.url()
+  await s.page.goto('about:blank')
   for (let i = 0; i < EXTRA_ROWS; i++) {
-    await s.invoke('requirements:create', localPath, { objectTypeRef: `root::${type.name}`, title: `GH246 ${i}`, fields: {} })
+    await rpc(s.context, 'requirements:create', localPath, { objectTypeRef: `root::${type.name}`, title: `GH246 ${i}`, fields: {} })
   }
-  // Créées par IPC : l'application n'en est pas prévenue, ses lectures en cache sont refaites au rechargement.
-  await s.page.reload()
+  await s.page.goto(url)
   await s.page.waitForLoadState('networkidle')
   await s.openView('Exigences')
   await s.page.getByTitle('Vue tableau').click()

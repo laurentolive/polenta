@@ -2,18 +2,22 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import { gitFor } from '../git/git-backend'
-import { DEFAULT_VALIDATION_DECISIONS, DEFAULT_VALIDATION_STATUSES, DEFAULT_VERSION_STATUSES, entryFieldsError, validationTypeError } from '@polenta/types'
+import { DEFAULT_VALIDATION_DECISIONS, DEFAULT_VALIDATION_STATUSES, DEFAULT_VERSION_STATUSES, REQUIRED_WHEN_STATUS, emptyFieldRenameResult, entryFieldsError, renameTransitionRefs, rulesCitingStatus, validationTypeError } from '@polenta/types'
 import type {
+  FieldRenameResult,
   LinkTypeDefinition,
   ObjectTypeDefinition,
   ProjectSchema,
   SchemaField,
   SchemaStatus,
   SystemNode,
+  ValidationDecisionDef,
+  ValueRename,
 } from '@polenta/types'
 import { ISSUE_IMPACT_LINK, displayIdFieldError, transitionRuleIssues, findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues, runFieldIssues } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
+import type { FieldRenameService } from './field-rename.service'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
 import { GITATTRIBUTES_CONTENT, GITIGNORE_CONTENT } from './repo-conformity.util'
 
@@ -45,6 +49,16 @@ export type SchemaValidationErrorCode =
   | 'VERSION_TYPE_INVALID'
   | 'DISPLAY_ID_FIELD_INVALID'
   | 'TRANSITION_INVALID'
+  // GH371 — modification des statuts et des décisions d'un type existant.
+  | 'STATUS_NOT_FOUND'
+  | 'STATUS_IN_USE'
+  | 'STATUS_LIST_INVALID'
+  | 'DECISION_NOT_FOUND'
+  | 'DECISION_NAME_TAKEN'
+  // GH384 — modification d'un type de lien existant.
+  | 'LINK_TYPE_NOT_FOUND'
+  | 'LINK_TYPE_IN_USE'
+  | 'LINK_TYPE_INVALID'
 
 /**
  * Levée par les méthodes `addNode`/`addObjectType`/`addField`/`addStatus`/
@@ -61,8 +75,34 @@ export class SchemaValidationError extends Error {
   }
 }
 
+/**
+ * GH371 — migration des objets d'un type après une écriture du schéma (`FieldRenameService`), passée
+ * en argument : `FieldRenameService` dépend de services qui dépendent de `SchemaService`.
+ */
+export type SchemaValueMigrator = Pick<FieldRenameService, 'previewValueRenames' | 'renameValues' | 'objectIdsWithStatus'>
+
+/** GH371 — réponse de `update_status` / `remove_status`. */
+export interface StatusMutationResult {
+  schema: ProjectSchema
+  /** Objets migrés (vide si rien à migrer). */
+  migration: FieldRenameResult
+}
+
+/** GH371 — réponse `dryRun` : schéma qui serait écrit, objets portant l'ancienne / la nouvelle valeur. */
+export interface StatusMutationPreview {
+  dryRun: true
+  schema: ProjectSchema
+  preview: { withOld: number; withNew: number }
+}
+
 export class SchemaService {
   private cache = new Map<string, ProjectSchema>()
+  /**
+   * GH413 — signature (taille + date de modification) de `.polenta/schema.yaml` au moment de la
+   * lecture du cache. Un checkout, un merge ou un pull réécrit le fichier : la signature change et
+   * le cache est relu, sans dépendre d'un événement de watcher (qui peut arriver trop tôt ou manquer).
+   */
+  private cacheSig = new Map<string, string | null>()
   /** GH178 — schemas read at a commit, by `repoPath@sha`. */
   private atCache = new Map<string, ProjectSchema | null>()
 
@@ -72,10 +112,24 @@ export class SchemaService {
   ) {}
 
   async get(repoPath: string): Promise<ProjectSchema> {
-    if (this.cache.has(repoPath)) return this.cache.get(repoPath)!
+    // Signature lue avant le fichier : si le fichier change entre les deux, le cache garde une
+    // signature ancienne et sera relu à l'appel suivant.
+    const sig = await this.diskSignature(repoPath)
+    if (this.cache.has(repoPath) && this.cacheSig.get(repoPath) === sig) return this.cache.get(repoPath)!
     const schema = await this.readFromDisk(repoPath)
     this.cache.set(repoPath, schema)
+    this.cacheSig.set(repoPath, sig)
     return schema
+  }
+
+  /** GH413 — `taille:mtimeMs` de `.polenta/schema.yaml`, `null` s'il est absent. */
+  private async diskSignature(repoPath: string): Promise<string | null> {
+    try {
+      const st = await fsP.stat(path.join(repoPath, '.polenta', 'schema.yaml'))
+      return `${st.size}:${st.mtimeMs}`
+    } catch {
+      return null
+    }
   }
 
   /**
@@ -104,6 +158,20 @@ export class SchemaService {
   }
 
   async save(repoPath: string, schema: ProjectSchema): Promise<void> {
+    const toWrite = await this.assertSaveable(repoPath, schema)
+    const dir = path.join(repoPath, '.polenta')
+    await fsP.mkdir(dir, { recursive: true })
+    const filePath = path.join(dir, 'schema.yaml')
+    await fsP.writeFile(filePath, yaml.dump(toWrite, { lineWidth: 120 }), 'utf-8')
+    this.cache.set(repoPath, toWrite)
+    this.cacheSig.set(repoPath, await this.diskSignature(repoPath))
+  }
+
+  /**
+   * Garde-fous de `save`, sans écrire (GH371 — `dryRun` des outils MCP : mêmes refus que l'appel
+   * réel) ; renvoie le schéma tel qu'il serait écrit.
+   */
+  private async assertSaveable(repoPath: string, schema: ProjectSchema): Promise<ProjectSchema> {
     this.assertUniquePrefixes(schema)
     this.assertRequiredWhen(schema)
     this.assertTransitions(schema)
@@ -114,12 +182,7 @@ export class SchemaService {
     await this.assertValidationTypeStable(repoPath, schema)
     const previous = await this.get(repoPath).catch(() => null)
     this.assertValidDisplayIdFields(schema, previous)
-    const toWrite = this.mirrorRootRolesImplements(withIssueImpactLink(schema, previous))
-    const dir = path.join(repoPath, '.polenta')
-    await fsP.mkdir(dir, { recursive: true })
-    const filePath = path.join(dir, 'schema.yaml')
-    await fsP.writeFile(filePath, yaml.dump(toWrite, { lineWidth: 120 }), 'utf-8')
-    this.cache.set(repoPath, toWrite)
+    return this.mirrorRootRolesImplements(withIssueImpactLink(schema, previous))
   }
 
   /**
@@ -196,9 +259,7 @@ export class SchemaService {
     const typeOf = (s: ProjectSchema | null) => s?.nodes?.find(n => n.name === 'root')?.objectTypes?.find(t => t.category === 'validation')
     const before = typeOf(await this.get(repoPath).catch(() => null))
     if (!before) return
-    const dir = path.join(repoPath, 'validations')
-    const entries = await fsP.readdir(dir, { withFileTypes: true }).catch(() => [])
-    const files = entries.filter(e => e.isFile() && e.name.endsWith('.yaml')).map(e => e.name)
+    const files = await this.readValidationEntries(repoPath)
     if (files.length === 0) return
     const after = typeOf(schema)
     const marked = (t: typeof before) => JSON.stringify((t?.statuses ?? []).filter(s => s.isApproval || s.isTerminal)
@@ -208,11 +269,33 @@ export class SchemaService {
     }
     const declared = new Set((after.decisions ?? []).map(d => d.name))
     for (const file of files) {
+      const used = file.decisions.find(d => !declared.has(d))
+      if (used) throw new SchemaValidationError('DECISION_IN_USE', `La décision "${used}" est utilisée par ${file.name} : elle ne se retire pas et ne se renomme pas.`)
+    }
+  }
+
+  /**
+   * Fichiers `validations/*.yaml` du repo et décisions portées par leurs entrées (confirmées ou
+   * proposées), lus directement (pas de dépendance vers `ValidationsService`, qui dépend de ce
+   * service). `name` : nom du fichier sans extension (= ID de la validation).
+   */
+  private async readValidationEntries(repoPath: string): Promise<Array<{ name: string; decisions: string[] }>> {
+    const dir = path.join(repoPath, 'validations')
+    const entries = await fsP.readdir(dir, { withFileTypes: true }).catch(() => [])
+    const files = entries.filter(e => e.isFile() && e.name.endsWith('.yaml')).map(e => e.name).sort()
+    const out: Array<{ name: string; decisions: string[] }> = []
+    for (const file of files) {
       const text = await fsP.readFile(path.join(dir, file), 'utf8').catch(() => '')
       const data = (() => { try { return yaml.load(text) as { entries?: Array<{ decision?: string }> } | null } catch { return null } })()
-      const used = data?.entries?.find(e => e.decision && !declared.has(e.decision))
-      if (used) throw new SchemaValidationError('DECISION_IN_USE', `La décision "${used.decision}" est utilisée par ${file.replace(/\.yaml$/, '')} : elle ne se retire pas et ne se renomme pas.`)
+      const decisions = (Array.isArray(data?.entries) ? data.entries : []).map(e => e?.decision).filter((d): d is string => !!d)
+      out.push({ name: file.replace(/\.yaml$/, ''), decisions })
     }
+    return out
+  }
+
+  /** GH371 — validations du repo dont une entrée porte `decision` (signées et annulées comprises). */
+  private async validationsUsingDecision(repoPath: string, decision: string): Promise<string[]> {
+    return (await this.readValidationEntries(repoPath)).filter(f => f.decisions.includes(decision)).map(f => f.name)
   }
 
   /**
@@ -307,6 +390,7 @@ export class SchemaService {
 
   invalidate(repoPath: string): void {
     this.cache.delete(repoPath)
+    this.cacheSig.delete(repoPath)
   }
 
   private mutationQueues = new Map<string, Promise<unknown>>()
@@ -495,13 +579,19 @@ export class SchemaService {
   async addField(
     repoPath: string,
     /** GH196 — `list` : liste visée (défaut `fields`) ; `runFields` / `stepFields` réservés aux types de test. */
-    dto: { nodeName: string; typeName: string; field: SchemaField; list?: 'fields' | 'runFields' | 'stepFields' },
+    /** GH371 — `entryFields` : champs d'entrée du type validation (pseudo-champ `decision` réservé). */
+    dto: { nodeName: string; typeName: string; field: SchemaField; list?: 'fields' | 'runFields' | 'stepFields' | 'entryFields' },
   ): Promise<ProjectSchema> {
     return this.withMutationQueue(repoPath, async () => {
       const schema = await this.get(repoPath)
       const node = this.requireNode(schema, dto.nodeName)
       this.requireNotReadonly(node)
       const type = this.requireObjectType(node, dto.typeName)
+      if (dto.list === 'entryFields') {
+        const updated = this.replaceObjectType(schema, node, type, this.withEntryField(type, dto.field))
+        await this.save(repoPath, updated)
+        return updated
+      }
       if (dto.list === 'runFields' || dto.list === 'stepFields') {
         if (type.category !== 'test') {
           throw new SchemaValidationError('RUN_FIELD_INVALID', `Les ${dto.list} sont réservés aux types de test ("${dto.typeName}" est ${type.category}).`)
@@ -565,6 +655,328 @@ export class SchemaService {
     })
   }
 
+  // ── GH371 — modification d'un type existant (specs/GH371-design.md §5–6) ─────────
+
+  /** GH371 — type validation avec `field` ajouté en fin d'`entryFields` (contrôles de la spec §1). */
+  private withEntryField(type: ObjectTypeDefinition, field: SchemaField): ObjectTypeDefinition {
+    if (type.category !== 'validation') {
+      throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Les entryFields sont réservés au type validation ("${type.name}" est ${type.category}).`)
+    }
+    const list = type.entryFields ?? []
+    if (field.name === DECISION_PSEUDO_FIELD) {
+      throw new SchemaValidationError('FIELD_NAME_TAKEN', `"${DECISION_PSEUDO_FIELD}" est réservé aux conditions requiredWhen des champs d'entrée : choisir un autre nom.`)
+    }
+    if (list.some((f) => f.name === field.name)) {
+      throw new SchemaValidationError('FIELD_NAME_TAKEN', `Le champ "${field.name}" existe déjà dans entryFields du type "${type.name}".`)
+    }
+    // Ni historique ni colonne pour un champ d'entrée (comme l'éditeur et `add_object_type`, GH377).
+    const { trackHistory: _h, defaultVisible: _v, ...entryField } = field
+    const entryFields = [...list, entryField]
+    // Déclaration MCP : une référence ou une valeur inconnue est refusée aussi (comme `fields`, GH195).
+    const issue = requiredWhenIssues(
+      { ...type, fields: entryFields },
+      { key: DECISION_PSEUDO_FIELD, values: (type.decisions ?? []).map((d) => d.name) },
+    ).find((i) => i.field === field.name)
+    if (issue) throw new SchemaValidationError('REQUIRED_WHEN_INVALID', issue.message)
+    return { ...type, entryFields }
+  }
+
+  /** Nœud et type ciblés, nœud modifiable. */
+  private requireWritableType(schema: ProjectSchema, nodeName: string, typeName: string): { node: SystemNode; type: ObjectTypeDefinition } {
+    const node = this.requireNode(schema, nodeName)
+    this.requireNotReadonly(node)
+    return { node, type: this.requireObjectType(node, typeName) }
+  }
+
+  private requireValidationType(type: ObjectTypeDefinition): ValidationDecisionDef[] {
+    if (type.category !== 'validation') {
+      throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Les décisions sont réservées au type validation ("${type.name}" est ${type.category}).`)
+    }
+    return type.decisions ?? []
+  }
+
+  private requireDecision(type: ObjectTypeDefinition, name: string): ValidationDecisionDef {
+    const decision = this.requireValidationType(type).find((d) => d.name === name)
+    if (!decision) throw new SchemaValidationError('DECISION_NOT_FOUND', `Décision "${name}" introuvable dans le type "${type.name}".`)
+    return decision
+  }
+
+  /** Statuts du type ; une campagne a des statuts fixes (`statuses[]` ignoré). */
+  private requireStatusList(type: ObjectTypeDefinition): SchemaStatus[] {
+    if (type.category === 'campaign') {
+      throw new SchemaValidationError('STATUS_LIST_INVALID', `Les statuts d'une campagne sont fixes ("${type.name}") : ils ne se modifient pas.`)
+    }
+    return type.statuses ?? []
+  }
+
+  /** GH371 — ajoute une décision de validation en fin de `decisions`. */
+  async addDecision(
+    repoPath: string,
+    dto: { nodeName: string; typeName: string; decision: ValidationDecisionDef },
+  ): Promise<ProjectSchema> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const decisions = this.requireValidationType(type)
+      if (decisions.some((d) => d.name === dto.decision.name)) {
+        throw new SchemaValidationError('DECISION_NAME_TAKEN', `La décision "${dto.decision.name}" existe déjà dans le type "${type.name}".`)
+      }
+      const pending = decisions.find((d) => d.isPending)
+      if (dto.decision.isPending && pending) {
+        throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Le type "${type.name}" a déjà une décision en attente ("${pending.name}") : utiliser update_decision { isPending: true } pour déplacer la marque.`)
+      }
+      const { isPending, proposesIssue, ...rest } = dto.decision
+      const decision: ValidationDecisionDef = { ...rest, ...(isPending && { isPending: true }), ...(proposesIssue && { proposesIssue: true }) }
+      const updated = this.replaceObjectType(schema, node, type, { ...type, decisions: [...decisions, decision] })
+      await this.save(repoPath, updated)
+      return updated
+    })
+  }
+
+  /**
+   * GH371 — modifie une décision : libellé, couleur, `proposesIssue`, marque « en attente » (déplacée
+   * depuis l'ancienne), nom. Renommage et marque « en attente » refusés si une entrée porte la
+   * décision (S1, S3 : comme l'application) ; aucun objet n'est réécrit.
+   */
+  async updateDecision(
+    repoPath: string,
+    dto: {
+      nodeName: string; typeName: string; name: string; to?: string
+      label?: string | null; color?: string | null; isPending?: true; proposesIssue?: boolean
+    },
+  ): Promise<ProjectSchema> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const current = this.requireDecision(type, dto.name)
+      const decisions = type.decisions ?? []
+      const rename = dto.to !== undefined && dto.to !== dto.name ? dto.to : undefined
+      if (rename && decisions.some((d) => d.name === rename)) {
+        throw new SchemaValidationError('DECISION_NAME_TAKEN', `La décision "${rename}" existe déjà dans le type "${type.name}".`)
+      }
+      const markPending = dto.isPending === true && !current.isPending
+      if (rename || markPending) {
+        const users = await this.validationsUsingDecision(repoPath, dto.name)
+        if (users.length > 0) {
+          const what = rename ? 'elle ne se renomme pas' : 'elle ne devient pas « en attente »'
+          throw new SchemaValidationError('DECISION_IN_USE', `La décision "${dto.name}" est portée par des entrées de ${idList(users)} : ${what}.`)
+        }
+      }
+      const next: ValidationDecisionDef = { ...current }
+      if (rename) next.name = rename
+      setOrDelete(next, 'label', dto.label)
+      setOrDelete(next, 'color', dto.color)
+      if (dto.proposesIssue === true) next.proposesIssue = true
+      if (dto.proposesIssue === false) delete next.proposesIssue
+      if (markPending) next.isPending = true
+      const updatedDecisions = decisions.map((d) => {
+        if (d === current) return next
+        if (markPending && d.isPending) {
+          const { isPending: _drop, ...rest } = d
+          return rest
+        }
+        return d
+      })
+      const updatedType: ObjectTypeDefinition = {
+        ...type,
+        decisions: updatedDecisions,
+        ...(rename && type.entryFields && { entryFields: renamePseudoRefs(type.entryFields, DECISION_PSEUDO_FIELD, dto.name, rename) }),
+      }
+      const updated = this.replaceObjectType(schema, node, type, updatedType)
+      await this.save(repoPath, updated)
+      return updated
+    })
+  }
+
+  /** GH371 — retire une décision non utilisée, non en attente, non citée par un `requiredWhen` d'entrée (Q1). */
+  async removeDecision(repoPath: string, dto: { nodeName: string; typeName: string; name: string }): Promise<ProjectSchema> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const current = this.requireDecision(type, dto.name)
+      if (current.isPending) {
+        throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `La décision "${dto.name}" est la décision en attente du type "${type.name}" : marquer d'abord une autre décision en attente (update_decision).`)
+      }
+      const users = await this.validationsUsingDecision(repoPath, dto.name)
+      if (users.length > 0) {
+        throw new SchemaValidationError('DECISION_IN_USE', `La décision "${dto.name}" est portée par des entrées de ${idList(users)} : elle ne se retire pas.`)
+      }
+      const citing = fieldsCiting(type.entryFields ?? [], DECISION_PSEUDO_FIELD, dto.name)
+      if (citing.length > 0) {
+        throw new SchemaValidationError('REQUIRED_WHEN_INVALID', `La décision "${dto.name}" est citée par le requiredWhen de ${idList(citing)} (entryFields) : elle ne se retire pas.`)
+      }
+      const updated = this.replaceObjectType(schema, node, type, { ...type, decisions: (type.decisions ?? []).filter((d) => d !== current) })
+      await this.save(repoPath, updated)
+      return updated
+    })
+  }
+
+  /** GH371 — réordonne les statuts (permutation exacte) ; le premier est le statut de création. */
+  async reorderStatuses(repoPath: string, dto: { nodeName: string; typeName: string; order: string[] }): Promise<ProjectSchema> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const statuses = this.requireStatusList(type)
+      const names = statuses.map((s) => s.name)
+      const duplicates = [...new Set(dto.order.filter((n, i) => dto.order.indexOf(n) !== i))]
+      const unknown = dto.order.filter((n) => !names.includes(n))
+      const missing = names.filter((n) => !dto.order.includes(n))
+      if (duplicates.length || unknown.length || missing.length) {
+        const parts = [
+          missing.length ? `manquant(s) : ${idList(missing)}` : '',
+          unknown.length ? `inconnu(s) : ${idList(unknown)}` : '',
+          duplicates.length ? `en double : ${idList(duplicates)}` : '',
+        ].filter(Boolean)
+        throw new SchemaValidationError('STATUS_LIST_INVALID', `order doit lister une fois chaque statut du type "${type.name}" (${names.join(', ')}) — ${parts.join(' ; ')}.`)
+      }
+      const reordered = dto.order.map((n) => statuses.find((s) => s.name === n)!)
+      const updated = this.replaceObjectType(schema, node, type, { ...type, statuses: reordered })
+      await this.save(repoPath, updated)
+      return updated
+    })
+  }
+
+  /**
+   * GH371 — propriétés d'un type existant : libellé, couleur, `displayIdField` (GH229),
+   * `trackStatusHistory` (GH77, écrit seulement à `false`). `null` retire la clé.
+   */
+  async updateObjectType(
+    repoPath: string,
+    dto: { nodeName: string; typeName: string; label?: string | null; color?: string | null; displayIdField?: string | null; trackStatusHistory?: boolean },
+  ): Promise<ProjectSchema> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const next: ObjectTypeDefinition = { ...type }
+      setOrDelete(next, 'label', dto.label)
+      setOrDelete(next, 'color', dto.color)
+      setOrDelete(next, 'displayIdField', dto.displayIdField)
+      if (dto.trackStatusHistory === true) delete next.trackStatusHistory
+      if (dto.trackStatusHistory === false) {
+        if (type.category === 'validation') {
+          throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Le type validation "${type.name}" doit historiser son statut (signataire et date de signature).`)
+        }
+        next.trackStatusHistory = false
+      }
+      // Contrôle direct : `assertValidDisplayIdFields` ne refuse qu'une erreur nouvelle.
+      const displayError = dto.displayIdField ? displayIdFieldError(next) : null
+      if (displayError) throw new SchemaValidationError('DISPLAY_ID_FIELD_INVALID', displayError)
+      const updated = this.replaceObjectType(schema, node, type, next)
+      await this.save(repoPath, updated)
+      return updated
+    })
+  }
+
+  /**
+   * GH371 — modifie un statut : libellé, couleur, marques (`null` / `false` retirent la clé), nom.
+   * Renommage aligné sur l'éditeur (GH82) : règles de transition et `requiredWhen` des `fields`
+   * suivent ; après l'écriture du schéma, dans la même entrée de file, les objets du type sont migrés
+   * (`renameValues` : statut courant, `history.status`, copies `testSnapshot`). `dryRun` : aucun
+   * écrit, mêmes refus, aperçu du renommage.
+   */
+  async updateStatus(
+    repoPath: string,
+    dto: {
+      nodeName: string; typeName: string; name: string; to?: string
+      label?: string | null; color?: string | null; isApproval?: boolean; isTerminal?: boolean; dryRun?: boolean
+    },
+    migrator: SchemaValueMigrator,
+  ): Promise<StatusMutationResult | StatusMutationPreview> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const statuses = this.requireStatusList(type)
+      const current = this.requireStatus(type, statuses, dto.name)
+      const to = dto.to !== undefined && dto.to !== dto.name ? dto.to : undefined
+      if (to && statuses.some((s) => s.name === to)) {
+        throw new SchemaValidationError('STATUS_NAME_TAKEN', `Le statut "${to}" existe déjà dans le type "${type.name}" (une fusion passe par remove_status + replaceWith).`)
+      }
+      const next: SchemaStatus = { ...current, ...(to && { name: to }) }
+      setOrDelete(next, 'label', dto.label)
+      setOrDelete(next, 'color', dto.color)
+      setOrDelete(next, 'isApproval', dto.isApproval === false ? null : dto.isApproval)
+      setOrDelete(next, 'isTerminal', dto.isTerminal === false ? null : dto.isTerminal)
+      let updatedType: ObjectTypeDefinition = { ...type, statuses: statuses.map((s) => (s === current ? next : s)) }
+      const rename: ValueRename | null = to ? { target: { kind: 'status' }, from: dto.name, to } : null
+      if (rename) updatedType = withStatusRefsRenamed(updatedType, rename)
+      const updated = this.replaceObjectType(schema, node, type, updatedType)
+      return this.writeAndMigrate(repoPath, updated, `${node.name}::${type.name}`, rename, !!dto.dryRun, migrator)
+    })
+  }
+
+  /**
+   * GH371 — retire un statut. Statut porté par un objet du type (statut courant) : refusé sauf
+   * `replaceWith`, vers lequel les objets sont alors migrés (fusion GH82 D4 : statut, historique,
+   * copies). Références des transitions et des `requiredWhen` : refus sans `replaceWith`, réécrites
+   * vers `replaceWith` sinon (Q1).
+   */
+  async removeStatus(
+    repoPath: string,
+    dto: { nodeName: string; typeName: string; name: string; replaceWith?: string; dryRun?: boolean },
+    migrator: SchemaValueMigrator,
+  ): Promise<StatusMutationResult | StatusMutationPreview> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const { node, type } = this.requireWritableType(schema, dto.nodeName, dto.typeName)
+      const statuses = this.requireStatusList(type)
+      const current = this.requireStatus(type, statuses, dto.name)
+      const ref = `${node.name}::${type.name}`
+      if (dto.replaceWith !== undefined) {
+        this.requireStatus(type, statuses, dto.replaceWith)
+        if (dto.replaceWith === dto.name) {
+          throw new SchemaValidationError('STATUS_LIST_INVALID', `replaceWith doit désigner un autre statut que "${dto.name}".`)
+        }
+      }
+      if (statuses.length === 1) {
+        throw new SchemaValidationError('STATUS_LIST_INVALID', `"${dto.name}" est le dernier statut du type "${type.name}" : il ne se retire pas.`)
+      }
+      let updatedType: ObjectTypeDefinition = { ...type, statuses: statuses.filter((s) => s !== current) }
+      let rename: ValueRename | null = null
+      if (dto.replaceWith === undefined) {
+        const carriers = await migrator.objectIdsWithStatus(repoPath, ref, dto.name)
+        if (carriers.length > 0) {
+          throw new SchemaValidationError('STATUS_IN_USE', `Le statut "${dto.name}" est porté par ${carriers.length} objet(s) (${idList(carriers)}) : préciser replaceWith pour les migrer vers un autre statut.`)
+        }
+        const rules = rulesCitingStatus(type, dto.name)
+        if (rules.length > 0) {
+          throw new SchemaValidationError('TRANSITION_INVALID', `Le statut "${dto.name}" est cité par les règles de transition ${idList(rules)} : préciser replaceWith pour les réécrire.`)
+        }
+        const citing = fieldsCiting(type.fields ?? [], REQUIRED_WHEN_STATUS, dto.name)
+        if (citing.length > 0) {
+          throw new SchemaValidationError('REQUIRED_WHEN_INVALID', `Le statut "${dto.name}" est cité par le requiredWhen de ${idList(citing)} : préciser replaceWith pour le réécrire.`)
+        }
+      } else {
+        rename = { target: { kind: 'status' }, from: dto.name, to: dto.replaceWith }
+        updatedType = withStatusRefsRenamed(updatedType, rename)
+      }
+      const updated = this.replaceObjectType(schema, node, type, updatedType)
+      return this.writeAndMigrate(repoPath, updated, ref, rename, !!dto.dryRun, migrator)
+    })
+  }
+
+  private requireStatus(type: ObjectTypeDefinition, statuses: SchemaStatus[], name: string): SchemaStatus {
+    const status = statuses.find((s) => s.name === name)
+    if (!status) throw new SchemaValidationError('STATUS_NOT_FOUND', `Statut "${name}" introuvable dans le type "${type.name}".`)
+    return status
+  }
+
+  /**
+   * GH371 — fin commune de `updateStatus` / `removeStatus` : `dryRun` → garde-fous de `save` sans
+   * écrire et aperçu ; sinon `save` puis migration des objets (même entrée de file que l'appelant).
+   */
+  private async writeAndMigrate(
+    repoPath: string, updated: ProjectSchema, objectTypeRef: string, rename: ValueRename | null, dryRun: boolean, migrator: SchemaValueMigrator,
+  ): Promise<StatusMutationResult | StatusMutationPreview> {
+    if (dryRun) {
+      const schema = await this.assertSaveable(repoPath, updated)
+      const [preview] = rename ? await migrator.previewValueRenames(repoPath, objectTypeRef, [rename]) : []
+      return { dryRun: true, schema, preview: { withOld: preview?.withOld ?? 0, withNew: preview?.withNew ?? 0 } }
+    }
+    await this.save(repoPath, updated)
+    const migration = rename ? await migrator.renameValues(repoPath, objectTypeRef, [rename]) : emptyFieldRenameResult()
+    return { schema: this.cache.get(repoPath) ?? updated, migration }
+  }
+
   /** Ajoute un `LinkTypeDefinition` au projet (pas rattaché à un nœud particulier). */
   async addLinkType(repoPath: string, dto: { linkType: LinkTypeDefinition }): Promise<ProjectSchema> {
     return this.withMutationQueue(repoPath, async () => {
@@ -578,6 +990,48 @@ export class SchemaService {
       const updated: ProjectSchema = { ...schema, linkTypes: [...schema.linkTypes, dto.linkType] }
       await this.save(repoPath, updated)
       return updated
+    })
+  }
+
+  /**
+   * GH384 — modifie un type de lien existant : libellés, `defaultVisible` (`false` retire la clé),
+   * `sourceRefs` / `targetRefs` (remplacés en bloc ; `null` retire la restriction). Le nom ne change pas
+   * (il est écrit dans chaque `links.yaml`). `linksBroken` (appelant : liens du workspace) rend les IDs
+   * des liens existants que le type modifié n'accepterait plus, dans aucun sens : refus
+   * `LINK_TYPE_IN_USE`, rien n'est écrit. Retourne le type modifié.
+   */
+  async updateLinkType(
+    repoPath: string,
+    dto: {
+      name: string; labelSourceToTarget?: string; labelTargetToSource?: string; defaultVisible?: boolean
+      sourceRefs?: string[] | null; targetRefs?: string[] | null
+    },
+    linksBroken: (next: LinkTypeDefinition) => Promise<string[]>,
+  ): Promise<LinkTypeDefinition> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const current = schema.linkTypes.find((lt) => lt.name === dto.name)
+      if (!current) {
+        throw new SchemaValidationError('LINK_TYPE_NOT_FOUND', `Type de lien "${dto.name}" introuvable dans ce projet.`)
+      }
+      for (const key of ['sourceRefs', 'targetRefs'] as const) {
+        if (dto[key]?.length === 0) {
+          throw new SchemaValidationError('LINK_TYPE_INVALID', `${key} vide : aucun lien ne serait possible (null retire la restriction).`)
+        }
+      }
+      const next: LinkTypeDefinition = { ...current }
+      if (dto.labelSourceToTarget !== undefined) next.labelSourceToTarget = dto.labelSourceToTarget
+      if (dto.labelTargetToSource !== undefined) next.labelTargetToSource = dto.labelTargetToSource
+      setOrDelete(next, 'defaultVisible', dto.defaultVisible === false ? null : dto.defaultVisible)
+      setOrDelete(next, 'sourceRefs', dto.sourceRefs)
+      setOrDelete(next, 'targetRefs', dto.targetRefs)
+      const refsChanged = dto.sourceRefs !== undefined || dto.targetRefs !== undefined
+      const broken = refsChanged ? await linksBroken(next) : []
+      if (broken.length > 0) {
+        throw new SchemaValidationError('LINK_TYPE_IN_USE', `${broken.length} lien(s) existant(s) du type "${dto.name}" ne seraient plus valides (${idList(broken)}) : les supprimer d'abord (delete_links) ou garder la ref qu'ils utilisent.`)
+      }
+      await this.save(repoPath, { ...schema, linkTypes: schema.linkTypes.map((lt) => (lt === current ? next : lt)) })
+      return next
     })
   }
 
@@ -722,6 +1176,50 @@ export class SchemaService {
         implements: r.implements ?? schema.implements,
       })),
     }
+  }
+}
+
+/** GH266 — pseudo-champ des `requiredWhen` des champs d'entrée d'une validation. */
+const DECISION_PSEUDO_FIELD = 'decision'
+
+/** GH371 — éléments cités dans un message : 5 au plus, puis « … et N autres ». */
+export function idList(ids: string[]): string {
+  if (ids.length <= 5) return ids.join(', ')
+  return `${ids.slice(0, 5).join(', ')} … et ${ids.length - 5} autres`
+}
+
+/** `undefined` : inchangé ; `null` : clé retirée ; sinon valeur posée. */
+function setOrDelete<T extends object, K extends keyof T>(obj: T, key: K, value: T[K] | null | undefined): void {
+  if (value === undefined) return
+  if (value === null) delete obj[key]
+  else obj[key] = value
+}
+
+/** Champs dont `requiredWhen[key]` cite `value`. */
+function fieldsCiting(fields: SchemaField[], key: string, value: string): string[] {
+  return fields.filter((f) => (f.requiredWhen?.[key] ?? []).some((v) => String(v) === value)).map((f) => f.name)
+}
+
+/**
+ * GH371 — remplace `from` par `to` dans `requiredWhen[key]` (pseudo-champ `decision` ou `status`),
+ * valeurs dédoublonnées ; un champ sans référence est rendu tel quel. `renameRequiredWhenRefs`
+ * (éditeur) ignore volontairement les renommages visant le pseudo-champ d'une liste d'entrée.
+ */
+function renamePseudoRefs(fields: SchemaField[], key: string, from: string, to: string): SchemaField[] {
+  return fields.map((f) => {
+    const values = f.requiredWhen?.[key]
+    if (!values || !values.some((v) => String(v) === from)) return f
+    const renamed = [...new Set(values.map((v) => (String(v) === from ? to : v)))]
+    return { ...f, requiredWhen: { ...f.requiredWhen, [key]: renamed } }
+  })
+}
+
+/** GH371 — type après renommage (ou fusion) d'un statut : règles de transition et `requiredWhen` des `fields`. */
+function withStatusRefsRenamed(type: ObjectTypeDefinition, rename: ValueRename): ObjectTypeDefinition {
+  return {
+    ...type,
+    ...(type.transitions && { transitions: renameTransitionRefs(type.transitions, [rename]) }),
+    ...(type.fields && { fields: renamePseudoRefs(type.fields, REQUIRED_WHEN_STATUS, rename.from, rename.to) }),
   }
 }
 

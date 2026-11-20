@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Lock, Plus, Search } from 'lucide-react'
 import type { Parameter, RepoParameters } from '@polenta/types'
 import { api } from '../../api'
+import { DataGrid } from '../grid/DataGrid'
+import type { GridColumn } from '../grid/gridTypes'
+import { useGridScrollKey } from '../grid/useGridScrollKey'
 import { ParameterEditDialog } from './ParameterEditDialog'
 
 interface Props {
@@ -16,6 +19,9 @@ interface Props {
 }
 
 type DialogState = { repo: RepoParameters; parameter?: Parameter } | null
+
+const DEFAULTS = ['name', 'value', 'unit', 'description', 'uses']
+const paramName = (p: Parameter) => p.name
 
 /** T171 — vue Paramètres : bases de paramètres regroupées par repo, recherche, édition. */
 export function ParametersView({ repoPath, workspaceDir, projectId, repoFilter }: Props) {
@@ -30,14 +36,11 @@ export function ParametersView({ repoPath, workspaceDir, projectId, repoFilter }
   })
 
   const needle = search.trim().toLowerCase()
-  const shown = useMemo(() => repos
-    .filter(r => !repoFilter || r.repoPath === repoFilter)
-    .map(r => ({
-      repo: r,
-      parameters: needle
-        ? r.parameters.filter(p => [p.name, p.value, p.description ?? ''].some(s => s.toLowerCase().includes(needle)))
-        : r.parameters,
-    })), [repos, repoFilter, needle])
+  const shown = useMemo(() => repos.filter(r => !repoFilter || r.repoPath === repoFilter), [repos, repoFilter])
+  // Recherche globale de l'écran : filtre de chaque grille, combiné en ET aux filtres de colonne.
+  const rowFilter = useMemo(() => (needle
+    ? (p: Parameter) => [p.name, p.value, p.description ?? ''].some(s => s.toLowerCase().includes(needle))
+    : undefined), [needle])
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -56,7 +59,7 @@ export function ParametersView({ repoPath, workspaceDir, projectId, repoFilter }
 
         {isLoading && <p className="text-sm text-ink-3">{t('common.loading')}</p>}
 
-        {shown.map(({ repo, parameters }) => (
+        {shown.map(repo => (
           <section key={repo.repoPath} className="mb-8">
             <div className="flex items-center gap-2 mb-2">
               <h2 className="text-sm font-semibold text-ink">{repo.label ?? repo.repoName}</h2>
@@ -71,37 +74,10 @@ export function ParametersView({ repoPath, workspaceDir, projectId, repoFilter }
                 </button>
               )}
             </div>
-            {parameters.length === 0 ? (
-              <p className="text-xs text-ink-3 italic">{needle ? t('common.noResults') : t('parameters.empty')}</p>
+            {repo.parameters.length === 0 ? (
+              <p className="text-xs text-ink-3 italic">{t('parameters.empty')}</p>
             ) : (
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="text-left text-ink-3">
-                    <th className="font-medium py-1 pr-3 w-1/4">{t('parameters.fields.name')}</th>
-                    <th className="font-medium py-1 pr-3">{t('parameters.fields.value')}</th>
-                    <th className="font-medium py-1 pr-3 w-16">{t('parameters.fields.unit')}</th>
-                    <th className="font-medium py-1 pr-3">{t('parameters.fields.description')}</th>
-                    <th className="font-medium py-1 w-20 text-right">{t('parameters.uses')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {parameters.map(p => (
-                    <tr
-                      key={p.name}
-                      className="border-t border-edge hover:bg-row-hover cursor-pointer"
-                      onClick={() => setDialog({ repo, parameter: p })}
-                    >
-                      <td className="py-1.5 pr-3 font-mono text-ink">{p.name}</td>
-                      <td className="py-1.5 pr-3 text-ink">
-                        {p.value || <span className="text-status-warning italic">{t('parameters.emptyValue')}</span>}
-                      </td>
-                      <td className="py-1.5 pr-3 text-ink-2">{p.unit}</td>
-                      <td className="py-1.5 pr-3 text-ink-2">{p.description}</td>
-                      <td className="py-1.5 text-right text-ink-2">{repo.usageCounts[p.name] ?? 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <RepoParametersGrid repo={repo} rowFilter={rowFilter} onOpen={parameter => setDialog({ repo, parameter })} />
             )}
           </section>
         ))}
@@ -117,6 +93,58 @@ export function ParametersView({ repoPath, workspaceDir, projectId, repoFilter }
           onClose={() => setDialog(null)}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * GH389 §4 — base de paramètres d'un repo sur la grille commune (`DataGrid`) : préférences dans le
+ * `.pref` de ce repo (`grid::parameters`). Entrée / double-clic ouvre le dialogue d'édition (pas
+ * d'édition dans la cellule).
+ */
+function RepoParametersGrid({ repo, rowFilter, onOpen }: {
+  repo: RepoParameters
+  rowFilter?: (p: Parameter) => boolean
+  onOpen: (parameter: Parameter) => void
+}) {
+  const { t } = useTranslation()
+  const gridId = `parameters-${repo.repoName}`
+  const scrollKey = useGridScrollKey(gridId)
+  const openRef = useRef(onOpen)
+  openRef.current = onOpen
+  const onActivate = useCallback((p: Parameter) => openRef.current(p), [])
+  const usage = repo.usageCounts
+
+  const columns = useMemo<GridColumn<Parameter>[]>(() => [
+    {
+      key: 'name', label: t('parameters.fields.name'), locked: true,
+      getText: p => p.name,
+      render: p => <span className="font-mono">{p.name}</span>,
+    },
+    {
+      key: 'value', label: t('parameters.fields.value'),
+      getText: p => p.value || t('parameters.emptyValue'),
+      render: p => p.value || <span className="text-status-warning italic">{t('parameters.emptyValue')}</span>,
+    },
+    { key: 'unit', label: t('parameters.fields.unit'), getText: p => p.unit ?? '' },
+    { key: 'description', label: t('parameters.fields.description'), getText: p => p.description ?? '' },
+    { key: 'uses', label: t('parameters.uses'), getText: p => String(usage[p.name] ?? 0) },
+  ], [t, usage])
+  const prefs = useMemo(() => ({ repoPath: repo.repoPath, prefKey: 'grid::parameters', view: 'columns', defaults: DEFAULTS }), [repo.repoPath])
+
+  return (
+    <div className="flex flex-col max-h-[60vh] min-h-0" data-testid={`parameters-grid-${repo.repoName}`}>
+      <DataGrid
+        gridId={gridId}
+        title={`${t('parameters.title')} ${repo.label ?? repo.repoName}`}
+        rows={repo.parameters}
+        getRowId={paramName}
+        columns={columns}
+        prefs={prefs}
+        rowFilter={rowFilter}
+        onActivate={onActivate}
+        scrollMemoryKey={scrollKey}
+      />
     </div>
   )
 }

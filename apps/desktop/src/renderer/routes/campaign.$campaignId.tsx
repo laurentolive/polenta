@@ -1,9 +1,9 @@
-﻿import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
-import { Trash2, Play, Eye, Pencil, Copy, AlertTriangle } from 'lucide-react'
+import { Trash2, Pencil } from 'lucide-react'
 import { decodeInstances } from '../lib/reqInstances'
 import { api } from '../api'
 import { useProjectSchema, getCampaignTypeDef, isTestApproved } from '../hooks/useProjectSchema'
@@ -13,25 +13,26 @@ import { RichTextProvider } from '../contexts/RichTextContext'
 import { RichTextToolbar } from '../components/system/RichTextToolbar'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
-import { TestParamFields } from '../components/TestParamFields'
-import { manualKeysForRun } from '../lib/testParams'
 import { buildReqInstances, isIteratingPreview, missingReqs, presentReqIds } from '../lib/reqInstances'
 import { carryCoverage, toCarriedSelection, withCarryPrecedence, type CarryEligibility } from '../lib/carryOver'
-import { unapprovedPendingRuns, unapprovedTestOf } from '../lib/campaignApproval'
-import { NotApprovedBadge, NotApprovedRunsBanner } from '../components/campaign/NotApproved'
+import { unapprovedPendingRuns } from '../lib/campaignApproval'
+import { NotApprovedRunsBanner } from '../components/campaign/NotApproved'
+import { CampaignEntriesGrid } from '../components/campaign/CampaignEntriesGrid'
 import { TestPickerModal, EMPTY_PICKER_RESULT, type PickerResult } from '../components/campaign/TestPickerModal'
 import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
+import { useTabDraft } from '../lib/tabDraft'
 import { UnresolvedParamsBanner } from '../components/UnresolvedParamsBanner'
 import { ExportButton } from '../components/export/ExportButton'
 import { ExecutionSheetMenu } from '../components/campaign/ExecutionSheetMenu'
-import { ElementLink } from '../components/element/ElementLink'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
-import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
+import { resolveCampaignRuns } from '../lib/campaignTests'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
-import { RUN_STATUS_CLASS, RUN_STATUS_LABEL_KEY, isTestRunStatus } from '../lib/runStatus'
-import type { CampaignTestRun, TestRunStatus, TestCase, ReqInstanceSelection, ParamResolutionPreview, CarriedEntrySelection } from '@polenta/types'
+import { isTestRunStatus } from '../lib/runStatus'
+import type { TestRunStatus, TestCase, ReqInstanceSelection, ParamResolutionPreview, CarriedEntrySelection } from '@polenta/types'
 import { HistorySection } from '../components/history/HistorySection'
+import { useSystemView } from '../contexts/SystemViewContext'
+import { EXECUTIONS_PATH } from '../lib/executionsRoute'
 
 export const Route = createFileRoute('/campaign/$campaignId')({
   component: CampaignDetailPage,
@@ -52,9 +53,6 @@ export const Route = createFileRoute('/campaign/$campaignId')({
     }
   },
 })
-
-// Ordre d'affichage des pastilles ; valeurs = statuts d'entrée de `TEST_RUN_STATUS_LABELS`.
-const RUN_STATUSES: TestRunStatus[] = ['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE', 'pending']
 
 /** Valeur d'URL hors liste ignorée (filtre absent). */
 function parseRunStatus(v: unknown): TestRunStatus | undefined {
@@ -78,10 +76,6 @@ function CampaignDetailPage() {
   const [addingTests, setAddingTests] = useState(!!prefillAdd)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editingFields, setEditingFields] = useState<Record<string, string> | null>(null)
-  const [editingParamsFor, setEditingParamsFor] = useState<string | null>(null)
-  const [editParamValues, setEditParamValues] = useState<Record<string, string>>({})
-  const [duplicatingFor, setDuplicatingFor] = useState<string | null>(null)
-  const [duplicateParamValues, setDuplicateParamValues] = useState<Record<string, string>>({})
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ['campaign', repoPath, campaignId],
@@ -92,8 +86,16 @@ function CampaignDetailPage() {
   // editingFields !== null means the "Modifier les champs" panel is open with an unsaved draft
   // (Annuler/Enregistrer, same explicit-draft shape as schema.tsx/req.$reqId.tsx's isDirty/hasChanges).
   useRegisterTabDirty(editingFields !== null)
+  // GH343 — l'édition des champs en cours suit l'onglet glissé dans une autre fenêtre.
+  useTabDraft<Record<string, string>>(
+    repoPath ? `campaign:${repoPath}::${campaignId}` : null,
+    () => editingFields,
+    fields => setEditingFields(fields),
+    !!campaign,
+  )
 
   const { data: schema } = useProjectSchema(repoPath)
+  const { repoNameOf } = useSystemView()
   // GH64 — éligibilité d'un test reporté : même règle que l'ajout normal. GH68 — tout statut est
   // accepté à l'ajout (planification en amont) ; le statut est signalé, pas filtré.
   const isCarryEligible = useCallback((): CarryEligibility => 'ok', [])
@@ -163,7 +165,6 @@ function CampaignDetailPage() {
       api.campaigns.updateRunParams(repoPath, campaignId, entryId, paramValues),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
-      setEditingParamsFor(null)
     },
   })
 
@@ -173,8 +174,6 @@ function CampaignDetailPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
-      setDuplicatingFor(null)
-      setDuplicateParamValues({})
     },
   })
 
@@ -208,10 +207,15 @@ function CampaignDetailPage() {
 
   const testMap = new Map(tests.map(t => [t.id, t]))
   const isActive = campaign.status === 'planned' || campaign.status === 'in_progress'
-  // GH65 / GH74 — filtre par statut brut d'entrée.
-  const filterLabel = statusFilter ? t(RUN_STATUS_LABEL_KEY[statusFilter]) : ''
-  const matchesFilter = (r: CampaignTestRun) => !statusFilter || r.status === statusFilter
-
+  // GH400 — sans test (ou test introuvable) : type par défaut de la vue.
+  const openExecutions = () => {
+    const firstTest = campaign.testCaseIds.map(id => testMap.get(id)).find(Boolean)
+    const [node, type] = firstTest?.objectTypeRef.split('::') ?? []
+    void navigate({
+      to: EXECUTIONS_PATH,
+      search: { projectId, repo: repoNameOf(repoPath), node, type, campaign: campaign.id },
+    } as never)
+  }
   const includedIds = new Set(campaign.testCaseIds)
   // T171 — références à saisir par test, selon la résolution prévisionnelle (base à la source de
   // la campagne). Seules elles comptent pour la complétude et pour la règle d'instance unique.
@@ -231,15 +235,6 @@ function CampaignDetailPage() {
       if (isIteratingPreview(preview)) return missingReqs(preview, presentOf(t.id)).length > 0
       return (manualKeysById.get(t.id)?.length ?? 0) > 0
     })
-
-  function getRunParamValues(entryId: string): Record<string, string> {
-    return campaign!.runs.find(r => r.entryId === entryId)?.paramValues ?? {}
-  }
-
-  function startEditingParams(entryId: string) {
-    setEditingParamsFor(entryId)
-    setEditParamValues(getRunParamValues(entryId))
-  }
 
   function navigateToView(entryId: string) {
     navigate({
@@ -340,10 +335,10 @@ function CampaignDetailPage() {
       />
 
       <div className="flex-1 overflow-y-auto">
-      <div className="max-w-2xl p-6">
+      <div className="p-6">
       {/* Champs personnalisés (fields{} du type de campagne) */}
       {typeDef && typeDef.fields.length > 0 && (
-        <div className="border rounded p-3 mb-4">
+        <div className="border rounded p-3 mb-4 max-w-2xl">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">{typeDef.label ?? typeDef.name}</p>
             {editingFields === null ? (
@@ -399,36 +394,6 @@ function CampaignDetailPage() {
         </div>
       )}
 
-      {/* Progress summary */}
-      {campaign.runs.length > 0 && (
-        <div className="flex items-center gap-3 mb-4 text-xs">
-          {RUN_STATUSES.map(s => {
-            const count = campaign.runs.filter(r => r.status === s).length
-            const active = statusFilter === s
-            if (count === 0 && !active) return null
-            // GH65 — pastille = filtre par statut brut (re-clic : retiré).
-            return (
-              <button
-                key={s}
-                type="button"
-                aria-pressed={active}
-                data-status={s}
-                onClick={() => setStatusFilter(active ? undefined : s)}
-                title={t('campaignPage.statusFilter.toggle', { status: t(RUN_STATUS_LABEL_KEY[s]) })}
-                className={`px-2 py-0.5 rounded-full ${RUN_STATUS_CLASS[s]} ${active ? 'ring-2 ring-offset-1 ring-status-info' : statusFilter ? 'opacity-50 hover:opacity-100' : 'hover:brightness-95'}`}
-              >
-                {count} {t(RUN_STATUS_LABEL_KEY[s])}
-              </button>
-            )
-          })}
-          {statusFilter && (
-            <button type="button" onClick={() => setStatusFilter(undefined)} className="text-ink-3 hover:text-ink underline" data-testid="campaign-status-filter-clear">
-              {t('campaignPage.statusFilter.clear', { status: filterLabel })}
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Add tests section — GH33 : sélecteur en modale (Vue Excel filtrable, 2 étapes) */}
       {isActive && (
         <div className="mb-4">
@@ -474,207 +439,46 @@ function CampaignDetailPage() {
       {/* GH68 — instances à exécuter dont le test n'est pas approuvé. */}
       <NotApprovedRunsBanner count={unapprovedPendingRuns(campaign.runs, testMap, isActive, isApproved).length} />
 
-      {/* Test case list */}
-      <div className="border rounded divide-y mb-3">
-        {campaign.runs.length === 0 ? (
-          <p className="px-4 py-3 text-xs text-ink-3 italic">{t('campaignPage.noTestCaseInCampaign')}</p>
-        ) : statusFilter && !campaign.runs.some(matchesFilter) ? (
-          <p className="px-4 py-3 text-xs text-ink-3 italic">{t('campaignPage.statusFilter.empty', { status: filterLabel })}</p>
-        ) : (
-          campaign.runs.filter(matchesFilter).map(run => {
-            const { entryId, testCaseId: tcId, status: runStatus, runId, paramValues } = run
-            const tc = resolveRunTest(run, testMap)
-            // Références à saisir de cette instance (les valeurs lues dans la base sont figées).
-            const runManualKeys = tc ? manualKeysForRun(run, tc) : []
-            const hasParams = runManualKeys.length > 0
-            // État live du test, distinct de `tc` : "Dupliquer" crée une nouvelle instance dont
-            // le snapshot sera pris sur l'état *actuel* du test (`duplicateTest()`), pas sur le
-            // snapshot figé de l'entrée cliquée — l'icône et le panneau de saisie des paramètres
-            // doivent donc refléter les paramètres live, sous peine de proposer des champs qui ne
-            // correspondent plus au `{label}` réellement figé dans la nouvelle instance.
-            const liveTc = testMap.get(tcId)
-            const liveManualKeys = paramPreviews.get(tcId)?.manual ?? []
-            // T179 — valeurs `{req.<champ>}` actuelles de l'exigence de l'instance (duplicata).
-            const liveReq = run.requirementId
-              ? paramPreviews.get(tcId)?.requirements?.find(r => r.requirementId === run.requirementId)
-              : undefined
-            const hasLiveParams = liveManualKeys.length > 0
-            const unapprovedTest = unapprovedTestOf(run, liveTc, isActive, isApproved)
-            const isEditingParams = editingParamsFor === entryId
-            const isDuplicating = duplicatingFor === entryId
-            return (
-              <div key={entryId}>
-                <div
-                  className={`flex items-center gap-3 px-3 py-2 ${!isActive ? 'cursor-pointer hover:bg-hover/50 transition-colors' : ''}`}
-                  onClick={!isActive ? () => navigateToView(entryId) : undefined}
-                >
-                  <div className="flex-1 min-w-0">
-                    {/* GH229 — ID du test, de l'exigence et de la campagne d'origine : liens d'élément
-                        (le clic ailleurs sur la ligne ouvre l'entrée). */}
-                    <ElementLink id={tcId} className="font-mono text-xs text-ink-3 whitespace-nowrap" />
-                    {tc && (
-                      <span className="text-xs text-ink ml-2 truncate">{tc.title}</span>
-                    )}
-                    {run.requirementId && (
-                      <>
-                        <span className="text-xs text-ink-3 mx-1">·</span>
-                        <ElementLink id={run.requirementId} className="font-mono text-xs text-status-info" />
-                      </>
-                    )}
-                    {/* GH64 — instance reportée depuis une autre campagne. */}
-                    {run.carriedFrom && (
-                      <span
-                        title={t('campaignPage.carriedFrom', { campaignId: run.carriedFrom.campaignId, entryId: run.carriedFrom.entryId })}
-                        className="ml-2 font-mono text-[10px] text-ink-3"
-                      >
-                        ↩ <ElementLink id={run.carriedFrom.campaignId} className="hover:text-status-info" />
-                      </span>
-                    )}
-                    {unapprovedTest && <NotApprovedBadge test={unapprovedTest} schema={schema} />}
-                    {(run.unresolvedParams?.length ?? 0) > 0 && (
-                      <span
-                        className="ml-2 inline-flex items-center gap-0.5 text-[10px] text-status-warning"
-                        title={run.unresolvedParams!.map(u => `{${u.ref}} — ${t(`campaignParams.reason.${u.reason}`)}`).join('\n')}
-                      >
-                        <AlertTriangle size={11} />{t('campaignParams.unresolvedCount', { count: run.unresolvedParams!.length })}
-                      </span>
-                    )}
-                    {paramValues && Object.keys(paramValues).length > 0 && (
-                      <span className="block text-[10px] font-mono text-ink-3 truncate">
-                        {Object.entries(paramValues).map(([label, value]) => `${label}=${value}`).join(' · ')}
-                      </span>
-                    )}
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${RUN_STATUS_CLASS[runStatus]}`}>
-                    {t(RUN_STATUS_LABEL_KEY[runStatus])}
-                  </span>
-                  {/* T179 — exigence plus liée : pas de duplicata possible pour elle. */}
-                  {isActive && hasLiveParams && (!run.requirementId || liveReq) && (
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.stopPropagation()
-                        if (isDuplicating) { setDuplicatingFor(null) }
-                        else { setDuplicatingFor(entryId); setDuplicateParamValues({}); setEditingParamsFor(null) }
-                      }}
-                      title={t('campaignPage.addAnotherInstance')}
-                      className="shrink-0 text-ink-3 hover:text-ink p-1 rounded hover:bg-hover"
-                    >
-                      <Copy size={12} />
-                    </button>
-                  )}
-                  {hasParams && (
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.stopPropagation()
-                        if (isEditingParams) { setEditingParamsFor(null) }
-                        else { startEditingParams(entryId); setDuplicatingFor(null) }
-                      }}
-                      title={t('campaignPage.editParamValues')}
-                      className="shrink-0 text-ink-3 hover:text-ink p-1 rounded hover:bg-hover"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                  )}
-                  {isActive && runId && (
-                    <button
-                      type="button"
-                      onClick={() => navigateToView(entryId)}
-                      title={t('campaignPage.viewResult')}
-                      className="shrink-0 flex items-center gap-1 text-xs text-ink-3 hover:text-ink border border-edge rounded px-2 py-0.5 hover:bg-hover transition-colors"
-                    >
-                      <Eye size={11} />
-                      {t('campaignPage.view')}
-                    </button>
-                  )}
-                  {isActive && (
-                    <button
-                      type="button"
-                      onClick={() => navigate({
-                        to: '/campaign/$campaignId/execute/$testId',
-                        params: { campaignId, testId: entryId },
-                        search: { repoPath, projectId, component, level },
-                      })}
-                      title={t('campaignPage.executeThisTest')}
-                      className="shrink-0 flex items-center gap-1 text-xs text-status-info hover:opacity-80 border border-status-info-border rounded px-2 py-0.5 hover:bg-status-info-bg transition-colors"
-                    >
-                      <Play size={11} />
-                      {t('campaignPage.execute')}
-                    </button>
-                  )}
-                </div>
-                {isEditingParams && tc && (
-                  <div className="px-3 pb-2">
-                    <TestParamFields
-                      labels={runManualKeys}
-                      values={editParamValues}
-                      onChange={(label, value) => setEditParamValues(prev => ({ ...prev, [label]: value }))}
-                    />
-                    <div className="flex gap-2 pl-8">
-                      <button
-                        type="button"
-                        onClick={() => setEditingParamsFor(null)}
-                        className="text-xs text-ink-3 hover:text-ink"
-                      >
-                        {t('common.cancel')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateParamsMutation.mutate({ entryId, paramValues: editParamValues })}
-                        disabled={updateParamsMutation.isPending || runManualKeys.some(label => !editParamValues[label]?.trim())}
-                        className="btn-primary-sm"
-                      >
-                        {updateParamsMutation.isPending ? t('campaignPage.saving') : t('common.save')}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {isDuplicating && liveTc && (
-                  <div className="px-3 pb-2">
-                    <p className="pl-6 text-[11px] text-ink-3 mb-1">{t('campaignPage.newInstanceOf', { tcId })}</p>
-                    <TestParamFields
-                      labels={liveManualKeys}
-                      resolved={{ ...paramPreviews.get(tcId)?.resolved, ...liveReq?.resolved }}
-                      unresolved={[...(paramPreviews.get(tcId)?.unresolved ?? []), ...(liveReq?.unresolved ?? [])]}
-                      values={duplicateParamValues}
-                      onChange={(label, value) => setDuplicateParamValues(prev => ({ ...prev, [label]: value }))}
-                    />
-                    <div className="flex gap-2 pl-8">
-                      <button
-                        type="button"
-                        onClick={() => { setDuplicatingFor(null); setDuplicateParamValues({}) }}
-                        className="text-xs text-ink-3 hover:text-ink"
-                      >
-                        {t('common.cancel')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => duplicateTestMutation.mutate({ testCaseId: tcId, paramValues: duplicateParamValues, requirementId: run.requirementId })}
-                        disabled={duplicateTestMutation.isPending || liveManualKeys.some(label => !duplicateParamValues[label]?.trim())}
-                        className="btn-primary-sm"
-                      >
-                        {duplicateTestMutation.isPending ? t('campaignPage.adding') : t('campaignPage.duplicate')}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {isActive && (
-                  <button
-                    type="button"
-                    onClick={e => { e.stopPropagation(); removeTestMutation.mutate(entryId) }}
-                    disabled={removeTestMutation.isPending}
-                    title={t('campaignPage.removeTestFromCampaign')}
-                    className="shrink-0 text-ink-3 hover:text-status-danger p-1 rounded hover:bg-status-danger-bg transition-colors disabled:opacity-50"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                )}
-              </div>
-            )
-          })
-        )}
+      {/* GH400 — toutes les exécutions de la campagne (remplacées, retirées comprises) : vue Exécutions,
+          colonne Campagne filtrée sur elle, type du premier test de la campagne. */}
+      <div className="flex justify-end mb-1">
+        <button type="button" onClick={openExecutions} data-testid="campaign-view-executions"
+          className="text-xs text-status-info hover:underline">
+          {t('executionsView.fromCampaign')}
+        </button>
       </div>
+
+      {/* GH389 §4 — entrées de la campagne : grille commune (pastilles de statut, liens, actions). */}
+      {campaign.runs.length === 0 ? (
+        <p className="border rounded px-4 py-3 mb-3 text-xs text-ink-3 italic">{t('campaignPage.noTestCaseInCampaign')}</p>
+      ) : (
+        // Remontée par campagne (Précédent d'une campagne à l'autre : même route) — mémoire du
+        // défilement, formulaire ouvert et filtres de colonne propres à chaque campagne.
+        <CampaignEntriesGrid
+          key={`${repoPath}::${campaign.id}`}
+          campaign={campaign}
+          isActive={isActive}
+          repoPath={repoPath}
+          testMap={testMap}
+          paramPreviews={paramPreviews}
+          schema={schema}
+          isApproved={isApproved}
+          statusFilter={statusFilter}
+          onStatusFilter={setStatusFilter}
+          onView={navigateToView}
+          onExecute={entryId => navigate({
+            to: '/campaign/$campaignId/execute/$testId',
+            params: { campaignId, testId: entryId },
+            search: { repoPath, projectId, component, level },
+          })}
+          onRemove={entryId => removeTestMutation.mutate(entryId)}
+          removing={removeTestMutation.isPending}
+          onSaveParams={(entryId, paramValues) => updateParamsMutation.mutateAsync({ entryId, paramValues })}
+          savingParams={updateParamsMutation.isPending}
+          onDuplicate={args => duplicateTestMutation.mutateAsync(args)}
+          duplicating={duplicateTestMutation.isPending}
+        />
+      )}
 
       {/* Actions */}
       <div className="flex gap-3 items-center flex-wrap">

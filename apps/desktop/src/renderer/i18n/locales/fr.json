@@ -93,6 +93,19 @@
       "mergeInto": "Fusionner dans <mono>{{integration}}</mono>",
       "mergeIntoIntegration": "Fusionner dans la branche d'intégration",
       "publishedUnmerged": "Publié sur <mono>{{branch}}</mono> (non fusionné dans <mono>{{integration}}</mono>).",
+      "refresh": "Récupérer",
+      "refreshBehind": "{{count}} commit(s) de l'équipe à récupérer. « Récupérer » les intègre dans votre branche.",
+      "refreshNothing": "Rien à récupérer : votre branche contient déjà l'intégration.",
+      "refreshOnIntegration": "Met à jour l'intégration depuis le serveur.",
+      "refreshDiverged": "L'intégration locale a divergé du serveur : « Récupérer » la resynchronise (vos commits locaux sont conservés).",
+      "refreshOffline": "Serveur injoignable : rien n'a été modifié.",
+      "refreshAccessRevoked": "Accès au serveur révoqué : reconnectez-vous pour récupérer.",
+      "refreshIntegrationUpdated": "Intégration à jour.",
+      "refreshUpToDate": "Déjà à jour.",
+      "refreshMerged": "{{count}} commit(s) récupéré(s).",
+      "refreshWip": "Vos modifs en cours ont été enregistrées dans un commit WIP.",
+      "refreshOpenError": "Impossible d'ouvrir la résolution des conflits.",
+      "refreshFailed": "Récupérer a échoué : {{error}}",
       "parentsNote": "Les repos parents sont aussi publiés pour mettre à jour les pins.",
       "resolveConflicts": "Résoudre les conflits",
       "resumeResolution_one": "Reprendre la résolution des conflits",
@@ -306,6 +319,7 @@
       "title": "Projet",
       "recents": "Récents",
       "closeProject": "Fermer le projet",
+      "newWindow": "Nouvelle fenêtre",
       "dataModel": "Modèle de données",
       "preferences": "Préférences"
     },
@@ -528,6 +542,10 @@
         "legacy-sql": "Requête SQL d'avant GH74, non prise en charge : à réécrire en script ou à supprimer.",
         "newer-format": "Créé par une version plus récente de Polenta : lecture seule."
       }
+    },
+    "campaignsNav": {
+      "campaigns": "Campagnes",
+      "executions": "Exécutions"
     }
   },
   "schema": {
@@ -601,6 +619,16 @@
       "includeIssuesLabel": "Issues",
       "includeVersionsLabel": "Versions",
       "includeValidationsLabel": "Validations",
+      "defaultLinkTypesLabel": "Types de liens créés par défaut",
+      "linkVerificationLabel": "Vérification : test → exigence",
+      "linkImplementationLabel": "Implémentation : exigence → exigence du composant",
+      "linkImplementationParentLabel": "Implémentation depuis le parent : exigence de {{parentLabel}} → exigence du composant",
+      "linkIssueImpactLabel": "Impact d’issue : issue → exigence",
+      "linkIssueImpactTitle": "Ajouté avec le type Issues",
+      "verificationSourceToTarget": "vérifie",
+      "verificationTargetToSource": "est vérifiée par",
+      "implementationSourceToTarget": "est implémentée par",
+      "implementationTargetToSource": "implémente",
       "displayLabel": "Label affiché",
       "description": "Description",
       "descriptionPlaceholder": "Description optionnelle",
@@ -805,9 +833,9 @@
       "createFolder": "Créer un dossier",
       "rename": "Renommer",
       "deleteTitle": "Supprimer ?",
-      "deleteFolderWithContent": "Ce dossier contient des éléments. Tout le contenu sera supprimé en cascade.",
-      "deleteCount_one": "Cet élément sera supprimé.",
-      "deleteCount_other": "Ces éléments seront supprimés.",
+      "deleteFolderWithContent": "Ce dossier contient des éléments. Les exigences qui y sont rangées passeront au statut obsolète et quitteront l'arbre.",
+      "deleteCount_one": "Cet élément quittera l'arbre. Si c'est une exigence, elle passera au statut obsolète.",
+      "deleteCount_other": "Ces éléments quitteront l'arbre. Les exigences passeront au statut obsolète.",
       "clickToNavigate": "Cliquer pour naviguer vers cet élément (Ctrl+clic pour un nouvel onglet)",
       "clickToEdit": "Cliquer pour modifier",
       "inlineCode": "Code inline",
@@ -936,7 +964,15 @@
       }
     },
     "campaignListView": {
-      "noTest": "Aucun test"
+      "noTest": "Aucun test",
+      "title": "Campagnes",
+      "newCampaign": "Nouvelle campagne",
+      "createFirst": "Créer la première campagne",
+      "colId": "ID",
+      "colStatus": "Statut",
+      "colTitle": "Titre",
+      "colTests": "Tests",
+      "colRuns": "Entrées"
     },
     "richTextToolbar": {
       "rawMarkdownMode": "Mode markdown brut"
@@ -1048,6 +1084,16 @@
     "editParamValues": "Modifier les valeurs des paramètres",
     "viewResult": "Consulter le résultat",
     "view": "Voir",
+    "entriesTitle": "Entrées {{id}}",
+    "columns": {
+      "test": "Test",
+      "title": "Titre",
+      "requirement": "Exigence",
+      "carried": "Reportée depuis",
+      "params": "Paramètres",
+      "status": "Statut",
+      "actions": "Actions"
+    },
     "executeThisTest": "Exécuter ce test",
     "execute": "Exécuter",
     "newInstanceOf": "Nouvelle instance de {{tcId}} — valeurs des paramètres :",
@@ -1157,6 +1203,7 @@
       "tabCampaign": "Depuis une campagne"
     },
     "carry": {
+      "gridTitle": "Report depuis une campagne",
       "sources": "Campagnes source",
       "noCampaign": "Aucune autre campagne",
       "statusFilter": "Statut des entrées :",
@@ -1407,6 +1454,7 @@
       "chooseMatrixFields": "Choisissez les lignes, les colonnes et la valeur."
     },
     "resultTable": {
+      "gridTitle": "Résultat",
       "booleanTrue": "oui",
       "booleanFalse": "non",
       "executeQueryHint": "Exécutez une requête pour voir un résultat.",
@@ -2402,8 +2450,6 @@
   "executionHistory": {
     "title": "Exécutions",
     "empty": "Aucune exécution.",
-    "columns": "Colonnes",
-    "configure": "Choisir les colonnes",
     "toggleSteps": "Afficher les étapes",
     "removed": "entrée retirée",
     "isolated": "exécution isolée",
@@ -2478,7 +2524,6 @@
   },
   "issues": {
     "origin": "Origine",
-    "originRuns": "Exécutions : {{ids}}",
     "proposal": {
       "title": "Exécution en échec",
       "hint": "{{id}} n'a pas réussi : voulez-vous tracer ce problème dans une issue ?",
@@ -2495,8 +2540,11 @@
       "importTitle_other": "{{count}} exécutions en échec :",
       "decisionTitle": "Décision à tracer",
       "decisionHint": "{{id}} : « {{decision}} ». Voulez-vous tracer ce constat dans une issue ?",
-      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}"
-    }
+      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}",
+      "decisionHintMany": "{{count}} exigences : « {{decision}} ». Voulez-vous tracer ce constat dans une issue ?",
+      "decisionDefaultTitleMany": "{{decision}} — {{count}} exigences"
+    },
+    "originRunsLabel": "Exécutions :"
   },
   "versions": {
     "title": "Version produit",
@@ -2555,7 +2603,9 @@
       "type": "Type",
       "id": "ID",
       "label": "Label",
-      "diff": "Diff"
+      "diff": "Diff",
+      "requirements": "Exigences",
+      "actions": "Actions"
     },
     "page": {
       "changes": "Changements",
@@ -2691,7 +2741,8 @@
       "status": "Rédaction",
       "design": "Design",
       "coverage": "Vérification",
-      "impact": "Impact"
+      "impact": "Impact",
+      "mentions": "Mentions"
     },
     "impact": {
       "changed": "changée",
@@ -2765,7 +2816,12 @@
       "TITLE_EMPTY": "Le titre est obligatoire."
     },
     "noTest": "Aucun test lié à cette exigence.",
-    "otherComponent": "Exécutions dans un autre composant"
+    "otherComponent": "Exécutions dans un autre composant",
+    "group": {
+      "decision": "Décision",
+      "requirement": "Exigence"
+    },
+    "remainingShort": "reste à décider : {{count}}"
   },
   "transitions": {
     "notice": {
@@ -2931,5 +2987,32 @@
     "reload": "Recharger",
     "keep": "Garder ma saisie",
     "status": "Statut"
+  },
+  "grid": {
+    "columns": "Colonnes",
+    "toggleRow": "Déplier / replier la ligne",
+    "count": "{{shown}} / {{total}}",
+    "lockedColumn": "Colonne toujours affichée",
+    "bulkFailed_one": "{{count}} ligne non écrite :",
+    "bulkFailed_other": "{{count}} lignes non écrites :",
+    "confirmSelection": "Confirmer la sélection",
+    "rejectSelection": "Rejeter la sélection",
+    "collapseHeader": "Replier l'en-tête",
+    "expandHeader": "Déplier l'en-tête"
+  },
+  "executionsView": {
+    "title": "Exécutions",
+    "noTestType": "Aucun type de test dans ce composant.",
+    "panelHint": "Exécutions de tous les tests du type choisi. Filtrer une campagne : colonne Campagne.",
+    "fromCampaign": "Voir les exécutions",
+    "steps": "Étapes",
+    "documentEmpty": "Aucune exécution à afficher.",
+    "config": {
+      "excel": "Tableau",
+      "word": "Document",
+      "popup": "Popup"
+    },
+    "stepComment": "Commentaire",
+    "runLabel": "Exécution"
   }
 }

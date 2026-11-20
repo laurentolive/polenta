@@ -1,5 +1,5 @@
 import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -89,7 +89,7 @@ function RequirementDetailPage() {
         ...(Object.keys(changedFields).length > 0 ? { fields: changedFields } : {}),
       })
     },
-    onSuccess: (_result, values) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['requirements', repoPath] })
       qc.invalidateQueries({ queryKey: ['requirement', repoPath, reqId] })
       setSaveError(null)

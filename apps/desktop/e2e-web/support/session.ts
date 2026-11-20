@@ -1,7 +1,9 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { execFileSync } from 'child_process'
+import * as fs from 'fs'
 import * as path from 'path'
-import { E2E } from './env'
-import { collectErrors, invoke } from './helpers'
+import { E2E, currentStack } from './env'
+import { collectErrors, invoke, rpc } from './helpers'
 
 export interface ProjectInfo {
   /** Dossier du workspace (contient `.polenta/workspace.yaml`), sous « Mes projets ». */
@@ -48,16 +50,27 @@ export function setupSession(options: SessionOptions = {}) {
 
   test.describe.configure({ mode: 'serial' })
 
-  test.beforeAll(async ({ browser }: { browser: Browser }) => {
-    context = await browser.newContext({ acceptDownloads: true })
+  test.beforeAll(async ({ browser }: { browser: Browser }, testInfo) => {
+    const t = timer()
+    context = await browser.newContext({ acceptDownloads: true, baseURL: E2E.baseUrl })
     page = await context.newPage()
     errors = collectErrors(page)
-    await page.goto('/auth/login')
-    await page.waitForLoadState('networkidle')
-    if (projectSpec) project = await cloneAndOpen(page, projectSpec.repo, projectSpec.name ?? projectSpec.repo)
-    // GH328 — sans projet : `/` rouvrirait le dernier projet ouvert par la spec précédente (mémorisé
-    // côté serveur pour l'utilisateur e2e) au lieu de l'accueil.
-    else await invoke(page, 'workspace:clear-last-opened')
+    t.lap('context')
+    // GH387 — connexion et préparation du projet par requêtes, sans charger l'application : elle
+    // n'est chargée qu'une fois, sur la page de départ (dashboard du projet ou accueil).
+    const login = await context.request.get('/auth/login', { maxRedirects: 0 })
+    if (login.status() !== 302) throw new Error(`/auth/login : ${login.status()}`)
+    t.lap('login')
+    if (projectSpec) project = await prepareAndOpen(page, projectSpec.repo, projectSpec.name ?? projectSpec.repo, t)
+    else {
+      // GH328 — sans projet : `/` rouvrirait le dernier projet ouvert par la spec précédente (mémorisé
+      // côté serveur pour l'utilisateur e2e) au lieu de l'accueil.
+      await rpc(context, 'workspace:clear-last-opened')
+      await page.goto('/')
+      await page.waitForLoadState('networkidle')
+      t.lap('goto')
+    }
+    t.record(testInfo.file, 'beforeAll')
   })
 
   test.afterEach(async () => {
@@ -68,8 +81,12 @@ export function setupSession(options: SessionOptions = {}) {
     expect(unexpected, unexpected.join('\n')).toEqual([])
   })
 
-  test.afterAll(async () => {
+  // eslint-disable-next-line no-empty-pattern -- Playwright exige un motif objet pour le 1er argument (fixtures)
+  test.afterAll(async ({}, testInfo) => {
+    const t = timer()
     await context?.close()
+    t.lap('close')
+    t.record(testInfo.file, 'afterAll')
   })
 
   return {
@@ -105,6 +122,8 @@ export function setupSession(options: SessionOptions = {}) {
       if (await button.getAttribute('aria-expanded') === 'true') return
       await button.click()
       if (await button.getAttribute('aria-expanded') === 'false') await button.click()
+      // GH387 — `networkidle` gardé : les tests écrivent souvent par IPC juste après ; une vue encore
+      // en chargement lirait l'ancien état (gh361, gh342 sans cette attente).
       await page.waitForLoadState('networkidle')
     },
     /** Capture dans `e2e-web/.results/<nom>.png`. */
@@ -131,13 +150,103 @@ export function activityBar(page: Page) {
 }
 
 /** Clone `repo` depuis la forge locale dans un dossier neuf de « Mes projets », puis l'ouvre. */
-async function cloneAndOpen(page: Page, repo: string, name: string): Promise<ProjectInfo> {
-  const dir = await invoke<string>(page, 'web:new-workspace-dir', name)
-  await invoke(page, 'workspace:create-from-clone', dir, `${E2E.gitBaseUrl}/${repo}.git`)
-  await invoke(page, 'workspace:open-project', dir)
-  await invoke(page, 'workspace:mark-recent', dir)
-  const info = await invoke<{ workspaceDir: string; localPath: string; name: string }>(page, 'workspace:resolve', dir)
+async function cloneAndOpen(page: Page, repo: string, name: string, t: Timer = timer()): Promise<ProjectInfo> {
+  const dir = await cloneDir(page, repo, name, t)
+  return showDir(page, dir, t)
+}
+
+/** Clone `repo` dans un dossier neuf et ouvre le projet côté serveur (composants clonés, arbre calculé). */
+async function cloneDir(page: Page, repo: string, name: string, t: Timer): Promise<string> {
+  const dir = await rpc<string>(page.context(), 'web:new-workspace-dir', name)
+  await rpc(page.context(), 'workspace:create-from-clone', dir, `${E2E.gitBaseUrl}/${repo}.git`)
+  t.lap('clone')
+  await rpc(page.context(), 'workspace:open-project', dir)
+  t.lap('open')
+  return dir
+}
+
+/** Projet ouvert côté serveur : récent, puis affiché dans la page (dashboard). */
+async function showDir(page: Page, dir: string, t: Timer): Promise<ProjectInfo> {
+  await rpc(page.context(), 'workspace:mark-recent', dir)
+  const info = await rpc<{ workspaceDir: string; localPath: string; name: string }>(page.context(), 'workspace:resolve', dir)
+  t.lap('open')
   await page.goto(`/dashboard?projectId=${projectIdOf(dir)}`)
+  // Application chargée et abonnée aux événements avant que le test n'écrive par IPC (GH387 : sans
+  // cette attente, une écriture du `beforeAll` d'une spec pouvait précéder le chargement initial).
   await page.waitForLoadState('networkidle')
+  t.lap('goto')
   return { workspaceDir: info.workspaceDir, localPath: info.localPath, name: info.name }
+}
+
+/**
+ * GH387 — projet de départ d'un fichier : copie d'un **modèle** (projet cloné et ouvert une fois par
+ * worker) au lieu d'un clone par HTTP du produit et de ses composants (github.com). Le modèle est
+ * refait quand le repo nu a changé (publication d'un fichier précédent : signature = refs du repo
+ * nu), pour que chaque fichier voie, comme avec un vrai clone, les publications faites avant lui.
+ * Le modèle est copié avant que l'application ne charge le projet (aucune écriture de la page en
+ * cours), sans les verrous git éventuels.
+ */
+async function prepareAndOpen(page: Page, repo: string, name: string, t: Timer): Promise<ProjectInfo> {
+  const signature = remoteSignature(repo)
+  const template = templates.get(repo)
+  if (signature === null || template?.signature !== signature) {
+    const dir = await cloneDir(page, repo, name, t)
+    t.mode = 'clone'
+    if (signature !== null) {
+      const copy = path.join(currentStack().root, 'templates', `${repo.replace(/[\\/]/g, '_')}-${Date.now()}`)
+      copyWorkspace(dir, copy)
+      if (template) fs.rmSync(template.dir, { recursive: true, force: true })
+      templates.set(repo, { dir: copy, signature })
+      t.lap('template')
+    }
+    return showDir(page, dir, t)
+  }
+  const dir = await rpc<string>(page.context(), 'web:new-workspace-dir', name)
+  copyWorkspace(template.dir, dir)
+  t.mode = 'copy'
+  t.lap('copy')
+  await rpc(page.context(), 'workspace:open-project', dir)
+  return showDir(page, dir, t)
+}
+
+/** Copie d'un workspace, horodatages conservés, sans fichiers verrou (`*.lock`). */
+function copyWorkspace(from: string, to: string): void {
+  fs.cpSync(from, to, { recursive: true, preserveTimestamps: true, filter: src => !src.endsWith('.lock') })
+}
+
+/** Modèles de projet du worker (un par repo de la forge). */
+const templates = new Map<string, { dir: string; signature: string }>()
+
+/** Refs du repo nu de la forge locale ; `null` si le repo n'y est pas (pas de modèle possible). */
+function remoteSignature(repo: string): string | null {
+  const bare = path.join(E2E.remotesDir, `${repo}.git`)
+  if (!fs.existsSync(bare)) return null
+  return execFileSync('git', ['--git-dir', bare, 'for-each-ref', '--format=%(objectname) %(refname)'], { encoding: 'utf-8' })
+}
+
+interface Timer {
+  mode?: 'copy' | 'clone'
+  lap(step: string): void
+  record(file: string, hook: string): void
+}
+
+/** GH387 — chronométrage des hooks de `setupSession`, écrit si `POLENTA_E2E_TIMINGS` = un fichier. */
+function timer(): Timer {
+  const start = Date.now()
+  let last = start
+  const steps: Record<string, number> = {}
+  return {
+    mode: undefined,
+    lap(step) {
+      const now = Date.now()
+      steps[step] = (steps[step] ?? 0) + now - last
+      last = now
+    },
+    record(file, hook) {
+      const out = process.env['POLENTA_E2E_TIMINGS']
+      if (!out) return
+      const line = { file: path.basename(file), hook, worker: Number(process.env['TEST_PARALLEL_INDEX'] ?? 0), mode: this.mode, ...steps, total: Date.now() - start }
+      fs.appendFileSync(out, JSON.stringify(line) + '\n')
+    },
+  }
 }

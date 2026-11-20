@@ -119,6 +119,48 @@ describe('comptes', () => {
     expect((await auth.currentAccount())?.login).toBe('octo')
   })
 
+  it('GH343 — compte du projet : celui de l’hôte du remote s’il est connecté, sinon le compte par défaut', async () => {
+    await fsP.writeFile(path.join(dir, 'auth.json'), JSON.stringify({
+      accounts: [
+        { remoteHost: 'github.com', username: 'octo', name: 'Octo', email: 'o@x' },
+        { remoteHost: forgeHost(), username: 'bob', name: 'Bob', email: 'b@x', provider: 'forgejo', baseUrl: forge.baseUrl },
+        { remoteHost: 'git.sans-jeton.fr', username: 'eve', name: 'Eve', email: 'e@x', provider: 'forgejo', baseUrl: 'https://git.sans-jeton.fr' },
+      ],
+      defaultAccount: 'github.com:octo',
+    }))
+    await tokens.set('github.com', 'ghp_x')
+    await tokens.set(`${forgeHost()}:bob`, 'tok-bob')
+    expect((await auth.currentAccount(`${forge.baseUrl}/acme/produit.git`))?.login).toBe('bob')
+    expect((await auth.currentAccount('https://git.sans-jeton.fr/x/y.git'))?.login).toBe('octo')
+    expect((await auth.currentAccount('https://inconnu.example/x/y.git'))?.login).toBe('octo')
+    expect((await auth.currentAccount('git@github.com:x/y.git'))?.login).toBe('octo')
+    expect((await auth.currentAccount())?.login).toBe('octo')
+  })
+
+  it('GH343 — déconnexion d’un compte désigné : les autres et le compte par défaut restent', async () => {
+    await fsP.writeFile(path.join(dir, 'auth.json'), JSON.stringify({
+      accounts: [
+        { remoteHost: 'github.com', username: 'octo', name: 'Octo', email: 'o@x' },
+        { remoteHost: forgeHost(), username: 'bob', name: 'Bob', email: 'b@x', provider: 'forgejo', baseUrl: forge.baseUrl },
+      ],
+      defaultAccount: 'github.com:octo',
+    }))
+    await tokens.set('github.com', 'ghp_x')
+    await tokens.set(`${forgeHost()}:bob`, 'tok-bob')
+    await auth.logout(`${forgeHost()}:bob`)
+    expect(tokens.map.has(`${forgeHost()}:bob`)).toBe(false)
+    expect(tokens.map.get('github.com')).toBe('ghp_x')
+    expect((await auth.currentAccount())?.login).toBe('octo')
+    expect((await auth.currentAccount(`${forge.baseUrl}/acme/produit.git`))?.login).toBe('octo')
+    const store = JSON.parse(await fsP.readFile(path.join(dir, 'auth.json'), 'utf-8'))
+    expect(store.defaultAccount).toBe('github.com:octo')
+    expect(store.accounts).toHaveLength(1)
+    // Clé déjà déconnectée (autre fenêtre) : aucun autre compte n'est déconnecté à sa place.
+    await auth.logout(`${forgeHost()}:bob`)
+    expect((await auth.currentAccount())?.login).toBe('octo')
+    expect(tokens.map.get('github.com')).toBe('ghp_x')
+  })
+
   it('jeton « nu » d’une ancienne version, sans compte : la déconnexion le retire', async () => {
     await tokens.set('github.com', 'ghp_legacy')
     expect(await auth.hasAnyAccount()).toBe(true)

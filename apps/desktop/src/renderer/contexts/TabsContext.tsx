@@ -4,6 +4,10 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { deducePanel, deriveCurrentProjectId, type Panel } from '../components/layout/AppLayout'
 import { recordLocation, sameDestination, type TabHistory } from '../lib/tabHistory'
+import { getBootTab } from '../lib/bootTab'
+import { captureActiveDraft, stageIncomingDraft } from '../lib/tabDraft'
+import { api } from '../api'
+import type { TabDragPayload } from '../../shared/tab-drag'
 
 /** GH228 — `history[historyIndex]` est la page affichée ; `pathname`/`searchParams`/`title` en
  *  restent la copie courante (activation d'onglet, menu, « Récemment fermés »). */
@@ -14,19 +18,33 @@ export interface Tab extends TabHistory {
   title: string
 }
 
+/** GH405 — action qui quitte la page de l'onglet actif, en attente de confirmation si l'onglet
+ *  est dirty (une seule popup, « Quitter cette page ? », pour toutes). */
+export type LeaveAction =
+  | { kind: 'history'; index: number }
+  | { kind: 'activate'; id: string }
+  | { kind: 'open'; pathname?: string; searchParams?: Record<string, string> }
+  | { kind: 'reopen'; id: string }
+
 interface TabsContextValue {
   tabs: Tab[]
   activeTabId: string
   recentlyClosed: Tab[]
   dirtyTabIds: Set<string>
-  openTab: (pathname?: string, searchParams?: Record<string, string>) => void
   /** Closes unconditionally — no dirty guard. Used internally and by confirmCloseTab(). */
   closeTab: (id: string) => void
   /** Guarded entry point for the UI (tab croix, Ctrl+W) — flushes a focused field, then either
    *  closes immediately or opens the confirm-close popup if the tab is registered dirty. */
   attemptCloseTab: (id: string) => void
-  activateTab: (id: string) => void
-  reopenClosedTab: (id: string) => void
+  /** GH405 / GH407 — seuls points d'entrée qui changent d'onglet (clic sur un onglet, menu ▾, `+` /
+   *  Ctrl+T, « Récemment fermés », Ctrl+Tab, Ctrl+clic sur un lien d'élément, ouvertures
+   *  programmatiques) : quittent le champ actif puis agissent, ou ouvrent « Quitter cette page ? »
+   *  si l'onglet actif est dirty. `openTab` / `activateTab` / `reopenClosedTab`, non gardés, restent
+   *  internes (GH407 : un appel direct démontait la page modifiée et perdait sa saisie). Après un
+   *  `await`, appeler `attemptOpenTab` sous `flushSync` (GH37, voir `openTab`). */
+  attemptActivateTab: (id: string) => void
+  attemptOpenTab: (pathname?: string, searchParams?: Record<string, string>) => void
+  attemptReopenClosedTab: (id: string) => void
   pendingCloseId: string | null
   confirmCloseTab: () => void
   cancelCloseTab: () => void
@@ -37,9 +55,22 @@ interface TabsContextValue {
   /** GH228 — point d'entrée de l'UI pour aller à l'entrée `index` de l'historique de l'onglet
    *  actif : quitte le champ actif puis navigue, ou ouvre la popup si l'onglet est dirty. */
   attemptHistoryNav: (index: number) => void
-  pendingHistoryIndex: number | null
-  confirmHistoryNav: () => void
-  cancelHistoryNav: () => void
+  /** GH405 — départ en attente de confirmation (`ConfirmLeavePageModal`), `null` sinon. */
+  pendingLeave: LeaveAction | null
+  confirmLeave: () => void
+  cancelLeave: () => void
+  /** GH343 — réordonne : l'onglet `id` va à la position `toIndex` (emplacement avant le glisser, 0…n). */
+  moveTab: (id: string, toIndex: number) => void
+  /** GH343 — onglet parti dans une autre fenêtre : retiré sans garde ni « Récemment fermés » ; dernier
+   *  onglet → la fenêtre se ferme. */
+  detachTab: (id: string) => void
+  /** GH343 — onglet reçu d'une autre fenêtre (historique et saisie `draft` compris), inséré à `index`
+   *  et activé ; une fenêtre sans projet (accueil) le prend à la place de ses onglets. GH407 — page
+   *  active modifiée : inséré sans être activé, « Quitter cette page ? » décide de son activation ;
+   *  sa saisie attend son activation. */
+  adoptTab: (tab: TabDragPayload['tab'], index?: number, draft?: TabDragPayload['draft']) => void
+  /** GH343 — contenu transporté d'un onglet glissé (saisie de la page affichée comprise). */
+  snapshotTab: (id: string) => Pick<TabDragPayload, 'tab' | 'draft'> | null
 }
 
 const TabsContext = createContext<TabsContextValue | null>(null)
@@ -232,16 +263,30 @@ export function TabsProvider({ children }: Props) {
   const tRef = useRef(t)
   useEffect(() => { tRef.current = t }, [t])
 
-  const [tabs, setTabs] = useState<Tab[]>(() => sessionCache?.tabs ?? [makeTab(pathname, parseSearch(search), t)])
+  // GH343 — fenêtre créée par un glisser : l'onglet reçu, avec son historique.
+  const [tabs, setTabs] = useState<Tab[]>(() => {
+    if (sessionCache) return sessionCache.tabs
+    const boot = getBootTab()
+    return [boot ? { ...boot, id: crypto.randomUUID() } : makeTab(pathname, parseSearch(search), t)]
+  })
   const [activeTabId, setActiveTabId] = useState<string>(() => sessionCache?.activeTabId ?? tabs[0].id)
   const [recentlyClosed, setRecentlyClosed] = useState<Tab[]>(() => sessionCache?.recentlyClosed ?? [])
   const [dirtyTabIds, setDirtyTabIds] = useState<Set<string>>(new Set())
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null)
-  const [pendingHistoryIndex, setPendingHistoryIndex] = useState<number | null>(null)
+  const [pendingLeave, setPendingLeave] = useState<LeaveAction | null>(null)
 
   useEffect(() => {
     sessionCache = { tabs, activeTabId, recentlyClosed }
   })
+
+  // GH407 — état lu par la garde au moment de l'appel : une ouverture faite après un `await`
+  // (résolution de merge, ligne de la vue Suivi, exécution) tient un `attemptOpenTab` d'un rendu
+  // antérieur, qui ne voyait pas une saisie commencée pendant l'attente.
+  const latest = useRef({ dirtyTabIds, activeTabId })
+  latest.current = { dirtyTabIds, activeTabId }
+  /** GH407 — saisie d'un onglet reçu d'une autre fenêtre et pas encore affiché (page active modifiée,
+   *  « Rester ») : remise à sa page quand il est activé, ou repartie avec lui s'il est re-glissé. */
+  const incomingDrafts = useRef(new Map<string, NonNullable<TabDragPayload['draft']>>())
 
   const goTo = useCallback((tab: Pick<Tab, 'pathname' | 'searchParams'>, replace = false) => {
     navigate({ to: tab.pathname as never, search: tab.searchParams as never, replace, state: TAB_NAV_STATE as never })
@@ -317,9 +362,12 @@ export function TabsProvider({ children }: Props) {
     }
 
     if (currentProjectId !== null) lastNonNullProjectId.current = currentProjectId
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId, pathname, t])
 
+  /** Non gardé (passer par `attemptOpenTab`). Appelé après un `await` (hors d'un événement), il doit
+   *  l'être sous `flushSync` : sinon la mise à jour (synchrone) de l'URL par le routeur est rendue
+   *  avant l'activation du nouvel onglet, et l'effet de synchronisation réécrit l'onglet précédent
+   *  (GH37). */
   function openTab(pathname?: string, searchParams?: Record<string, string>) {
     const target = pathname ? { pathname, searchParams: searchParams ?? {} } : resolveHomeRoute(currentProjectId)
     const tab = makeTab(target.pathname, target.searchParams, t)
@@ -331,6 +379,11 @@ export function TabsProvider({ children }: Props) {
   function activateTab(id: string) {
     const tab = tabs.find(item => item.id === id)
     if (!tab) return
+    const draft = incomingDrafts.current.get(id)
+    if (draft) {
+      incomingDrafts.current.delete(id)
+      stageIncomingDraft(draft)
+    }
     setActiveTabId(id)
     goTo(tab)
   }
@@ -338,6 +391,7 @@ export function TabsProvider({ children }: Props) {
   function closeTab(id: string) {
     const index = tabs.findIndex(item => item.id === id)
     if (index === -1) return
+    incomingDrafts.current.delete(id)
 
     setDirtyTabIds(prev => {
       if (!prev.has(id)) return prev
@@ -452,33 +506,140 @@ export function TabsProvider({ children }: Props) {
     goTo(entry, true)
   }
 
+  function runLeave(action: LeaveAction) {
+    switch (action.kind) {
+      case 'history': goToHistoryIndex(action.index); break
+      case 'activate': activateTab(action.id); break
+      case 'open': openTab(action.pathname, action.searchParams); break
+      case 'reopen': reopenClosedTab(action.id); break
+    }
+  }
+
+  /** GH228 / GH405 — même séquence que attemptCloseTab : l'enregistrement au blur du champ actif
+   *  d'abord, puis la popup si l'onglet actif reste dirty (sa page va être démontée). */
+  function attemptLeave(action: LeaveAction) {
+    const active = document.activeElement
+    if (active && isEditableElement(active)) (active as HTMLElement).blur()
+    const { dirtyTabIds: dirty, activeTabId: activeId } = latest.current
+    if (dirty.has(activeId)) {
+      setPendingLeave(action)
+      return
+    }
+    runLeave(action)
+  }
+
   /** See TabsContextValue.attemptHistoryNav. */
   function attemptHistoryNav(index: number) {
     if (index === activeTab.historyIndex || !activeTab.history[index]) return
-    // Même séquence que attemptCloseTab : l'enregistrement au blur du champ actif d'abord.
-    const active = document.activeElement
-    if (active && isEditableElement(active)) (active as HTMLElement).blur()
-    if (dirtyTabIds.has(activeTab.id)) {
-      setPendingHistoryIndex(index)
+    attemptLeave({ kind: 'history', index })
+  }
+
+  function attemptActivateTab(id: string) {
+    if (id === activeTabId || !tabs.some(tab => tab.id === id)) return
+    attemptLeave({ kind: 'activate', id })
+  }
+
+  function attemptOpenTab(pathname?: string, searchParams?: Record<string, string>) {
+    attemptLeave({ kind: 'open', pathname, searchParams })
+  }
+
+  function attemptReopenClosedTab(id: string) {
+    if (!recentlyClosed.some(tab => tab.id === id)) return
+    attemptLeave({ kind: 'reopen', id })
+  }
+
+  function confirmLeave() {
+    if (pendingLeave) runLeave(pendingLeave)
+    setPendingLeave(null)
+  }
+
+  function cancelLeave() {
+    setPendingLeave(null)
+  }
+
+  // ─── GH343 — glisser un onglet ─────────────────────────────────────────────────────────────────
+
+  function moveTab(id: string, toIndex: number) {
+    setTabs(prev => {
+      const from = prev.findIndex(tab => tab.id === id)
+      if (from === -1) return prev
+      const target = Math.max(0, Math.min(toIndex > from ? toIndex - 1 : toIndex, prev.length - 1))
+      if (target === from) return prev
+      const next = prev.filter(tab => tab.id !== id)
+      next.splice(target, 0, prev[from])
+      return next
+    })
+  }
+
+  function detachTab(id: string) {
+    const index = tabs.findIndex(item => item.id === id)
+    if (index === -1) return
+    incomingDrafts.current.delete(id)
+    setDirtyTabIds(prev => {
+      if (!prev.has(id)) return prev
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    if (tabs.length === 1) {
+      // Rien ne reste dans cette fenêtre : elle se ferme, sans garde (la saisie est partie avec l'onglet).
+      void api.app.closeWindow('close')
       return
     }
-    goToHistoryIndex(index)
+    const remaining = tabs.filter(item => item.id !== id)
+    setTabs(remaining)
+    if (id === activeTabId) {
+      const neighbor = remaining[Math.min(index, remaining.length - 1)]
+      setActiveTabId(neighbor.id)
+      goTo(neighbor)
+    }
   }
 
-  function confirmHistoryNav() {
-    if (pendingHistoryIndex !== null) goToHistoryIndex(pendingHistoryIndex)
-    setPendingHistoryIndex(null)
+  function adoptTab(incoming: TabDragPayload['tab'], index?: number, draft?: TabDragPayload['draft']) {
+    const tab: Tab = { ...incoming, id: crypto.randomUUID() }
+    const incomingProject = deriveCurrentProjectId(new URLSearchParams(incoming.searchParams).toString())
+    if (currentProjectId === null) {
+      // Fenêtre à l'accueil : elle ouvre le projet de l'onglet, qui remplace ses onglets d'accueil.
+      // Projet connu d'avance : l'arrivée sur ce projet n'est pas un changement de projet (pas de remise à zéro).
+      lastNonNullProjectId.current = incomingProject
+      setTabs([tab])
+    } else {
+      setTabs(prev => {
+        const next = [...prev]
+        next.splice(index === undefined ? next.length : Math.max(0, Math.min(index, next.length)), 0, tab)
+        return next
+      })
+      // GH407 — l'activer démonterait la page active modifiée : l'onglet reste en arrière-plan (il
+      // ne peut plus retourner dans sa fenêtre d'origine) et la garde décide de son activation.
+      const { dirtyTabIds: dirty, activeTabId: activeId } = latest.current
+      if (dirty.has(activeId)) {
+        if (draft) incomingDrafts.current.set(tab.id, draft)
+        if (!pendingLeave && !pendingCloseId) setPendingLeave({ kind: 'activate', id: tab.id })
+        return
+      }
+    }
+    stageIncomingDraft(draft)
+    setActiveTabId(tab.id)
+    goTo(tab)
   }
 
-  function cancelHistoryNav() {
-    setPendingHistoryIndex(null)
+  function snapshotTab(id: string): Pick<TabDragPayload, 'tab' | 'draft'> | null {
+    const tab = tabs.find(item => item.id === id)
+    if (!tab) return null
+    const { pathname, searchParams, title, history, historyIndex } = tab
+    // Seule la page de l'onglet actif est montée : un onglet inactif n'a pas de saisie en cours,
+    // sauf celle d'un onglet reçu pas encore affiché (GH407).
+    const draft = id === activeTabId ? captureActiveDraft() : incomingDrafts.current.get(id)
+    return { tab: { pathname, searchParams, title, history, historyIndex }, ...(draft ? { draft } : {}) }
   }
 
   return (
     <TabsContext.Provider value={{
-      tabs, activeTabId, recentlyClosed, dirtyTabIds, openTab, closeTab, attemptCloseTab, activateTab, reopenClosedTab,
+      tabs, activeTabId, recentlyClosed, dirtyTabIds, closeTab, attemptCloseTab,
+      attemptActivateTab, attemptOpenTab, attemptReopenClosedTab,
       pendingCloseId, confirmCloseTab, cancelCloseTab, setTabDirty, setTabTitleOverride,
-      activeTab, attemptHistoryNav, pendingHistoryIndex, confirmHistoryNav, cancelHistoryNav,
+      activeTab, attemptHistoryNav, pendingLeave, confirmLeave, cancelLeave,
+      moveTab, detachTab, adoptTab, snapshotTab,
     }}>
       {children}
     </TabsContext.Provider>

@@ -4,11 +4,13 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ExecutionHistoryRow, ValidationRow, ValidationSignedRun } from '@polenta/types'
-import { isOpenCampaignStatus } from '@polenta/types'
 import { api } from '../../api'
 import { VERDICT_CLASS, VERDICT_KEY } from '../executions/ExecutionHistoryGrid'
 import { driftText, testedValueText } from '../executions/TestedConfigView'
 import { runMentions, type RunMention } from './runMentions'
+import { ElementLink } from '../element/ElementLink'
+import { PageLink } from '../element/PageLink'
+import { htmlToCellText } from '../grid/cellText'
 
 const MENTION_CLASS: Record<RunMention, string> = {
   other_version: 'bg-status-warning-bg text-status-warning',
@@ -17,7 +19,6 @@ const MENTION_CLASS: Record<RunMention, string> = {
   after_signature: 'bg-status-info-bg text-status-info',
 }
 
-const stripHtml = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 /** Date d'un run : un fichier édité à la main peut donner une `Date` YAML plutôt qu'une chaîne. */
 const runDate = (v: unknown, length: number): string => {
   const d = new Date(v as string)
@@ -61,13 +62,19 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
   if (error && !frozen) return <p className="text-xs text-status-danger">{String(error)}</p>
   if (byTest.length === 0) return <p className="text-xs text-ink-3 italic" data-testid="validation-no-test">{t('validation.noTest')}</p>
 
-  const canOpen = (row: ExecutionHistoryRow) => !!row.campaign && !!row.entry && !row.removed && !row.superseded
-  // Comme la grille d'historique : l'exécution ouverte, ou son résultat si la campagne est fermée.
-  const openRun = (row: ExecutionHistoryRow) => void navigate({
-    to: isOpenCampaignStatus(row.campaign!.status) ? '/campaign/$campaignId/execute/$testId' : '/campaign/$campaignId/run/$testId',
-    params: { campaignId: row.campaign!.id, testId: row.entry!.entryId },
-    search: { repoPath, projectId },
-  } as never)
+  // Version testée : lien vers sa page, dans son repo (GH389 §1.8).
+  const testedVersion = (row: ExecutionHistoryRow) => {
+    const config = row.run?.testedConfig
+    if (!config) return '—'
+    if (!config.ref) return testedValueText(config)
+    const versionRepo = row.testedRepoPath ?? repoPath
+    return (
+      <PageLink id={config.ref} repoPath={versionRepo} className="text-prim"
+        onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: config.ref! }, search: { projectId, repoPath: versionRepo } } as never)}>
+        {testedValueText(config)}
+      </PageLink>
+    )
+  }
   const verdict = (row: Pick<ExecutionHistoryRow, 'run'> | { run: { result: ValidationSignedRun['result'] } }) => {
     const v = row.run?.result ?? 'pending'
     return <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${VERDICT_CLASS[v]}`}>{t(VERDICT_KEY[v])}</span>
@@ -91,7 +98,7 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
                   )}
                 </td>
                 <td className="py-1 pr-3 whitespace-nowrap">
-                  <button type="button" className="font-mono text-prim hover:underline" onClick={() => void navigate({ to: '/test/$testId', params: { testId }, search: { projectId, repoPath } as never })}>{testId}</button>
+                  <ElementLink id={testId} className="font-mono text-prim" />
                 </td>
                 <td className="py-1 pr-3 text-ink-2 w-full">
                   {title}
@@ -119,13 +126,14 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
                 <tr key={row.key} className="border-b border-edge-subtle bg-hover/40" data-testid={`validation-run-${row.key}`}>
                   <td />
                   <td className="py-1 pr-3 whitespace-nowrap text-ink-3">
-                    {canOpen(row)
-                      ? <button type="button" className="text-prim hover:underline" onClick={() => openRun(row)} data-testid={`validation-run-link-${row.key}`}>{row.run ? runDate(row.run.executedAt, 16) : ''}</button>
-                      : row.run ? runDate(row.run.executedAt, 16) : ''}
+                    {/* GH399 — lien d'exécution : popup, page d'exécution ou relecture (règle de `follow`). */}
+                    {row.run
+                      ? <span data-testid={`validation-run-link-${row.key}`}><ElementLink id={row.run.id} className="text-prim">{runDate(row.run.executedAt, 16)}</ElementLink></span>
+                      : ''}
                   </td>
                   <td className="py-1 pr-3">
-                    <div className="text-ink-2">{row.run?.testedConfig ? testedValueText(row.run.testedConfig) : '—'}</div>
-                    {row.run?.notes && <div className="text-ink-3">{stripHtml(row.run.notes)}</div>}
+                    <div className="text-ink-2">{testedVersion(row)}</div>
+                    {row.run?.notes && <div className="text-ink-3">{htmlToCellText(row.run.notes)}</div>}
                     <div className="flex flex-wrap gap-1 mt-0.5">
                       {runMentions(row, versionId, signedAt).map(m => (
                         <span key={m} data-testid={`validation-mention-${m}`} className={`text-[10px] px-1.5 rounded ${MENTION_CLASS[m]}`}

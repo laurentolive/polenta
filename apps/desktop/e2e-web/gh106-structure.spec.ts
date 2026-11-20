@@ -21,6 +21,10 @@ const combo = () => s.page.getByPlaceholder('branche…').first()
 const rootRow = () => s.page.locator('div', { has: s.page.getByText('Lave-linge LL800', { exact: true }) }).filter({ has: combo() }).last()
 const integrationLabel = () => rootRow().getByText(/^Intégration : /)
 const designateButton = (branch: string) => rootRow().getByRole('button', { name: `Désigner ${branch} comme intégration` })
+/** GH401 — le bouton ⚠ « Désigner », quel que soit son libellé : pendant la désignation il devient
+ *  « Désignation… » (son nom accessible change, pas son infobulle) et ne disparaît qu'une fois
+ *  l'état relu après la désignation. */
+const designateIndicator = (branch: string) => rootRow().getByTitle(`${branch} n'est pas la branche d'intégration désignée`, { exact: false })
 
 async function openStructure() {
   await s.page.evaluate(u => {
@@ -66,8 +70,12 @@ test('GH106-S2-2 — int-* créée sans désignation (cas PH2) : « Désigner »
 
   const designate = designateButton('int-e2e-s3')
   await expect(designate).toBeVisible({ timeout: 15_000 })
+  const indicator = designateIndicator('int-e2e-s3')
+  await expect(indicator).toBeVisible()
   await designate.click()
-  await expect(designate).toHaveCount(0, { timeout: 15_000 })
+  // GH401 — pas `designate` : renommé « Désignation… » dès le clic, il disparaît avant la fin de
+  // la désignation, et l'état relu juste après pouvait encore être l'ancien (machine chargée).
+  await expect(indicator).toHaveCount(0, { timeout: 15_000 })
   await expect(integrationLabel()).toHaveCount(0)
   expect(await state()).toMatchObject({ currentBranch: 'int-e2e-s3', configured: 'int-e2e-s3', status: 'ok' })
 })

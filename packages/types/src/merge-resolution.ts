@@ -29,8 +29,9 @@ export type DiffSaveResult =
  *  finalisation et la suite après finalisation. */
 export type MergeOrigin =
   | { kind: 'publish'; workBranch: string; integrationBranch: string; title: string; ephemeral: boolean }
-  /** Vue graphe : merge de `from` dans `into` (la branche courante pour « merge »). */
-  | { kind: 'merge'; from: string; into: string }
+  /** Vue graphe : merge de `from` dans `into` (la branche courante pour « merge »).
+   *  GH414 — « Rafraîchir » : `wip` = commit WIP posé avant le merge, défait à « Abandonner ». */
+  | { kind: 'merge'; from: string; into: string; wip?: string }
   /** Rafraîchir : la branche locale (gauche, avancée) reçoit `remoteRef` (droite). */
   | { kind: 'pull'; branch: string; remoteRef: string }
 

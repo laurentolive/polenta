@@ -7,7 +7,7 @@ qui touche le renderer, les services du main ou le serveur web.
 
 ```bash
 cd apps/desktop
-pnpm test:e2e:web                 # build web + toute la suite (≈ 14 min hors build, cf. WORKFLOW.md § Niveaux de vérification)
+pnpm test:e2e:web                 # build web + toute la suite (≈ 7 min build compris, 4 workers, cf. WORKFLOW.md § Niveaux de vérification)
 npx playwright test               # sans rebuild (le build web doit être à jour)
 npx playwright test e2e-web/parity # un fichier (chemin explicite : le filtre porte sur le chemin complet, un `gh{N}` nu sélectionne toute la suite dans le worktree `…-GH{N}`)
 npx playwright test -g "S2-9"     # un test par son titre
@@ -25,36 +25,52 @@ lues sur github.com. Pour travailler hors ligne, passez un clone local dans
 > **Rebuild.** Les tests tournent sur le build. Après une modification du renderer ou du serveur,
 > utilisez `pnpm test:e2e:web`, ou lancez `pnpm build:web` avant `npx playwright test`.
 
-> **Plusieurs worktrees en parallèle.** Les ports par défaut (8797 serveur web, 8798 forge, 8799
-> administration) sont fixes : deux suites lancées depuis deux worktrees se bloquent (« … is already
-> used »). Chaque run ayant son propre dossier de données, il suffit de décaler les ports de l'une :
+> **Workers et ports (GH387).** La suite tourne sur 4 workers (`POLENTA_E2E_WORKERS=<n>` pour en
+> changer ; `1` pour une exécution en série). Chaque worker a sa propre pile (serveur web, forge,
+> service d'administration) sur des **ports libres** : plusieurs worktrees lancent leurs e2e en même
+> temps sans rien régler. Pour fixer les ports, `POLENTA_E2E_PORT`, `POLENTA_E2E_GIT_PORT` et
+> `POLENTA_E2E_ADMIN_PORT` donnent une **base** : le worker `i` prend `base + 10·i`.
+
+> **Mesurer un passage.** `POLENTA_E2E_TIMINGS=<fichier.jsonl>` fait écrire par `setupSession` la
+> durée de chaque étape de ses hooks (connexion, copie ou clone, ouverture, navigation) ; avec le
+> reporter json de Playwright :
 > ```bash
-> POLENTA_E2E_PORT=8897 POLENTA_E2E_GIT_PORT=8898 POLENTA_E2E_ADMIN_PORT=8899 npx playwright test
+> POLENTA_E2E_TIMINGS=t.jsonl PLAYWRIGHT_JSON_OUTPUT_NAME=r.json npx playwright test --reporter=list,json
+> node e2e-web/support/timings.mjs t.jsonl r.json
 > ```
 
 ## Architecture
 
 ```
 Playwright (runner)
- ├─ global-setup.ts ── clone --bare de la démo ─▶ <run>/remotes/demo-ll800-produit.git
- │                  └─ git-http-server.ts (127.0.0.1:8798) ── git http-backend ── « la forge »
- ├─ webServer : node out/web-server/index.cjs (127.0.0.1:8797, mode dev, utilisateur « e2e »), via support/run-server.mjs
- │      données : <run>/data/users/e2e/{workspaces,userData}
- └─ Chromium ── http://127.0.0.1:8797 ── renderer web + bridge window.polenta
+ ├─ global-setup.ts ── démo : cache %TEMP%/polenta-e2e-web/cache (fetch, sinon copie en cache) ─▶ <run>/seed
+ │   └─ une pile par worker i (support/stack.ts), ports libres, décrite dans <run>/stacks.json :
+ │        ├─ forge : git-http-server.ts ── git http-backend ── <run>/w<i>/remotes (copie de seed)
+ │        ├─ fake-admin-service.mjs
+ │        └─ node out/web-server/index.cjs (mode dev, utilisateur « e2e »), via support/run-server.mjs
+ │               données : <run>/w<i>/data/users/e2e/{workspaces,userData}
+ └─ worker i ── Chromium ── serveur web de la pile i ── renderer web + bridge window.polenta
 ```
 
 - `<run>` = `%TEMP%/polenta-e2e-web/<horodatage>` : un dossier neuf par exécution. Rien n'est effacé
   sous un serveur démarré, et l'état d'une exécution précédente reste disponible pour l'enquête.
+- **Une pile par worker** : `env.ts` lit la pile du worker courant (`TEST_PARALLEL_INDEX`) ; `E2E.baseUrl`,
+  `E2E.dataDir`, `E2E.remotesDir`… désignent donc toujours la pile du worker. Les fichiers se répartissent
+  entre les workers ; les tests d'un fichier restent en série dans un worker. Un fichier ne voit que les
+  publications des fichiers passés avant lui **dans son worker** : il prépare lui-même l'état dont il a besoin.
+- **Projet de départ** (`setupSession`) : le premier fichier d'un worker clone la démo (et ses composants,
+  depuis github.com) puis en garde un modèle ; les suivants copient ce modèle. Une publication vers la
+  forge (refs du repo nu changées) fait recloner. `s.cloneAndOpen(...)` fait toujours un vrai clone.
 - **La forge locale** remplace GitHub ou Forgejo : Publier y pousse réellement, et les tests relisent
   l'historique du repo nu (`support/forge.ts`).
 - **L'utilisateur** est fixe (mode dev du serveur) : `E2E Tester <e2e@polenta.test>`, login `e2e`.
 - **Hôtes git autorisés** : `127.0.0.1` (la forge locale) et `github.com` (dépendances de la démo).
 - **Administration du serveur** (GH63) : un faux service d'administration (`support/fake-admin-service.mjs`,
-  127.0.0.1:8799, état en mémoire) remplace `polenta-admin` ; le serveur web l'utilise en mode dev
+  un par worker, état en mémoire) remplace `polenta-admin` ; le serveur web l'utilise en mode dev
   (`POLENTA_WEB_ADMIN_DEV=1`). Le test fixe le rôle de l'utilisateur par `POST /__role {"level": "instance"|"host"|null}`.
 - **Arrêt du serveur en cours de suite** (GH330) : le serveur est lancé par `support/run-server.mjs`,
-  qui précharge `support/server-watch.cjs`. Un serveur qui s'arrête avant la fin de la suite laisse
-  dans la sortie des lignes `[WebServer] [e2e] serveur web … arrêté après … s : code … | signal … ;
+  qui précharge `support/server-watch.cjs`. Sa sortie d'erreur est préfixée `[w<i>]` (worker). Un serveur
+  qui s'arrête avant la fin de la suite laisse dans la sortie des lignes `[w<i>] [e2e] serveur web … arrêté après … s : code … | signal … ;
   mémoire : …` (et `signal SIGINT reçu` s'il a été arrêté par un signal) : c'est la cause à chercher
   quand tous les tests suivants échouent sur `ERR_CONNECTION_REFUSED`.
 
@@ -176,7 +192,7 @@ Ce que renvoie la session :
 `getByRole('button', { name: 'Publier' })`, `getByPlaceholder('Mon dashboard…')`. Pour découvrir
 un écran, enregistrez son arbre d'accessibilité depuis un test temporaire :
 `fs.writeFileSync('e2e-web/.results/x.txt', await s.page.locator('body').ariaSnapshot())`.
-`npx playwright codegen http://127.0.0.1:8797/auth/login` fonctionne aussi, avec un serveur lancé
+`npx playwright codegen http://127.0.0.1:<port>/auth/login` fonctionne aussi, avec un serveur lancé
 à la main.
 
 **Interface ou bridge ?** Passez par l'interface pour le comportement que le ticket livre ou
@@ -220,8 +236,8 @@ connexion d'événements par le test avec `page.routeWebSocket` (voir `s2-core.s
   en attente : publiez avant toute action qui exige des repos propres (baseline, P-3).
 - **`.results/` est vidé à chaque exécution** (dossier de sortie de Playwright). Captures, traces
   (`trace.zip` en cas d'échec) et contextes d'erreur y sont écrits.
-- **Ports** : 8797 (serveur web) et 8798 (forge). Ils sont modifiables par `POLENTA_E2E_PORT` et
-  `POLENTA_E2E_GIT_PORT`.
+- **Ports** : libres, choisis à chaque exécution pour chaque worker (`<run>/stacks.json`) ; bases
+  forçables par `POLENTA_E2E_PORT`, `POLENTA_E2E_GIT_PORT`, `POLENTA_E2E_ADMIN_PORT` (worker `i` : base + 10·i).
 
 ## Contenu actuel
 
@@ -236,15 +252,19 @@ connexion d'événements par le test avec `page.routeWebSocket` (voir `s2-core.s
 | `t173-revalidation.spec.ts` (`specs/T173-tests.md`) | N14 entrée « Impact à vérifier (N) » sans auto-sélection, éléments liés et déclencheur « non approuvé » ; N3 levée unitaire (diff limité à la clé) ; N15 levée de toute la sélection, retour à l'invite. |
 | `t173-verif.spec.ts` (`specs/T173-tests.md`) | N16 paramètre modifié, N9 arbres de l'analyse locale, L10 élément présent deux fois, N10/R3 levée → éditeur et matrice, N11 multi-sélection, L11 changement d'analyse, L12 modification externe, L13 échec partiel (fichier en lecture seule), N12/N13/R2 analyse baseline RE1 → RE2, N17 popup d'un élément de composant, L14 libellés anglais. |
 | `gh83-revalidation-flag.spec.ts` (`specs/GH83.md`) | ⚠ « Impact à vérifier » en vues tableau et document, filtre texte non pollué par le flag, retrait après levée sans rechargement. |
+| `gh397-burst-writes.spec.ts` (`specs/GH397.md`) | GH397-1 rafale de 40 créations dashboard ouvert : durée, relectures de widgets regroupées, widgets relus après la dernière écriture. |
 | `s3-oidc.spec.ts` (forge réelle) | S3-1/S3-2 connexion OIDC sans jeton côté navigateur, S3-3 commit à l'identité forge, S3-4 isolation de deux utilisateurs, S3-17 lecteur : écriture refusée, S3-6 compte désactivé → « accès révoqué » et travail conservé, S3-15/S3-21 projets et préférences d'équipe, S3-16 « Créer sur le serveur ». |
 
 ## Variables
 
 | Variable | Défaut | Rôle |
 |---|---|---|
-| `POLENTA_E2E_DEMO_SOURCE` | URL GitHub de la démo | Source du repo nu (chemin local accepté). |
-| `POLENTA_E2E_PORT` | 8797 | Port du serveur web de test. |
-| `POLENTA_E2E_GIT_PORT` | 8798 | Port de la forge locale. |
+| `POLENTA_E2E_DEMO_SOURCE` | URL GitHub de la démo | Source du repo nu (chemin local accepté), gardée en cache entre les exécutions (`%TEMP%/polenta-e2e-web/cache`). |
+| `POLENTA_E2E_WORKERS` | 4 | Nombre de workers, donc de piles. |
+| `POLENTA_E2E_PORT` | port libre | Base du port du serveur web (worker `i` : base + 10·i). |
+| `POLENTA_E2E_GIT_PORT` | port libre | Base du port de la forge locale. |
+| `POLENTA_E2E_ADMIN_PORT` | port libre | Base du port du faux service d'administration. |
+| `POLENTA_E2E_TIMINGS` | — | Fichier JSONL des durées des hooks de `setupSession` (`support/timings.mjs`). |
 | `POLENTA_E2E_RUN` | horodatage | Identifiant du dossier d'exécution (fixé automatiquement). |
 | `POLENTA_E2E_SSH` | — | Accès SSH à l'hôte de la forge de test : active `s3-oidc.spec.ts` et le serveur oidc. |
 | `POLENTA_E2E_INSTANCE` | `acme` | Instance du kit utilisée comme forge de test. |

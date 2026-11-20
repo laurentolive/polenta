@@ -1,7 +1,7 @@
-import type { ExecutionHistory, ExecutionHistoryRow, SchemaField } from '@polenta/types'
+import type { ExecutionHistory, SchemaField } from '@polenta/types'
 
 // GH197 — colonnes de la grille d'historique des exécutions (specs/GH197.md §2). Une colonne a une clé
-// stable (préférence `executions`), un groupe (panneau ⚙️) et un libellé (clé i18n, ou libellé du champ
+// stable (préférence `executions`), un groupe (panneau 👁 Colonnes) et un libellé (clé i18n, ou libellé du champ
 // pour un champ d'exécution `run:<nom>` / un champ de campagne `campaign:<nom>`).
 
 export type ExecutionColumnGroup = 'execution' | 'campaign' | 'entry' | 'test'
@@ -56,41 +56,31 @@ export function availableColumns(history: ExecutionHistory, withTestColumn: bool
   ]
 }
 
+const defaultVisibleRunFields = (history: ExecutionHistory) =>
+  unionRunFields(history.runFieldDefs, 'runFields').filter(f => f.defaultVisible).map(f => `run:${f.name}`)
+
 /** Défaut (Q2) : verdict, date, testeur, campagne, entrée (+ test pour une exigence) et champs `defaultVisible`. */
 export function defaultExecutionColumns(history: ExecutionHistory, withTestColumn: boolean): string[] {
   return [
     ...(withTestColumn ? ['test'] : []),
     'verdict', 'date', 'tester', 'testedVersion', 'campaign', 'entry',
-    ...unionRunFields(history.runFieldDefs, 'runFields').filter(f => f.defaultVisible).map(f => `run:${f.name}`),
+    ...defaultVisibleRunFields(history),
   ]
 }
 
-const UNSORTABLE = new Set(['notes', 'equipment', 'params', 'carriedFrom', 'testedStructure', 'testedDeviations'])
+// GH400 — vue Exécutions (specs/GH400-design.md §6, §8).
 
-/** En-tête triable (texte libre ou valeurs composées : non). */
-export function isSortable(key: string): boolean {
-  return !UNSORTABLE.has(key)
+/** Pseudo-colonne du Document : tableau des étapes de la fiche. */
+export const STEPS_KEY = 'steps'
+/** En-tête d'une fiche du Document : jamais proposé dans l'onglet Document. */
+export const DOC_HEADER_KEYS: readonly string[] = ['test', 'campaign', 'entry', 'verdict', 'date', 'tester']
+
+/** Tableau de la vue (préférence `runExcel`). */
+export function defaultRunExcelColumns(history: ExecutionHistory): string[] {
+  return ['test', 'entryRequirement', 'campaign', 'entry', 'verdict', 'date', 'tester', 'testedVersion', ...defaultVisibleRunFields(history)]
 }
 
-/** Valeur triable d'une colonne (texte, ou date ISO ; nombres comparés numériquement par la grille). */
-export function sortValue(row: ExecutionHistoryRow, key: string): string {
-  switch (key) {
-    case 'verdict': return row.run?.result ?? 'pending'
-    case 'date': return row.run?.executedAt ?? ''
-    case 'tester': return row.run?.executedBy ?? ''
-    case 'duration': return String(row.run?.duration ?? '')
-    case 'origin': return row.run?.origin ?? ''
-    case 'campaign': return row.campaign?.id ?? ''
-    case 'campaignStatus': return row.campaign?.status ?? ''
-    case 'entry': return row.entry?.entryId ?? ''
-    case 'entryRequirement': return row.entry?.requirementId ?? ''
-    case 'testVersion': return String(row.entry?.testVersion ?? '')
-    case 'testedVersion': return row.run?.testedConfig?.label ?? row.run?.testedConfig?.undocumented ?? ''
-    case 'testedCommit': return row.run?.testedConfig?.commit ?? ''
-    case 'test': return row.testCaseId
-    default:
-      if (key.startsWith('run:')) return String(row.run?.fields?.[key.slice(4)] ?? '')
-      if (key.startsWith('campaign:')) return String(row.campaign?.fields[key.slice(9)] ?? '')
-      return ''
-  }
+/** Document de la vue (préférence `runWord`). */
+export function defaultRunWordColumns(history: ExecutionHistory): string[] {
+  return ['duration', 'testedVersion', 'origin', ...defaultVisibleRunFields(history), STEPS_KEY]
 }

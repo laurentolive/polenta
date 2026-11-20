@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useTranslation, Trans } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react'
@@ -279,7 +279,7 @@ interface GraphContextMenuProps {
 }
 
 function GraphContextMenu({
-  state, repoPath, isClean, currentBranch, allBranches, headSha, projectId,
+  state, repoPath, isClean, allBranches, headSha, projectId,
   workspaceDir, flatNodes, node, onClose, onInvalidate, onPinWarning, onCheckoutResult,
 }: GraphContextMenuProps) {
   const { t } = useTranslation()
@@ -426,13 +426,20 @@ function GraphContextMenu({
   // GH276 — une `int-*` créée ici est désignée, comme partout ailleurs (GH106) : sans cela, elle
   // héritait du `project.yaml` de son point de départ (cas PH2). La désignation fait un checkout :
   // comme les checkouts de ce menu, elle n'est proposée que sans modification en attente.
+  // GH390 — statut relu au moment de créer : `isClean` vient d'un cache rafraîchi toutes les
+  // quelques secondes, et un fichier modifié juste avant passait la garde (checkout « sale »).
   const createBranchAtMut = useMutation({
     mutationFn: async ({ name, sha, tag }: { name: string; sha: string; tag?: string }) => {
       if (!name.startsWith('int-')) {
         await api.sync.createBranchAt(repoPath, name, sha)
         return null
       }
-      if (!isClean) throw new Error(t('graphPage.integrationNeedsClean'))
+      const status = await qc.fetchQuery({
+        queryKey: ['sync:status', repoPath],
+        queryFn:  () => api.sync.status(repoPath),
+        staleTime: 0,
+      })
+      if (status.staged.length > 0 || status.unstaged.length > 0) throw new Error(t('graphPage.integrationNeedsClean'))
       return api.integration.create(repoPath, name.slice('int-'.length), tag ? { tag } : { commit: sha })
     },
     onSuccess: async (designated, { name }) => {

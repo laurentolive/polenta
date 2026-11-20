@@ -14,8 +14,6 @@ const reqType = {
   statuses: [{ name: 'draft', label: 'Brouillon' }, { name: 'review', label: 'En review' }],
 } as unknown as ObjectTypeDefinition
 
-const testType = { ...reqType, category: 'test', fields: [] } as unknown as ObjectTypeDefinition
-
 describe('libellés', () => {
   it('statut et valeurs d’enum par leur libellé, à défaut le nom technique', () => {
     expect(statusLabel(reqType, 'review')).toBe('En review')

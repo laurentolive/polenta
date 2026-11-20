@@ -5,6 +5,7 @@ import type { RequirementsService } from './requirements.service'
 import type { TestsService } from './tests.service'
 import type { IssuesService } from './issues.service'
 import type { ValidationsService } from './validations.service'
+import type { VersionsService } from './versions.service'
 import { renameFieldsInTeamViews } from './saved-views.service'
 
 /**
@@ -22,13 +23,15 @@ export class FieldRenameService {
     private readonly issues?: IssuesService,
     /** GH204 — validations du type ; absent : aucune. */
     private readonly validations?: ValidationsService,
+    /** GH381 — versions du type ; absent : aucune. */
+    private readonly versions?: VersionsService,
   ) {}
 
   async renameFields(repoPath: string, objectTypeRef: string, renames: FieldRename[]): Promise<FieldRenameResult> {
     const result = emptyFieldRenameResult()
     const valid = renames.filter(r => r.from && r.to && r.from !== r.to)
     if (valid.length === 0) return result
-    for (const service of [this.requirements, this.tests, this.campaigns, ...(this.issues ? [this.issues] : []), ...(this.validations ? [this.validations] : [])]) {
+    for (const service of [this.requirements, this.tests, this.campaigns, ...(this.issues ? [this.issues] : []), ...(this.validations ? [this.validations] : []), ...(this.versions ? [this.versions] : [])]) {
       try {
         await service.renameFieldKeys(repoPath, objectTypeRef, valid, result)
       } catch (err) {
@@ -58,6 +61,7 @@ export class FieldRenameService {
       () => this.campaigns.rewriteObjects(repoPath, objectTypeRef, o => renameValues(o, valid), result),
       () => this.issues?.rewriteObjects(repoPath, objectTypeRef, o => renameValues(o, valid), result) ?? Promise.resolve(),
       () => this.validations?.rewriteObjects(repoPath, objectTypeRef, o => renameValues(o, valid), result) ?? Promise.resolve(),
+      () => this.versions?.rewriteObjects(repoPath, objectTypeRef, o => renameValues(o, valid), result) ?? Promise.resolve(),
       // Sans effet si le type n'est pas un type de test (aucune copie de ce type).
       () => this.campaigns.rewriteSnapshots(repoPath, objectTypeRef, t => renameValues(t, valid), result),
     ]
@@ -73,13 +77,7 @@ export class FieldRenameService {
 
   /** GH82 — aperçu sans écriture : objets du type portant l'ancienne / la nouvelle valeur. */
   async previewValueRenames(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<ValueRenamePreview[]> {
-    const objects: HistoryCarrier[] = [
-      ...await this.requirements.findAll(repoPath, { type: objectTypeRef }),
-      ...(await this.tests.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef),
-      ...(await this.campaigns.list(repoPath)).filter(c => c.objectTypeRef === objectTypeRef),
-      ...(await this.issues?.findAll(repoPath) ?? []).filter(i => i.objectTypeRef === objectTypeRef),
-      ...(await this.validations?.list(repoPath) ?? []).filter(v => v.objectTypeRef === objectTypeRef),
-    ]
+    const objects = await this.typeObjects(repoPath, objectTypeRef)
     const valueOf = (o: HistoryCarrier, r: ValueRename) => (r.target.kind === 'status' ? o.status : o.fields?.[r.target.field])
     const multi = (r: ValueRename) => r.target.kind === 'field' && r.target.multi
     const sameTarget = (a: ValueRename, b: ValueRename) =>
@@ -92,5 +90,25 @@ export class FieldRenameService {
         ? 0
         : objects.filter(o => valueHas(valueOf(o, rename), multi(rename), rename.to)).length,
     }))
+  }
+
+  /**
+   * GH371 — IDs des objets du type dont le statut courant est `status` (périmètre de
+   * `previewValueRenames` : l'historique et les copies `testSnapshot` ne comptent pas).
+   */
+  async objectIdsWithStatus(repoPath: string, objectTypeRef: string, status: string): Promise<string[]> {
+    return (await this.typeObjects(repoPath, objectTypeRef)).filter(o => o.status === status).map(o => o.id)
+  }
+
+  /** Exigences, tests, campagnes, issues, validations et versions du type (dans le repo du type). */
+  private async typeObjects(repoPath: string, objectTypeRef: string): Promise<Array<HistoryCarrier & { id: string }>> {
+    return [
+      ...await this.requirements.findAll(repoPath, { type: objectTypeRef }),
+      ...(await this.tests.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef),
+      ...(await this.campaigns.list(repoPath)).filter(c => c.objectTypeRef === objectTypeRef),
+      ...(await this.issues?.findAll(repoPath) ?? []).filter(i => i.objectTypeRef === objectTypeRef),
+      ...(await this.validations?.list(repoPath) ?? []).filter(v => v.objectTypeRef === objectTypeRef),
+      ...(await this.versions?.list(repoPath) ?? []).filter(v => v.objectTypeRef === objectTypeRef),
+    ]
   }
 }

@@ -26,6 +26,7 @@ import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
 import { TestedConfigService } from './services/tested-config.service'
 import { TreeService, indexObjectLister, serviceTitleAdopter } from './services/tree.service'
+import { findObjectTypeDef } from './services/schema-lookup.util'
 import { TreeEditLocksService } from './services/tree-edit-locks.service'
 import { BaselineService } from './services/baseline.service'
 import { PolentaRepoService } from './services/polenta-repo.service'
@@ -96,7 +97,11 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   })
   const interfaceCompliance = new InterfaceComplianceService(workspaceTree, reqIndex)
   const tree = new TreeService(
-    indexObjectLister(reqIndex, testsIndex, p => issues.findAll(p)),
+    indexObjectLister(reqIndex, testsIndex, p => issues.findAll(p), async (repoPath, objectTypeRef, status) => {
+      // GH415 — statut terminal selon le schéma du repo (même règle que `req-refs.service`).
+      const resolved = findObjectTypeDef(await schema.get(repoPath), objectTypeRef)
+      return resolved !== 'unresolvable' && !!resolved?.statuses?.find(s => s.name === status)?.isTerminal
+    }),
     // GH261 — recopie du libellé d'un ancien fichier d'arbre dans le titre de l'objet.
     (repoPath, ref, titles) => serviceTitleAdopter(requirements, tests, issues)(repoPath, ref, titles),
   )
@@ -147,7 +152,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements, testedConfig)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree, issues)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
-  const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues, validations)
+  const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues, validations, versions)
   // GH100 — renommage d'un type (nom / préfixe) : migration de ses objets dans tout le workspace.
   const typeRename = new TypeRenameService(
     requirements, tests, campaigns, tree, schema, [reqIndex, testsIndex, issues],

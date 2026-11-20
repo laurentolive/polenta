@@ -21,6 +21,7 @@ import { isValidationPath } from '../validation/useValidations'
 import { ElementNavProvider } from '../../contexts/ElementNavContext'
 import { ElementPreviewPopup } from '../element/ElementPreviewPopup'
 import { UpdateInstallingOverlay } from './UpdateInstallingOverlay'
+import { EXECUTIONS_PATH } from '../../lib/executionsRoute'
 
 export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'issues' | 'validation' | 'dashboard' | 'parameters' | 'merge'
 
@@ -59,6 +60,8 @@ export function deducePanel(pathname: string, category?: string): Panel {
   if (pathname.startsWith('/req/')) return 'requirements'
   if (pathname.startsWith('/test/')) return 'tests'
   if (pathname.startsWith('/campaign/')) return 'campaigns'
+  // GH400 — vue Exécutions : panneau Campagnes (icônes Campagnes / Exécutions).
+  if (pathname === EXECUTIONS_PATH) return 'campaigns'
   // GH233 — pendant une résolution de conflits : « Fichiers en conflit » (pas d'icône dédiée).
   if (pathname === '/merge-resolve') return 'merge'
 
@@ -86,7 +89,6 @@ export function AppLayout() {
   })
 
   const searchParams = new URLSearchParams(search ?? '')
-  const repoPathFromSearch = searchParams.get('repoPath') ?? ''
   const currentProjectId = deriveCurrentProjectId(search)
 
   // T155: runs for as long as a project is open, independently of which panel is active — a
@@ -119,6 +121,13 @@ export function AppLayout() {
   // Suivi retombait toujours sur /query, quel que soit ce qui était affiché avant (un
   // dashboard bien chargé, cf. retour utilisateur), au lieu de restaurer la sous-vue quittée.
   const [lastDashboardRoute, setLastDashboardRoute] = useState<{ pathname: string; search: string } | null>(null)
+
+  // GH400 — panneau Campagnes : dernière page affichée (Campagnes ou Exécutions), rouverte au clic
+  // sur l'icône de la barre d'activité.
+  const [lastCampaignsRoute, setLastCampaignsRoute] = useState<{ pathname: string; search: string } | null>(null)
+  useEffect(() => {
+    if (routePanel === 'campaigns') setLastCampaignsRoute({ pathname, search: search ?? '' })
+  }, [routePanel, pathname, search])
 
   useEffect(() => {
     if (routePanel === 'dashboard') {
@@ -252,9 +261,15 @@ export function AppLayout() {
           }
         }
         break
+      case 'campaigns':
+        // GH400 — retour à la vue Exécutions (même type, même mode) si c'est elle qui était affichée.
+        if (lastCampaignsRoute?.pathname === EXECUTIONS_PATH) {
+          router.history.push(`${lastCampaignsRoute.pathname}${lastCampaignsRoute.search}`)
+          break
+        }
+      // fallthrough
       case 'requirements':
       case 'tests':
-      case 'campaigns':
       case 'issues': {
         const category = p === 'requirements' ? 'requirement' : p === 'tests' ? 'test' : p === 'issues' ? 'issue' : 'campaign'
         // Carries the current `repo` forward instead of clearing it (as the old single "Système"

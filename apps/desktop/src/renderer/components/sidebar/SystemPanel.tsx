@@ -13,7 +13,8 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trans, useTranslation } from 'react-i18next'
-import { Sparkles, Trash2 } from 'lucide-react'
+import { ClipboardList, History, Sparkles, Trash2 } from 'lucide-react'
+import { EXECUTIONS_PATH } from '../../lib/executionsRoute'
 import { useSystemView } from '../../contexts/SystemViewContext'
 import { ElementTree } from '../system/ElementTree'
 import { ComponentTypeCombobox } from '../system/ComponentTypeCombobox'
@@ -290,6 +291,7 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
     effectiveTypeId,
     root,
     setRoot,
+    obsoleteObjects,
     generateId,
     effectiveType,
     readOnly,
@@ -308,9 +310,12 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
 
   // GH361 — arbre affiché ici en édition : le serveur MCP ne l'écrit pas tant qu'il est verrouillé.
   // Le panneau n'est monté que sur Exigences / Tests / Campagnes / Issues (replié : masqué, pas démonté).
+  // GH400 — vue Exécutions : panneau Campagnes, sélecteur des types de test, sans arbre.
+  const isExecutionsPage = pathname === EXECUTIONS_PATH
+  const currentRepo = useRouterState({ select: s => new URLSearchParams(s.location.searchStr ?? '').get('repo') ?? undefined })
   useTreeEditLock({
     repoPath, nodeId: effectiveNodeId, typeId: effectiveTypeId,
-    enabled: !readOnly && TREE_LOCK_CATEGORIES.has(effectiveType?.category ?? ''),
+    enabled: !readOnly && !isExecutionsPage && TREE_LOCK_CATEGORIES.has(effectiveType?.category ?? ''),
     onAcquired: reloadTree,
   })
 
@@ -409,7 +414,33 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
     <div className="flex flex-col h-full overflow-hidden">
       {/* ── Header (T92 — cohérent avec les autres panneaux latéraux) ── */}
       <div className="px-4 py-3 border-b border-edge shrink-0 flex items-center justify-between gap-2">
-        <p className="section-label">{t(CATEGORY_TITLE_KEY[category] ?? 'sidebar.system.title')}</p>
+        <p className="section-label">{t(isExecutionsPage ? CATEGORY_TITLE_KEY.campaign : CATEGORY_TITLE_KEY[category] ?? 'sidebar.system.title')}</p>
+        {/* GH400 — Campagnes / Exécutions (sur le modèle du panneau Versions, GH201). */}
+        {(category === 'campaign' || isExecutionsPage) && (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              // Repo courant gardé (comme la barre d'activité) : sans lui, attente des schémas de tous les repos.
+              onClick={() => { if (isExecutionsPage) navigate({ to: '/product', search: { projectId, tab: undefined, repo: currentRepo, node: undefined, type: undefined, category: 'campaign' } }) }}
+              className={`btn-icon ${!isExecutionsPage ? 'text-ink' : 'text-ink-3 hover:text-ink'}`}
+              aria-pressed={!isExecutionsPage}
+              title={t('sidebar.campaignsNav.campaigns')}
+              data-testid="campaigns-nav-campaigns"
+            >
+              <ClipboardList size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => { if (!isExecutionsPage) navigate({ to: EXECUTIONS_PATH, search: { projectId } } as never) }}
+              className={`btn-icon ${isExecutionsPage ? 'text-ink' : 'text-ink-3 hover:text-ink'}`}
+              aria-pressed={isExecutionsPage}
+              title={t('sidebar.campaignsNav.executions')}
+              data-testid="campaigns-nav-executions"
+            >
+              <History size={14} />
+            </button>
+          </div>
+        )}
         {/* GH243 — Constellation (GH183), ex-panneau Changesets. */}
         {category === 'requirement' && (
           <button
@@ -440,12 +471,16 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
         </div>
       )}
 
+      {isExecutionsPage && (
+        <p className="px-3 py-2 text-xs text-ink-3" data-testid="executions-panel-hint">{t('executionsView.panelHint')}</p>
+      )}
+
       {/* ── FilterBar ── */}
-      <FilterBar />
+      {!isExecutionsPage && <FilterBar />}
 
       {/* ── ElementTree ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {nodes.length === 0 ? (
+        {isExecutionsPage ? null : nodes.length === 0 ? (
           <div className="flex items-center justify-center h-full text-ink-3 text-xs px-3 text-center">
             {t('sidebar.system.noComponentConfiguredBody')}
             <br />
@@ -470,6 +505,7 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
             onSelect={setSelectedIds}
             onDoubleClick={handleDoubleClick}
             onRootChange={handleRootChange}
+            onObsoleteObjects={obsoleteObjects}
             generateId={generateId}
             typeName={effectiveType?.label ?? effectiveTypeId}
             filter={filter || undefined}

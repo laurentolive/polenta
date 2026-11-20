@@ -15,6 +15,8 @@ import {
 } from '../../main/services/bulk-import-validation.util'
 import { peekNextCounterId, formatCounterId } from '../../main/services/id-counter.util'
 import { readOwnedTypeDef } from '../../main/services/field-write.util'
+import { canonicalMultiEnumFields } from '../../main/services/field-values.util'
+import { findObjectTypeDef } from '../../main/services/schema-lookup.util'
 import { placeBulkFolders, planBulkFolders, type BulkFolderEntry } from './tree.tools'
 
 /**
@@ -86,6 +88,19 @@ interface BulkImportToolResult {
 
 const byIndex = (a: { index: number }, b: { index: number }) => a.index - b.index
 
+/** GH384 — `multi_enum` en liste réécrit au format de l'application (« a, b ») avant contrôle et écriture. */
+function withCanonicalMultiEnum<T extends BulkImportEntryDto>(schema: ProjectSchema, entries: T[]): T[] {
+  return entries.map((e) => {
+    const typeDef = e.objectTypeRef ? findObjectTypeDef(schema, e.objectTypeRef) : null
+    if (!typeDef || typeDef === 'unresolvable') return e
+    const fields = canonicalMultiEnumFields(typeDef, e.fields)
+    return fields === e.fields ? e : { ...e, fields }
+  })
+}
+
+/** GH384 — plusieurs erreurs possibles par entrée : `summary.failed` compte les entrées en erreur. */
+const failedEntries = (errors: Array<{ index: number }>): number => new Set(errors.map(e => e.index)).size
+
 /**
  * GH361 — champ `folder` des entrées : retiré du DTO et contrôlé avant tout (une entrée au chemin
  * refusé est exclue de l'import, en aperçu comme en écriture : les IDs prévus des suivantes restent
@@ -112,7 +127,7 @@ async function bulkImportWithFolders<TDto extends BulkImportEntryDto>(
   const errors = [...remap(result.errors), ...folderErrors].sort(byIndex)
   const remapped: BulkImportToolResult = {
     ...result,
-    summary: { total: entries.length, ok: result.summary.ok, failed: errors.length },
+    summary: { total: entries.length, ok: result.summary.ok, failed: failedEntries(errors) },
     created: remap(result.created),
     wouldCreate: remap(result.wouldCreate),
     errors,
@@ -190,7 +205,7 @@ async function runBulkImport<TDto extends BulkImportEntryDto>(
     }
     return {
       dryRun: true,
-      summary: { total: entries.length, ok: valid.length, failed: errors.length },
+      summary: { total: entries.length, ok: valid.length, failed: failedEntries(errors) },
       created: [],
       wouldCreate: valid.map((v) => ({ index: v.index, id: v.predictedId })),
       errors: [...errors].sort(byIndex),
@@ -217,7 +232,7 @@ async function runBulkImport<TDto extends BulkImportEntryDto>(
   const allErrors = [...errors, ...writeErrors].sort(byIndex)
   return {
     dryRun: false,
-    summary: { total: entries.length, ok: created.length, failed: allErrors.length },
+    summary: { total: entries.length, ok: created.length, failed: failedEntries(allErrors) },
     created,
     wouldCreate: [],
     errors: allErrors,
@@ -305,8 +320,9 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
         "affiche ce rangement = exigence créée mais non classée, FOLDER_PLACEMENT_FAILED dans errors)." + RICHTEXT_COLORS_NOTE,
       inputSchema: bulkImportRequirementsInput,
     },
-    async ({ entries, dryRun }) => {
+    async ({ entries: raw, dryRun }) => {
       const schema = await container.schema.get(container.repoPath)
+      const entries = withCanonicalMultiEnum(schema, raw)
       const preview = dryRun
         ? await makeSchemaBackedIdPreview(container, schema, entries, 'requirements')
         : NOOP_ID_PREVIEW
@@ -328,8 +344,9 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
         "écriture série best-effort en dryRun: false, champ folder).",
       inputSchema: bulkImportTestsInput,
     },
-    async ({ entries, dryRun }) => {
+    async ({ entries: raw, dryRun }) => {
       const schema = await container.schema.get(container.repoPath)
+      const entries = withCanonicalMultiEnum(schema, raw)
       const preview = dryRun
         ? await makeSchemaBackedIdPreview(container, schema, entries, 'tests')
         : NOOP_ID_PREVIEW

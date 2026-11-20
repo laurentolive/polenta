@@ -339,6 +339,8 @@ export function RawPane(props: Props) {
   useEffect(() => {
     view.current?.dispatch({ effects: refresh.of(null) })
     requestAnimationFrame(measure)
+    // GH395 — `!!props.onBase` voulu : seule la présence du rappel change les décorations, pas son identité.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.against, props.blocks, props.hints, props.actions, props.labels, !!props.onBase, measure])
 
   useEffect(() => {

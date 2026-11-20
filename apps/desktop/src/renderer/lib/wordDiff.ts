@@ -5,7 +5,7 @@ import { stripRichTextColorTags } from '@polenta/types'
  * ponctuation isolée), sur le modèle de `computeLineDiff`.
  */
 
-const TOKEN_RE = /[\p{L}\p{N}_]+(?:['’.\-][\p{L}\p{N}_]+)*|\s+|[^\s\p{L}\p{N}_]/gu
+const TOKEN_RE = /[\p{L}\p{N}_]+(?:['’.-][\p{L}\p{N}_]+)*|\s+|[^\s\p{L}\p{N}_]/gu
 
 /** Above this many tokens left to compare on one side, the whole middle is reported as changed
  *  (the DP table would be too large) — the unit stays marked, without word detail. */

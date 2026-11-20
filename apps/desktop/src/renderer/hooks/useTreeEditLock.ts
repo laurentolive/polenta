@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { isCancelledError } from '@tanstack/react-query'
 import { api } from '../api'
 import { holdTreeEditLock } from '../lib/treeEditLock'
 
@@ -23,7 +24,10 @@ export function useTreeEditLock(opts: {
   useEffect(() => {
     if (!enabled || !repoPath || !nodeId || !typeId) return
     return holdTreeEditLock(api.tree, repoPath, nodeId, typeId, () => {
-      void Promise.resolve(onAcquiredRef.current?.()).catch(err => console.error('[useTreeEditLock] relecture :', err))
+      // GH387 — relecture annulée par une relecture plus récente (react-query) : rien à signaler.
+      void Promise.resolve(onAcquiredRef.current?.()).catch(err => {
+        if (!isCancelledError(err)) console.error('[useTreeEditLock] relecture :', err)
+      })
     })
   }, [enabled, repoPath, nodeId, typeId])
 }

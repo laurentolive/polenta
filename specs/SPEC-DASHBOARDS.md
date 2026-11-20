@@ -321,7 +321,13 @@ column:
   dérive ses propres copies) ; `_ids` présents → popup « Détail » (ID, type, titre, statut ;
   `suivi:describe-ids`) ; sinon relance script + transformation avec `polenta.drill` = colonnes
   scalaires de la ligne → lignes avec `_ids` ; aucun → « Détail non disponible : le script ne fournit
-  pas d'identifiants ». KPI : union des `_ids`. Table : ligne à un seul ID → ouverture directe. La
+  pas d'identifiants ». KPI : union des `_ids`. Table : ligne à un seul ID → ouverture directe ; le
+  widget table est une grille commune en mode compact (GH389 : liens et clavier, ni barre d'outils ni
+  filtre) — la ligne s'ouvre par double-clic ou Entrée. Popup « Détail » : grille commune (filtre par
+  colonne, largeurs, clavier, liens ; ni 👁 ni export ; double-clic / Entrée ouvre l'objet ; Échap
+  ferme d'abord le popover de filtre, la cellule active, la sélection). Page Requête : résultat en
+  grille commune, colonnes du script (pas de 👁), barre d'outils et export de ce qui est affiché ;
+  impression : tableau statique. La
   relance utilise les valeurs de paramètres propres au widget cliqué (GH125). Aperçu de la
   configuration d'un widget : valeurs de ce widget (nouveau widget : défauts).
 - **Ouverture** (`suivi:resolve-target`) : exigence, test, campagne ; entrée de campagne →

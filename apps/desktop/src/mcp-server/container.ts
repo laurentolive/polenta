@@ -31,6 +31,7 @@ import { ParametersService } from '../main/services/parameters.service'
 import { TestedConfigService } from '../main/services/tested-config.service'
 import { ResultsImportService } from '../main/services/results-import.service'
 import { TreeService, indexObjectLister, serviceTitleAdopter } from '../main/services/tree.service'
+import { FieldRenameService } from '../main/services/field-rename.service'
 
 export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
@@ -77,6 +78,8 @@ export interface McpContainer {
   resultsImport: ResultsImportService
   /** GH361 — rangement en dossiers (`.polenta/trees/`), outils `get_tree`, `create_folders`… */
   tree: TreeService
+  /** GH371 — migration des objets au renommage / retrait d'un statut (`update_status`, `remove_status`). */
+  fieldRename: FieldRenameService
 }
 
 /**
@@ -136,6 +139,11 @@ class McpAuthService extends AuthService {
  * `getAuthor` y lit `auth.json` (`userData` indisponible : erreur absorbée), puis la config git, puis
  * `--user` (`McpAuthService`). Cf. specs/T122-design.md §2.1 pour l'analyse de sûreté initiale.
  */
+/** GH384 — auteur des écritures MCP (`createdBy` / `updatedBy`, historique, liens) : `--user`, sinon `mcp`. */
+export function mcpActor(user: string | undefined): string {
+  return user?.trim() || 'mcp'
+}
+
 export function createMcpContainer(repoPath: string, workspaceDir?: string, user?: string): McpContainer {
   const auth = new McpAuthService(user)
   const git = new GitService()
@@ -145,8 +153,9 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const polentaRepo = new PolentaRepoService()
   const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)
   const schema = new SchemaService(auth, workspaceTree)
-  // GH77 — écritures MCP : `by` = `--user` / `POLENTA_USER` (sinon `local`), `source: mcp`.
-  const history = new HistoryService(git, async () => ({ by: user ?? 'local', source: 'mcp' }))
+  // GH77 — écritures MCP : `by` = `--user` / `POLENTA_USER`, `source: mcp`. GH384 — sans utilisateur : `mcp`
+  // (et non `local`), comme le `createdBy` des liens (`mcpActor`) : un import MCP se distingue d'une saisie.
+  const history = new HistoryService(git, async () => ({ by: mcpActor(user), source: 'mcp' }))
   // T172 — mêmes déclencheurs que l'app : un changement de statut via MCP marque aussi les pairs.
   const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree, history)
   const requirements = new RequirementsService(git, reqIndex, schema, revalidation, history)
@@ -189,8 +198,11 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
     serviceTitleAdopter(requirements, tests, issues),
   )
 
+  // GH371 — même graphe que main/container.ts (issues et validations comprises).
+  const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues, validations, versions)
+
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, issues, validations, transitionGuard, workspaceTree, reqIndex, testsIndex,
-    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters, resultsImport, tree,
+    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters, resultsImport, tree, fieldRename,
   }
 }

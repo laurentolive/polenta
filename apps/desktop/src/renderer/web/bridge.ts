@@ -161,11 +161,14 @@ const adapters: Record<string, (...args: unknown[]) => Promise<unknown>> = {
   'campaigns:execution-sheet-export': (...args) => exportAndDownload('web:execution-sheet-export', args),
   'app:set-title': async (title) => { document.title = String(title) },
   // GH342 — « Ouvrir dans une nouvelle fenêtre » : nouvel onglet du navigateur sur la même page.
+  // GH343 — l'accueil s'ouvre sans saut vers le dernier projet (`__home`, lu au boot).
   'app:open-window': async (route) => {
-    if (isValidAppRoute(route)) window.open(route, '_blank', 'noopener')
+    if (isValidAppRoute(route)) window.open(route === '/' ? '/?__home=1' : route, '_blank', 'noopener')
   },
   // GH342 — chaque onglet du navigateur fait son pull automatique (pas de coordination entre onglets).
   'app:auto-pull-owner': async () => true,
+  // GH343 — pas de suivi des onglets du navigateur : « Fermer le projet » ne regarde que le pointeur.
+  'app:project-shown-elsewhere': async () => false,
   // GH342 — onglet Polenta non sauvegardé : confirmation générique du navigateur à la fermeture.
   'app:window-state': async (patch) => {
     const dirty = (patch as { dirty?: unknown } | null)?.dirty

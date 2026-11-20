@@ -323,7 +323,9 @@ indépendamment des liens.
   repo et des composants visibles, création).
 - **Vue Paramètres** (barre d'activité) : bases par repo, recherche, nombre d'utilisations,
   « Utilisé par » (liens vers les éléments), création / modification / suppression (refusée tant
-  qu'un élément non terminal utilise le paramètre).
+  qu'un élément non terminal utilise le paramètre). Une grille commune (GH389, SPEC-SYSTEM-VIEW § Grilles communes) par repo (préférences
+  `grid::parameters` du `.pref` de ce repo) ; double-clic / Entrée ouvre le dialogue (pas d'édition
+  dans la cellule).
 - **Modification** (`value`, `unit`, ou création résolvant des références) d'un paramètre
   utilisé par un élément approuvé : confirmation, puis marquage `needsRevalidation` (§5.3).
 - **Exports** exigences / tests : mêmes valeurs qu'à l'écran.
@@ -342,7 +344,9 @@ Le texte n'est jamais modifié et le lien affiche ce qui est écrit (pas l'ID af
 reconnaissance dans du code Markdown, le texte d'un lien Markdown, un bloc `drawio`, ni pendant la
 saisie ; les valeurs d'ID affiché personnalisé ne sont pas reconnues. Rendu : règle markdown-it
 `element_refs` (`lib/elementRefs.ts`), décoration Tiptap `ElementRefDecoration` (viewer en lecture
-seule), `ElementRefText` (texte brut) ; gestes délégués au conteneur.
+seule), `ElementRefText` (texte brut) ; gestes délégués au conteneur. **GH399** : un ID d'exécution
+existant (`GHX-0001-run-0003`, pris en entier) devient un lien d'exécution. Un ID d'exécution
+inexistant reste du texte, et l'ID du test qu'il contient n'est pas lié.
 
 ### 3.2h Couleur du texte et surlignage (GH299)
 
@@ -573,6 +577,9 @@ Les types de liens sont définis dans `schema.yaml > linkTypes`. Exemples couran
 | `verified-by` | A → B | A (le test) vérifie l'exigence B |
 
 Il n'existe pas de lien `PARENT_CHILD` implicite — toute relation entre objets passe par un `ObjectLink` typé.
+
+Types de liens proposés à l'ajout d'un composant (GH373) : un type propre au composant par lien
+coché — vérification, implémentation, implémentation depuis le parent (SPEC-TEMPLATES §3).
 
 `sourceRefs` / `targetRefs` d'un type de lien : une liste **vide** rend le type invalide — il
 n'accepte aucun objet (masqué des éditeurs de liens, refusé par `validateLinkEntries` côté main /
@@ -839,7 +846,11 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
   ligne par ligne ou par sélection multiple (un seul enregistrement).
 - **Page** : changements de la version, puis ceux des versions de chaque dépendance entre celle de
   `basedOn` (exclue, si elle est un ancêtre) et celle retenue ; « Voir les modifications » = diff
-  générique `base` → `freeze.sha` (ou disque si en cours).
+  générique `base` → `freeze.sha` (ou disque si en cours). GH389 : en-tête repliable (bouton de la
+  barre de titre, état par poste) ; changements, tests à exécuter, analyse figée et backlog sont des
+  grilles communes (SPEC-SYSTEM-VIEW § Grilles communes) à cases (retrait, inclusion, création de
+  campagne inchangés), bornées en hauteur et qui défilent seules ; analyse en tableau : statut et
+  commentaire édités dans la cellule tant que la version est en cours, ID en lien d'élément.
 - **Statut de design** d'une exigence (MILESTONE-D §2) : première version released (ordre des livraisons)
   qui inclut l'exigence dans `changes` et dont l'état figé est identique (§13, P1) — graphe `designVersion`.
 
@@ -870,7 +881,8 @@ Modification du produit non tracée dans les exigences (bug, non-conformité, é
 
 - **Type et fichier** : catégorie `issue`, plusieurs types par nœud local (« + Issue » du modèle de données) ;
   `issues/<ID>.yaml` du repo du composant : `id`, `objectTypeRef`, `title`, `status`, `version`, `fields`,
-  `origin` (`runs`, `decisions`), `history`. Statuts par défaut : `ouverte`, `en_cours`, `corrigee`, `rejetee`
+  `origin` (`runs`, `decisions`), `history`. Les exécutions d'`origin.runs` sont affichées en liens
+  d'exécution dans la fiche (GH399). Statuts par défaut : `ouverte`, `en_cours`, `corrigee`, `rejetee`
   (`isTerminal`) ; `corrigee` n'est pas terminal, un terminal sortant du backlog.
 - **Pas de verrou** : ni contrôle de contenu, ni incrément de `version`, même avec un statut `isApproval`.
 - **Pas de suppression individuelle** (§9) : statut terminal ; cascade du type (GH104) et renommage (GH100) inclus.
@@ -887,6 +899,9 @@ Modification du produit non tracée dans les exigences (bug, non-conformité, é
 
 Décision de la qualité, exigence par exigence, sur une version du composant. Signée sur une version released,
 elle vaut feu vert ; sur la version produit, go production série. Détail : `specs/GH204.md`.
+Écran (GH389) : en-tête repliable, grille commune (GH389, SPEC-SYSTEM-VIEW § Grilles communes) — décision et commentaire édités dans la cellule
+et en lot sur la sélection (une proposition d'issue en lot ouvre un seul dialogue, l'issue porte toutes
+les décisions dans `origin.decisions`), Confirmer / Rejeter la sélection, export de ce qui est affiché.
 
 - **Type et fichier** : catégorie `validation`, un seul type par repo, sur `root`. `validations/<ID>.yaml` du
   repo du composant : `id`, `objectTypeRef`, `title`, `status`, `versionId`, `fields`, `entries`, `history`.

@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react'
+import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from '../element/ElementLink'
 import type { ObjectTypeDefinition, SchemaField, SchemaFieldType, LinkTypeDefinition, ObjectLink, CoverageStatus, MatrixCell, TestCase } from '@polenta/types'
 import { isFieldRequiredNow, objectFieldReader, statusValueLabels } from '@polenta/types'
 import { api } from '../../api'
@@ -69,7 +70,7 @@ function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPa
     // sinon l'édition de l'utilisateur l'emporte à l'écran jusqu'à sa sauvegarde.
     if (localValRef.current === syncedValRef.current) setLocalVal(value)
     syncedValRef.current = value
-  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value])
 
   const set = (v: string) => { setLocalVal(v); onChange(v) }
 
@@ -624,7 +625,6 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
         : onFlushValuesRef.current(localValuesRef.current)
       void Promise.resolve(p).catch(err => console.error('[EditView] T159 — échec du flush au démontage', err))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // GH342 — fermeture de la fenêtre : détruite sans démontage, l'effet ci-dessus ne tourne pas. Même
@@ -721,8 +721,15 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
               hors du pipeline orderedFields/FieldRow — champ non éditable, pas un SchemaField. */}
           {/* GH244 — exécutions à l'origine de l'issue (lecture seule). */}
           {typeDef?.category === 'issue' && objectData?.['originRuns'] && (
+            // GH399 — liens d'exécution (popup, navigation) ; ID inconnu : texte.
             <p className="text-xs text-ink-3" data-testid="issue-origin">
-              {t('issues.originRuns', { ids: objectData['originRuns'] })}
+              {t('issues.originRunsLabel')}{' '}
+              {String(objectData['originRuns']).split(',').map(s => s.trim()).filter(Boolean).map((runId, i) => (
+                <React.Fragment key={`${i}:${runId}`}>
+                  {i > 0 && ', '}
+                  <ElementLink id={runId} className="font-mono text-prim" />
+                </React.Fragment>
+              ))}
             </p>
           )}
           {typeDef?.category === 'requirement' && objectData && (

@@ -21,7 +21,7 @@ import type { VersionsService } from './versions.service'
 import type { IssuesService } from './issues.service'
 import type { ValidationsService } from './validations.service'
 import { isResyncable } from './campaigns.service'
-import type { GitService } from './git.service'
+import type { FileHistory, GitService } from './git.service'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 
 // GH74 — graphe de données JSON (contrat v1, `@polenta/types/graph.ts`) construit à partir des
@@ -94,6 +94,8 @@ export class GraphService {
   private readonly cacheEnabled: boolean
   private readonly now: () => Date
   private readonly entries = new Map<string, CacheEntry>()
+  /** GH397 — historiques git de fichiers par repo, pour un commit HEAD (`fileHistoryOf`). */
+  private readonly fileHistories = new Map<string, { sha: string; files: Map<string, Promise<FileHistory | null>> }>()
   private version = 0
   private versions?: Pick<VersionsService, 'list' | 'versionType' | 'designVersions'>
   private issues?: Pick<IssuesService, 'findAll'>
@@ -305,17 +307,46 @@ export class GraphService {
   private async gapFallbacks(perRepo: RawRepo[]): Promise<Map<object, HistoryFallback>> {
     const out = new Map<object, HistoryFallback>()
     for (const r of perRepo) {
+      const fileHistory = await this.fileHistoryOf(r.repoPath)
       const types = typeResolver(r.schema)
       const groups: Array<[string, Array<Requirement | TestCase | Issue>]> = [['requirements', r.requirements], ['tests', r.testCases], ['issues', r.issues]]
       for (const [dir, objects] of groups) {
         for (const o of objects) {
           if (!hasHistoryGap({ status: o.status, fields: o.fields ?? {}, history: o.history }, types(o.objectTypeRef).typeDef)) continue
-          const dates = await this.git.fileHistory(r.repoPath, `${dir}/${o.id}.yaml`).catch(() => null)
+          const dates = await fileHistory(`${dir}/${o.id}.yaml`)
           out.set(o, { at: dates?.updatedAt ? historyTimestamp(new Date(dates.updatedAt)) : null, by: dates?.updatedBy ?? null })
         }
       }
     }
     return out
+  }
+
+  /**
+   * GH397 — historique git d'un fichier (repli des objets sans historique de champs suivis), gardé
+   * pour le commit HEAD du repo : il ne change qu'avec un commit ou un déplacement de ref. Le
+   * recalculer à chaque construction du graphe (un `git log` par objet concerné, en parcourant
+   * l'historique) faisait l'essentiel de son coût, payé à chaque écriture quand la vue Suivi est
+   * ouverte. HEAD illisible : pas de cache.
+   */
+  private async fileHistoryOf(repoPath: string): Promise<(file: string) => Promise<FileHistory | null>> {
+    const read = (file: string) => this.git.fileHistory(repoPath, file).catch(() => null)
+    const sha = await Promise.resolve().then(() => this.git.headSha(repoPath)).catch(() => '')
+    if (!sha) return read
+    const key = path.resolve(repoPath)
+    let entry = this.fileHistories.get(key)
+    if (!entry || entry.sha !== sha) {
+      entry = { sha, files: new Map() }
+      this.fileHistories.set(key, entry)
+    }
+    const files = entry.files
+    return (file) => {
+      let found = files.get(file)
+      if (!found) {
+        found = read(file)
+        files.set(file, found)
+      }
+      return found
+    }
   }
 
   private async doBuild(repoPath: string, workspaceDir: string | undefined, locale: 'fr' | 'en'): Promise<BuiltGraph> {
@@ -429,7 +460,7 @@ export class GraphService {
     let fallback: HistoryFallback = { at: null, by: null }
     const carrier: HistoryCarrier = { status: c.status, fields: c.fields ?? {}, history: c.history }
     if (hasHistoryGap(carrier, typeDef)) {
-      const dates = await this.git.fileHistory(r.repoPath, `campaigns/${c.id}.yaml`).catch(() => null)
+      const dates = await (await this.fileHistoryOf(r.repoPath))(`campaigns/${c.id}.yaml`)
       fallback = { at: dates?.updatedAt ? historyTimestamp(new Date(dates.updatedAt)) : null, by: dates?.updatedBy ?? null }
     }
     const entry = (e: CampaignTestRun): GraphEntry => ({

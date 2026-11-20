@@ -93,6 +93,19 @@
       "mergeInto": "Merge into <mono>{{integration}}</mono>",
       "mergeIntoIntegration": "Merge into the integration branch",
       "publishedUnmerged": "Published on <mono>{{branch}}</mono> (not merged into <mono>{{integration}}</mono>).",
+      "refresh": "Get updates",
+      "refreshBehind": "{{count}} team commit(s) to pull. Get updates merges them into your branch.",
+      "refreshNothing": "Nothing to pull: your branch already contains the integration.",
+      "refreshOnIntegration": "Updates the integration from the server.",
+      "refreshDiverged": "The local integration has diverged from the server: Get updates resynchronizes it (your local commits are kept).",
+      "refreshOffline": "Server unreachable: nothing was changed.",
+      "refreshAccessRevoked": "Access to the server was revoked: sign in again to refresh.",
+      "refreshIntegrationUpdated": "Integration up to date.",
+      "refreshUpToDate": "Already up to date.",
+      "refreshMerged": "{{count}} commit(s) pulled.",
+      "refreshWip": "Your uncommitted changes were saved in a WIP commit.",
+      "refreshOpenError": "Could not open the conflict resolution.",
+      "refreshFailed": "Get updates failed: {{error}}",
       "parentsNote": "Parent repos are published too, to update their pins.",
       "resolveConflicts": "Resolve conflicts",
       "resumeResolution_one": "Resume conflict resolution",
@@ -306,6 +319,7 @@
       "title": "Project",
       "recents": "Recent",
       "closeProject": "Close project",
+      "newWindow": "New window",
       "dataModel": "Data model",
       "preferences": "Preferences"
     },
@@ -528,6 +542,10 @@
         "legacy-sql": "SQL query from before GH74, no longer supported: rewrite it as a script or delete it.",
         "newer-format": "Created by a newer version of Polenta: read-only."
       }
+    },
+    "campaignsNav": {
+      "campaigns": "Campaigns",
+      "executions": "Executions"
     }
   },
   "schema": {
@@ -601,6 +619,16 @@
       "includeIssuesLabel": "Issues",
       "includeVersionsLabel": "Versions",
       "includeValidationsLabel": "Validations",
+      "defaultLinkTypesLabel": "Link types created by default",
+      "linkVerificationLabel": "Verification: test → requirement",
+      "linkImplementationLabel": "Implementation: requirement → component requirement",
+      "linkImplementationParentLabel": "Implementation from the parent: {{parentLabel}} requirement → component requirement",
+      "linkIssueImpactLabel": "Issue impact: issue → requirement",
+      "linkIssueImpactTitle": "Added with the Issues type",
+      "verificationSourceToTarget": "verifies",
+      "verificationTargetToSource": "is verified by",
+      "implementationSourceToTarget": "is implemented by",
+      "implementationTargetToSource": "implements",
       "displayLabel": "Display label",
       "description": "Description",
       "descriptionPlaceholder": "Optional description",
@@ -805,9 +833,9 @@
       "createFolder": "Create a folder",
       "rename": "Rename",
       "deleteTitle": "Delete?",
-      "deleteFolderWithContent": "This folder contains elements. All of its content will be deleted along with it.",
-      "deleteCount_one": "This element will be deleted.",
-      "deleteCount_other": "These elements will be deleted.",
+      "deleteFolderWithContent": "This folder contains elements. Requirements stored in it will be set to obsolete and removed from the tree.",
+      "deleteCount_one": "This element will leave the tree. If it is a requirement, it will be set to obsolete.",
+      "deleteCount_other": "These elements will leave the tree. Requirements will be set to obsolete.",
       "clickToNavigate": "Click to navigate to this element (Ctrl+click for a new tab)",
       "clickToEdit": "Click to edit",
       "inlineCode": "Inline code",
@@ -936,7 +964,15 @@
       }
     },
     "campaignListView": {
-      "noTest": "No test"
+      "noTest": "No test",
+      "title": "Campaigns",
+      "newCampaign": "New campaign",
+      "createFirst": "Create the first campaign",
+      "colId": "ID",
+      "colStatus": "Status",
+      "colTitle": "Title",
+      "colTests": "Tests",
+      "colRuns": "Entries"
     },
     "richTextToolbar": {
       "rawMarkdownMode": "Raw markdown mode"
@@ -1048,6 +1084,16 @@
     "editParamValues": "Edit parameter values",
     "viewResult": "View result",
     "view": "View",
+    "entriesTitle": "Entries {{id}}",
+    "columns": {
+      "test": "Test",
+      "title": "Title",
+      "requirement": "Requirement",
+      "carried": "Carried over from",
+      "params": "Parameters",
+      "status": "Status",
+      "actions": "Actions"
+    },
     "executeThisTest": "Execute this test",
     "execute": "Execute",
     "newInstanceOf": "New instance of {{tcId}} — parameter values:",
@@ -1157,6 +1203,7 @@
       "tabCampaign": "From a campaign"
     },
     "carry": {
+      "gridTitle": "Carry over from a campaign",
       "sources": "Source campaigns",
       "noCampaign": "No other campaign",
       "statusFilter": "Entry status:",
@@ -1407,6 +1454,7 @@
       "chooseMatrixFields": "Choose the rows, the columns and the value."
     },
     "resultTable": {
+      "gridTitle": "Result",
       "booleanTrue": "yes",
       "booleanFalse": "no",
       "executeQueryHint": "Run a query to see a result.",
@@ -2402,8 +2450,6 @@
   "executionHistory": {
     "title": "Executions",
     "empty": "No execution.",
-    "columns": "Columns",
-    "configure": "Choose columns",
     "toggleSteps": "Show steps",
     "removed": "entry removed",
     "isolated": "standalone run",
@@ -2478,7 +2524,6 @@
   },
   "issues": {
     "origin": "Origin",
-    "originRuns": "Executions: {{ids}}",
     "proposal": {
       "title": "Failed execution",
       "hint": "{{id}} did not pass: do you want to track this problem in an issue?",
@@ -2495,8 +2540,11 @@
       "importTitle_other": "{{count}} failed executions:",
       "decisionTitle": "Decision to track",
       "decisionHint": "{{id}}: \"{{decision}}\". Do you want to track this finding in an issue?",
-      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}"
-    }
+      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}",
+      "decisionHintMany": "{{count}} requirements: \"{{decision}}\". Do you want to track this finding in an issue?",
+      "decisionDefaultTitleMany": "{{decision}} — {{count}} requirements"
+    },
+    "originRunsLabel": "Executions:"
   },
   "versions": {
     "title": "Product version",
@@ -2555,7 +2603,9 @@
       "type": "Type",
       "id": "ID",
       "label": "Label",
-      "diff": "Diff"
+      "diff": "Diff",
+      "requirements": "Requirements",
+      "actions": "Actions"
     },
     "page": {
       "changes": "Changes",
@@ -2691,7 +2741,8 @@
       "status": "Authoring",
       "design": "Design",
       "coverage": "Verification",
-      "impact": "Impact"
+      "impact": "Impact",
+      "mentions": "Mentions"
     },
     "impact": {
       "changed": "changed",
@@ -2765,7 +2816,12 @@
       "TITLE_EMPTY": "The title is required."
     },
     "noTest": "No test linked to this requirement.",
-    "otherComponent": "Executions in another component"
+    "otherComponent": "Executions in another component",
+    "group": {
+      "decision": "Decision",
+      "requirement": "Requirement"
+    },
+    "remainingShort": "left to decide: {{count}}"
   },
   "transitions": {
     "notice": {
@@ -2931,5 +2987,32 @@
     "reload": "Reload",
     "keep": "Keep my changes",
     "status": "Status"
+  },
+  "grid": {
+    "columns": "Columns",
+    "toggleRow": "Expand / collapse row",
+    "count": "{{shown}} / {{total}}",
+    "lockedColumn": "Always displayed",
+    "bulkFailed_one": "{{count}} row not written:",
+    "bulkFailed_other": "{{count}} rows not written:",
+    "confirmSelection": "Confirm selection",
+    "rejectSelection": "Reject selection",
+    "collapseHeader": "Collapse header",
+    "expandHeader": "Expand header"
+  },
+  "executionsView": {
+    "title": "Executions",
+    "noTestType": "No test type in this component.",
+    "panelHint": "Executions of every test of the selected type. To filter a campaign: Campaign column.",
+    "fromCampaign": "View executions",
+    "steps": "Steps",
+    "documentEmpty": "No execution to display.",
+    "config": {
+      "excel": "Table",
+      "word": "Document",
+      "popup": "Popup"
+    },
+    "stepComment": "Comment",
+    "runLabel": "Execution"
   }
 }

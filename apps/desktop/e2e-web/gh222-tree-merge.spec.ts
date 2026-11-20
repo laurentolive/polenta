@@ -162,7 +162,8 @@ test('R8 — finaliser après une résolution en Rendu', async () => {
     await s.page.getByRole('button', { name: 'Merger', exact: true }).click()
   }
   await s.page.getByRole('button', { name: 'Finaliser le merge' }).click()
-  await expect(s.page.getByText('Merge finalisé')).toBeVisible()
+  // GH387 — titre de la page de fin, pas le texte « … (merge finalisé ou …) » affiché un instant avant.
+  await expect(s.page.getByRole('heading', { name: 'Merge finalisé' })).toBeVisible()
   const config = yaml.load(await fs.promises.readFile(path.join(s.project.localPath, DIR, 'config.yaml'), 'utf8')) as { title: string; seuil: number }
   expect(config).toMatchObject({ title: 'gauche', seuil: 42 })
 })

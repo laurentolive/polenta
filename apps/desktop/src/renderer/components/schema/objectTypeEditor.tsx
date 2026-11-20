@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import {
   DEFAULT_VALIDATION_DECISIONS as SHARED_VALIDATION_DECISIONS, DEFAULT_VALIDATION_STATUSES as SHARED_VALIDATION_STATUSES,
   DEFAULT_VERSION_STATUSES as SHARED_VERSION_STATUSES,
-  DISPLAY_ID_FIELD_TYPES, HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES,
+  HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES,
   TRANSITION_CATEGORIES, displayIdFieldCandidates, historyModeFor, renameRequiredWhenRefs, renameTransitionRefs, renameValues, requiredWhenIssues,
 } from '@polenta/types'
 import type {
@@ -418,7 +418,7 @@ const LIGATURES: Record<string, string> = {
 }
 
 /** Racine de nom/préfixe : accents retirés (GH365), majuscules, tout caractère hors `A-Z0-9` → `_`. */
-function slugifyComponentName(componentName: string): string {
+export function slugifyComponentName(componentName: string): string {
   return componentName.trim()
     .replace(/[ŒœÆæßØøŁłĐđÐðÞþı]/g, c => LIGATURES[c])
     .normalize('NFD').replace(/[̀-ͯ]/g, '')

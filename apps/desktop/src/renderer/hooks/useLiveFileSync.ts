@@ -1,7 +1,12 @@
-import { useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
+import { useRouterState } from '@tanstack/react-router'
+import { useQueryClient, type QueryFilters } from '@tanstack/react-query'
+import { decodeProjectId } from '../lib/projectId'
+import { isInsideWorkspace } from '../lib/pathScope'
+import { deriveCurrentProjectId } from '../components/layout/AppLayout'
 import { EVENTS_RECONNECTED } from '../lib/webEvents'
 import { WORKSPACE_LINK_QUERY_KEYS } from './useWorkspaceLinks'
+import { InvalidationBatcher } from '../lib/invalidationBatcher'
 
 /**
  * Subscribes to `repo:file-changed`, pushed by the main process (RepoWatcherService, via
@@ -19,19 +24,42 @@ import { WORKSPACE_LINK_QUERY_KEYS } from './useWorkspaceLinks'
  */
 const DASHBOARD_KEYS = ['dashboards', 'dashboard', 'print-dashboard', 'suivi-updates']
 
+/** GH343 — dossier du projet affiché (`projectId` de la route), `null` sans projet ou id illisible. */
+function workspaceDirOf(projectId: string | null): string | null {
+  if (!projectId) return null
+  try {
+    return decodeProjectId(projectId)
+  } catch {
+    return null
+  }
+}
+
 export function useLiveFileSync(): void {
   const qc = useQueryClient()
+  // GH343 — fenêtre sur un projet : les changements des repos d'un autre projet (ouvert dans une
+  // autre fenêtre) ne la concernent pas — sans ce filtre, toute écriture là-bas relançait ici les
+  // lectures des clés globales (couverture, widgets, versions…). Sans projet (accueil) : tout passe.
+  const projectId = useRouterState({ select: s => deriveCurrentProjectId(s.location.searchStr) })
+  const workspaceDirRef = useRef<string | null>(null)
+  workspaceDirRef.current = workspaceDirOf(projectId)
 
   useEffect(() => {
+    // GH397 — invalidations regroupées : une rafale d'écritures (import, agent MCP, autre onglet)
+    // relance chaque lecture concernée une fois, pas une fois par fichier (lib/invalidationBatcher.ts).
+    // GH389 — l'index des liens d'élément (versions, validations de tous les repos) en profite aussi.
+    const batcher = new InvalidationBatcher(qc)
+    const inv = (filters: QueryFilters) => batcher.add(filters)
     const unsubscribe = window.polenta.on('repo:file-changed', (...args: unknown[]) => {
       const [repoPath, relPath] = args as [string, string]
+      const workspaceDir = workspaceDirRef.current
+      if (workspaceDir && typeof repoPath === 'string' && !isInsideWorkspace(workspaceDir, repoPath)) return
 
       // T175 — l'analyse locale couvre tout le workspace (clé indexée sur le repo racine) : tout
       // changement d'élément/lien ou de ref dans n'importe quel repo la rend périmée.
       if (relPath === '*' || /^(requirements|tests|links)\//.test(relPath)) {
-        qc.invalidateQueries({ queryKey: ['impact-analysis:local'] })
+        inv({ queryKey: ['impact-analysis:local'] })
         // T173 — éléments marqués du workspace (même périmètre).
-        qc.invalidateQueries({ queryKey: ['revalidation:flagged'] })
+        inv({ queryKey: ['revalidation:flagged'] })
       }
 
       // GH105 — objets, liens et types de lien agrégés sur le workspace (clés indexées sur le repo
@@ -39,11 +67,11 @@ export function useLiveFileSync(): void {
       // dans n'importe quel repo, les rend périmés.
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
         || /^(requirements|tests|issues|links)\//.test(relPath)) {
-        for (const key of WORKSPACE_LINK_QUERY_KEYS) qc.invalidateQueries({ queryKey: [key] })
+        for (const key of WORKSPACE_LINK_QUERY_KEYS) inv({ queryKey: [key] })
         // Couverture calculée sur tout le workspace (clé indexée sur le repo affiché).
-        qc.invalidateQueries({ queryKey: ['traceability-matrix'] })
+        inv({ queryKey: ['traceability-matrix'] })
         // GH206 — pré-contrôle des menus de statut : règles du schéma, champs et couverture.
-        qc.invalidateQueries({ queryKey: ['transitions'] })
+        inv({ queryKey: ['transitions'] })
       }
 
       // GH65 / GH74 — résultats des widgets de la vue Suivi : clé indexée sur le repo RACINE, mais le
@@ -51,41 +79,46 @@ export function useLiveFileSync(): void {
       // (avance rapide du pull automatique), de la bibliothèque projet ou d'un script de requête
       // (écrit hors de l'app, MCP) dans n'importe quel repo les rend périmés.
       if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|versions|issues|validations|queries|dashboards\/lib)\//.test(relPath)) {
-        qc.invalidateQueries({ queryKey: ['widget-query-result'] })
-        qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
+        inv({ queryKey: ['widget-query-result'] })
+        inv({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }
       // GH201 — versions : arbre, pages et backlogs (clés `versions`, tous repos) — une version, un
       // élément, le schéma ou les dépendances changent la page, le backlog et le statut de design ;
       // GH245 : les liens changent l'analyse d'impact, les campagnes les tests à exécuter.
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
         || /^(requirements|tests|versions|issues|links|campaigns)\//.test(relPath)) {
-        qc.invalidateQueries({ queryKey: ['versions'] })
-        qc.invalidateQueries({ queryKey: ['validations'] })
+        inv({ queryKey: ['versions'] })
+        inv({ queryKey: ['validations'] })
       }
+      if (relPath === '*' || /^(versions|validations)\//.test(relPath)) inv({ queryKey: ['element-nav'] })
+      // GH399 — liens d'exécution : ID du repo (index), et ligne d'une exécution (campagne, entrée,
+      // marqueurs : suit aussi les campagnes).
+      if (relPath.startsWith('test-runs/')) inv({ queryKey: ['element-nav', 'runs', repoPath] })
+      if (relPath === '*' || /^(test-runs|campaigns)\//.test(relPath)) inv({ queryKey: ['execution-run', repoPath] })
       // GH210 — reflets Design et Validation : versions, validations, exigences, schéma.
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
         || /^(requirements|versions|validations)\//.test(relPath)) {
-        qc.invalidateQueries({ queryKey: ['reflections'] })
+        inv({ queryKey: ['reflections'] })
       }
       // GH197 — historique des exécutions : runs, campagnes, tests et liens (couverture d'une exigence).
       if (relPath === '*' || /^(tests|test-runs|links|campaigns)\//.test(relPath)) {
-        qc.invalidateQueries({ queryKey: ['execution-history'] })
+        inv({ queryKey: ['execution-history'] })
       }
       // Runs d'un test (consultation d'un run) : sans cela, un run écrit ailleurs restait introuvable
       // dans la liste en cache (« Non exécuté ») jusqu'au prochain rechargement.
-      if (relPath === '*' || relPath.startsWith('test-runs/')) qc.invalidateQueries({ queryKey: ['test-runs'] })
+      if (relPath === '*' || relPath.startsWith('test-runs/')) inv({ queryKey: ['test-runs'] })
       // GH74 — bandeau des mises à jour : requêtes des seeds (versions de modèle).
-      if (relPath.startsWith('queries/')) qc.invalidateQueries({ queryKey: ['suivi-updates'] })
+      if (relPath.startsWith('queries/')) inv({ queryKey: ['suivi-updates'] })
       // GH203 — vues d'équipe : pull, autre onglet, résolution de conflit.
-      if (relPath === '*' || relPath.startsWith('.polenta/views/')) qc.invalidateQueries({ queryKey: ['saved-views'] })
+      if (relPath === '*' || relPath.startsWith('.polenta/views/')) inv({ queryKey: ['saved-views'] })
 
       if (relPath === '*') {
-        qc.invalidateQueries({ predicate: (q) => q.queryKey[1] === repoPath })
+        inv({ predicate: (q) => q.queryKey[1] === repoPath })
         return
       }
 
       if (relPath === '.polenta/schema.yaml') {
-        qc.invalidateQueries({ queryKey: ['schema', repoPath] })
+        inv({ queryKey: ['schema', repoPath] })
         return
       }
 
@@ -93,17 +126,17 @@ export function useLiveFileSync(): void {
       // Clés `[<clé>, repoPath, username, …]` — match par préfixe, tout user. `dashboard` /
       // `print-dashboard` = dashboard ouvert (widgets), pas seulement la liste.
       if (relPath.startsWith('queries/')) {
-        qc.invalidateQueries({ queryKey: ['queries', repoPath] })
+        inv({ queryKey: ['queries', repoPath] })
         return
       }
       if (relPath.startsWith('dashboards/')) {
-        for (const key of DASHBOARD_KEYS) qc.invalidateQueries({ queryKey: [key, repoPath] })
+        for (const key of DASHBOARD_KEYS) inv({ queryKey: [key, repoPath] })
         return
       }
       // Requêtes/dashboards privés et ordres du panneau latéral vivent dans `.{user}.pref`.
       if (/^\.[^/]+\.pref$/.test(relPath)) {
         for (const key of ['queries', 'queries-order', 'dashboards-order', ...DASHBOARD_KEYS]) {
-          qc.invalidateQueries({ queryKey: [key, repoPath] })
+          inv({ queryKey: [key, repoPath] })
         }
         return
       }
@@ -111,8 +144,8 @@ export function useLiveFileSync(): void {
       const treeMatch = /^\.polenta\/trees\/([^/]+)\/([^/]+)\.yaml$/.exec(relPath)
       if (treeMatch) {
         const [, nodeId, typeId] = treeMatch
-        qc.invalidateQueries({ queryKey: ['tree', repoPath, nodeId, typeId] })
-        qc.invalidateQueries({
+        inv({ queryKey: ['tree', repoPath, nodeId, typeId] })
+        inv({
           predicate: (q) =>
             q.queryKey[0] === 'objects' && q.queryKey[1] === repoPath &&
             q.queryKey[3] === nodeId && q.queryKey[4] === typeId,
@@ -122,19 +155,19 @@ export function useLiveFileSync(): void {
 
       // GH204 — validations : un fichier ou une exécution modifiés changent les pages ouvertes.
       if (/^(validations|test-runs)\//.test(relPath)) {
-        qc.invalidateQueries({ queryKey: ['validations'] })
+        inv({ queryKey: ['validations'] })
         if (relPath.startsWith('validations/')) return
       }
 
       // GH244 — issues : liste, fiche et vues.
       const issueMatch = /^issues\/([^/]+)\.yaml$/.exec(relPath)
       if (issueMatch) {
-        qc.invalidateQueries({ queryKey: ['issues', repoPath] })
-        qc.invalidateQueries({ queryKey: ['object', repoPath, 'issue', issueMatch[1]] })
-        qc.invalidateQueries({
+        inv({ queryKey: ['issues', repoPath] })
+        inv({ queryKey: ['object', repoPath, 'issue', issueMatch[1]] })
+        inv({
           predicate: (q) => q.queryKey[0] === 'objects' && q.queryKey[1] === repoPath && q.queryKey[2] === 'issue',
         })
-        qc.invalidateQueries({ queryKey: ['tree', repoPath] })
+        inv({ queryKey: ['tree', repoPath] })
         return
       }
 
@@ -144,20 +177,24 @@ export function useLiveFileSync(): void {
         const category = dir === 'requirements' ? 'requirement' : dir === 'tests' ? 'test' : 'campaign'
         const singularKey = category
         const allKey = dir === 'requirements' ? 'requirements-all' : dir === 'tests' ? 'tests-all' : 'campaigns'
-        qc.invalidateQueries({ queryKey: [singularKey, repoPath, id] })
+        inv({ queryKey: [singularKey, repoPath, id] })
         // GH342 — fiche de la vue Édition (SystemView, même clé que les issues ci-dessus) : une
         // modification faite ailleurs (autre fenêtre, MCP, pull) doit y arriver sans recharger.
-        qc.invalidateQueries({ queryKey: ['object', repoPath, category, id] })
-        qc.invalidateQueries({ queryKey: [allKey, repoPath] })
-        qc.invalidateQueries({
+        inv({ queryKey: ['object', repoPath, category, id] })
+        inv({ queryKey: [allKey, repoPath] })
+        inv({
           predicate: (q) => q.queryKey[0] === 'objects' && q.queryKey[1] === repoPath && q.queryKey[2] === category,
         })
       }
     })
     // GH44 — version web : connexion d'événements rétablie après une coupure, des changements ont
     // pu être manqués → tout relire (jamais émis sur le desktop).
-    const unsubscribeReconnect = window.polenta.on(EVENTS_RECONNECTED, () => { void qc.invalidateQueries() })
+    const unsubscribeReconnect = window.polenta.on(EVENTS_RECONNECTED, () => {
+      batcher.dispose()
+      void qc.invalidateQueries()
+    })
     return () => {
+      batcher.dispose()
       unsubscribe()
       unsubscribeReconnect()
     }

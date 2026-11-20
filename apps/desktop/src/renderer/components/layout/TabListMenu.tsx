@@ -11,7 +11,7 @@ interface Props {
  *  ModificationControl's PublishPopover. */
 export function TabListMenu({ onClose }: Props) {
   const { t } = useTranslation()
-  const { tabs, activeTabId, recentlyClosed, activateTab, reopenClosedTab } = useTabs()
+  const { tabs, activeTabId, recentlyClosed, attemptActivateTab, attemptReopenClosedTab } = useTabs()
   const [filter, setFilter] = useState('')
 
   useEffect(() => {
@@ -49,7 +49,7 @@ export function TabListMenu({ onClose }: Props) {
             <button
               key={tab.id}
               type="button"
-              onClick={() => { activateTab(tab.id); onClose() }}
+              onClick={() => { onClose(); attemptActivateTab(tab.id) }}
               className={[
                 'w-full text-left px-3 py-1.5 text-xs truncate transition-colors',
                 tab.id === activeTabId ? 'text-ink bg-hover' : 'text-ink-2 hover:bg-hover',
@@ -70,7 +70,7 @@ export function TabListMenu({ onClose }: Props) {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => { reopenClosedTab(tab.id); onClose() }}
+                onClick={() => { onClose(); attemptReopenClosedTab(tab.id) }}
                 className="w-full text-left px-3 py-1.5 text-xs truncate text-ink-3 hover:bg-hover hover:text-ink transition-colors"
               >
                 {tab.title}

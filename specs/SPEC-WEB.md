@@ -163,7 +163,8 @@ apps/desktop/
 | `Ctrl+T` / `Ctrl+W` | `Alt+T` / `Alt+W` en plus (raccourcis capturés par le navigateur) |
 | Nouvelle fenêtre (Ctrl+Shift+N, menu d'onglet, GH342) | menu d'onglet seulement : `window.open` → nouvel onglet du navigateur sur la même page (Ctrl+Shift+N appartient au navigateur) |
 | Garde de fermeture de fenêtre (GH342) | `beforeunload` (message générique du navigateur) tant qu'un onglet Polenta est non sauvegardé |
-| Démarrage sur `/` puis dernier projet | GH342 : l'URL d'entrée est suivie (lien direct, nouvel onglet, F5) si son projet existe |
+| Démarrage sur `/` puis dernier projet | GH342 : l'URL d'entrée est suivie (lien direct, nouvel onglet, F5) si son projet existe. GH343 : saut vers le dernier projet au premier chargement de `/` seulement, sauf `/?__home=1` (« Nouvelle fenêtre » du panneau Projet → nouvel onglet du navigateur sur l'accueil) ; retour à `/` en cours de session (fermeture du projet) : l'accueil reste affiché |
+| Glisser un onglet (GH343) | réordonner dans la barre seulement ; pas de glisser entre onglets du navigateur ni hors du navigateur (channels `app:tab-drag-*` desktop seulement). `app:project-shown-elsewhere` : toujours faux (pas de suivi des onglets du navigateur) |
 | Titre de fenêtre | `document.title` |
 | Administration du serveur | Page « Administration » pour les propriétaires (GH63, §12) — absente du desktop |
 
@@ -231,6 +232,9 @@ la version web »).
 - Bout en bout (Playwright, `apps/desktop/e2e-web/`) : serveur en mode dev contre une forge git
   locale (parité des parcours, impression), et OIDC réel contre l'instance de test quand
   `POLENTA_E2E_SSH` est défini. Mode d'emploi : `e2e-web/README.md`.
+  Exécution parallèle (GH387) : une pile par worker Playwright (serveur web, forge git, faux service
+  d'administration, dossier de données) sur des ports libres, démarrée par le global setup ; chaque
+  fichier part d'une copie du projet de démo cloné une fois par worker.
 
 ## 11. Limites connues
 

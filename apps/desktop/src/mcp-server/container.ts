@@ -107,6 +107,11 @@ class McpAuthService extends AuthService {
   protected override defaultAuthor(): GitAuthor {
     return this.user ? { name: this.user, email: `${this.user}@${BRAND.id}.local` } : super.defaultAuthor()
   }
+
+  /** Pas de compte du poste pour le MCP : config du repo, puis `--user`, puis défaut (GH362). */
+  protected override async pcIdentity(): Promise<GitAuthor | null> {
+    return null
+  }
 }
 
 /**

@@ -4,6 +4,7 @@ import * as path from 'path'
 import type { ForgeAccount, ForgeDetection, ForgeIdentity, ForgeKind, PasswordLoginResult } from '@polenta/types'
 
 import { gitFor } from '../git/git-backend'
+import { pcGitIdentity, refreshGitIdentity } from '../git/git-config'
 import type { GitAuthor } from './git.service'
 import type { HostContext } from '../host/host-context'
 import { migrateLocalPref } from './pref-store.util'
@@ -295,6 +296,16 @@ export class AuthService {
     store.accounts = store.accounts.filter(a => keyOf(a) !== keyOf(account))
     store.defaultAccount = store.accounts[0] ? keyOf(store.accounts[0]) : null
     await this.writeStore(store)
+    await this.syncGitIdentity()
+  }
+
+  /**
+   * GH337 P3 — `[user]` de la config globale de Polenta suit le compte actif (spec §2.2) : appelé à
+   * chaque changement de compte (connexion, déconnexion), en plus de l'initialisation au démarrage.
+   */
+  private async syncGitIdentity(): Promise<void> {
+    const account = await this.currentAccount().catch(() => null)
+    refreshGitIdentity(account ? { name: account.name, email: account.email } : null)
   }
 
   // ─── Identity resolution ────────────────────────────────────────────────────
@@ -385,7 +396,19 @@ export class AuthService {
       // fall through
     }
 
+    // GH337 P3 — repli : identité globale du PC (après le dépôt et le compte actif).
+    const pc = await this.pcIdentity()
+    if (pc) return pc
+
     return this.defaultAuthor()
+  }
+
+  /**
+   * Identité globale du compte Windows du poste (GH337 P3). Le serveur MCP ne l'utilise pas : ses
+   * commits portent le `--user` qu'on lui donne (GH362), jamais le compte du poste.
+   */
+  protected async pcIdentity(): Promise<GitAuthor | null> {
+    return pcGitIdentity().catch(() => null)
   }
 
   /** Auteur faute de compte et de config git (GH362 : le serveur MCP y met son `--user`). */
@@ -515,6 +538,7 @@ export class AuthService {
     // Le compte qui vient de se logger devient le compte actif
     store.defaultAccount = keyOf(account)
     await this.writeStore(store)
+    await this.syncGitIdentity()
   }
 
   async getDefaultAccount(): Promise<{ account: StoredAccount; token: string } | null> {

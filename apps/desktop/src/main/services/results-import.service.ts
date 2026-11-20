@@ -6,6 +6,7 @@ import type {
   ResultsImportReport, ResultsImportWarning, TestCampaign, TestCase, TestRun, TestRunResult, WorkspaceLink, WorkspaceObject,
 } from '@polenta/types'
 import { gitFindRoot, gitFor } from '../git/git-backend'
+import { pcGitIdentity } from '../git/git-config'
 import type { CampaignsService } from './campaigns.service'
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
@@ -72,15 +73,17 @@ const sameEntry = (run: TestRun, campaignId?: string, entryId?: string) =>
 /**
  * `user.name` de la config git du dépôt qui contient `repoPath` (un projet peut en être un
  * sous-dossier) : git embarqué (GH337), config locale du dépôt puis config globale de Polenta
- * (compte actif) ; `''` si absent ou illisible.
+ * (compte actif), puis identité globale du PC (GH337 P3) ; `''` si absent ou illisible.
  */
 export async function gitUserName(repoPath: string): Promise<string> {
   try {
     const root = (await gitFindRoot(repoPath)) ?? repoPath
-    return (await gitFor(root).config('user.name'))?.trim() ?? ''
+    const name = (await gitFor(root).config('user.name'))?.trim() ?? ''
+    if (name) return name
   } catch {
-    return ''
+    // repli ci-dessous
   }
+  return (await pcGitIdentity().catch(() => null))?.name ?? ''
 }
 
 /**

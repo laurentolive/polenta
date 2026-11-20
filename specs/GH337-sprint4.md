@@ -153,3 +153,49 @@ Non mesurés pour ce sprint (la suite n'a pas été instrumentée à la fin).
   E1 à E4 (ouverture du shell avec l'environnement askpass) passent. Non établi : si ces 4 échecs existent
   déjà sur `main` (la branche a changé le terminal au sprint 3). Un processus `sleep.exe` a survécu à la
   fermeture du shell dans E5 : à qualifier.
+
+## Décisions de la revue (2026-11-19)
+
+**P7 — sortie git partielle : acceptée.** `git/git-runner.ts`, `spawnGit` : après la fin de git, les
+tuyaux sont fermés au bout de 500 ms s'ils ne sont pas vidés, et l'appel se résout avec ce qui a été lu.
+La sortie peut donc être **partielle** si les tuyaux ne sont pas vidés à temps sous Windows. Le risque est
+accepté par l'humain ; la cause (héritage de tuyaux par un autre processus) est connue
+(`tasks/lessons.md`, 2026-11-18). Le code de vidage n'a pas changé. **À réouvrir si un bug de données
+tronquées est observé.**
+
+**P3 — identité Git du PC : lue en repli.** La config git de Polenta reste isolée (`GIT_CONFIG_GLOBAL`,
+`GIT_CONFIG_NOSYSTEM=1`). L'identité globale du PC n'est lue que par `pcGitIdentity()` (`git/git-config.ts`),
+avec un processus `git config --global` ponctuel, les `GIT_CONFIG_*` de Polenta retirés. Ordre de repli :
+1. identité du dépôt (`.git/config`, effective) ;
+2. compte actif de Polenta (`[user]` de la config globale de Polenta, et les comptes de `getAuthor`) ;
+3. identité globale du PC.
+
+Trois usages : `getAuthor` (`auth.service.ts`, après la config du dépôt, avant l'auteur par défaut),
+`gitUserName` (`results-import.service.ts`, champ `executedBy`), et le terminal (`terminal.service.ts`) :
+pour chaque clé `user.name` / `user.email` absente du dépôt et du compte actif, la valeur du PC passe par
+`GIT_CONFIG_COUNT` dans l'environnement du shell. Une clé déjà présente n'est jamais remplacée.
+Le compte actif règle `[user]` de la config globale de Polenta à chaque changement de compte
+(`AuthService.saveAccount` et `logout` appellent `syncGitIdentity`, qui appelle `refreshGitIdentity`),
+et plus seulement au démarrage (`initGitHome`). Sans compte : pas de `[user]`.
+Test de la variable : `POLENTA_TEST_PC_GITCONFIG` (chemin d'une config globale temporaire) ; le
+`~/.gitconfig` réel n'est jamais lu par les tests. Tests : `git/git-identity.gh337.test.ts` (5),
+`services/auth-git-identity.gh337.test.ts` (1).
+
+**P9 — `safe.directory = *` : gardé, risque documenté.** `git/git-config.ts`, `renderGitConfig` : inchangé,
+le commentaire explique pourquoi `*` (dépôts créés par un autre compte Windows ou sur un partage réseau,
+spec §2.2 ; `gitFindRoot` découvre le dépôt avant de pouvoir le lister), le risque (CVE-2022-24765 : un
+dépôt appartenant à un autre utilisateur peut déclencher des commandes via sa config locale) et la décision
+de l'humain du 2026-11-19. Restreindre la liste par dépôt si la décision change.
+
+**P1 — shims askpass dans l'image du serveur web : corrigé.** Les shims sont dans `src/main/git/askpass/`,
+et `apps/desktop/Dockerfile.web` ne copiait pas `src/`. Correction :
+- `Dockerfile.web` (phase de build) : `mkdir -p /out/app/resources/git && cp -r src/main/git/askpass /out/app/resources/git/`,
+  puis `COPY --from=build /out/app /app` place les shims en `/app/resources/git/askpass`, et
+  `POLENTA_WEB_RESOURCES_DIR=/app/resources` les désigne.
+- `git/askpass.ts`, `askpassDir()` : cherche aussi `POLENTA_WEB_RESOURCES_DIR/git/askpass` (après
+  `process.resourcesPath`, avant la remontée depuis `__dirname`).
+- Test : `git/askpass-web-image.gh337.test.ts` (3) : lit la copie et la variable dans `Dockerfile.web`,
+  vérifie qu'elles désignent le même chemin, reproduit la copie dans un dossier temporaire et vérifie
+  qu'`askpassDir()` le trouve avec la seule variable d'environnement.
+- **Non vérifié** : l'image Docker elle-même n'a pas été construite (pas de reconstruction demandée) ; le
+  test vérifie la configuration de build et le chemin d'exécution, pas le contenu réel de l'image.

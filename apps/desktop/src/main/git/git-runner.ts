@@ -162,6 +162,11 @@ function spawnGit(cwd: string, args: string[], opts: RunOptions): Promise<RunRes
     // cat-file, serveur MCP, terminal…) hérite de nos tuyaux et les garde ouverts tant qu'il vit : git
     // a fini, mais la fin de sa sortie n'arrive pas (vu : 14 à 50 s). Ce qu'il a écrit est déjà lu peu
     // après sa fin : passé ce délai, les tuyaux sont fermés de notre côté, ce qui termine l'appel.
+    //
+    // GH337 P7 — risque accepté par l'humain (décision du 2026-11-19) : si les tuyaux ne sont pas vidés
+    // dans les 500 ms après la fin de git, la sortie (`stdout`/`stderr`) est PARTIELLE et l'appel se
+    // résout quand même. Le vidage n'est pas changé. Cause : héritage des tuyaux par un autre processus
+    // sous Windows (tasks/lessons.md, 2026-11-18). À réouvrir si un bug de données tronquées est observé.
     child.on('exit', code => {
       if (settled) return
       const drain = setTimeout(() => {

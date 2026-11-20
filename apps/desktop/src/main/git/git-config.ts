@@ -1,3 +1,4 @@
+import { execFile } from 'child_process'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -45,6 +46,15 @@ export function setGitIdentity(identity: GitIdentity | null): void {
   state.written = false
 }
 
+/**
+ * GH337 P3 — changement de compte actif : `[user]` de la config globale de Polenta suit le compte
+ * (spec §2.2). `null` ou compte sans nom/courriel → pas de `[user]`. Écrit tout de suite.
+ */
+export function refreshGitIdentity(account: GitIdentity | null): void {
+  setGitIdentity(account && account.name && account.email ? { name: account.name, email: account.email } : null)
+  gitGlobalConfigPath()
+}
+
 export function setGitLowSpeedTime(seconds: number): void {
   state.lowSpeedTimeSeconds = Math.max(30, Math.round(seconds))
   state.written = false
@@ -58,8 +68,7 @@ export function setGitLowSpeedTime(seconds: number): void {
 export async function initGitHome(dir: string, activeAccount: () => Promise<GitIdentity | null>): Promise<void> {
   configureGitHome(dir)
   const account = await activeAccount().catch(() => null)
-  setGitIdentity(account && account.name && account.email ? { name: account.name, email: account.email } : null)
-  gitGlobalConfigPath()
+  refreshGitIdentity(account && account.name && account.email ? { name: account.name, email: account.email } : null)
 }
 
 /** GH337 P3 — réglage GH15 → `http.lowSpeedTime` : délai git HTTP (300 s de base) mis à l'échelle. */
@@ -94,10 +103,12 @@ export function renderGitConfig(hooksDir: string, identity: GitIdentity | null, 
     '\tgpgSign = false',
     '[init]',
     '\tdefaultBranch = main',
-    // GH337 P9 — `directory = *` désactive le contrôle de propriétaire de git (CVE-2022-24765) pour tous
-    // les dépôts ouverts par Polenta. Gardé : les dépôts créés par un autre compte Windows ou sur un partage
-    // réseau doivent s'ouvrir (spec §2.2), et `gitFindRoot` découvre le dépôt avant de pouvoir le lister.
-    // À restreindre (liste par dépôt) si l'humain le décide ; voir le rapport GH337.
+    // GH337 P9 — `directory = *` : pourquoi `*` : les dépôts créés par un autre compte Windows ou sur un
+    // partage réseau doivent s'ouvrir (spec §2.2), et `gitFindRoot` découvre le dépôt avant de pouvoir le
+    // lister, donc une liste par dépôt ne suffit pas. Risque (CVE-2022-24765) : git refuse normalement un
+    // dépôt dont le propriétaire n'est pas l'utilisateur courant ; avec `*`, un dépôt d'un autre utilisateur
+    // peut déclencher des commandes via sa config locale (core.fsmonitor, hooks…). Décision de l'humain
+    // (2026-11-19) : gardé, risque documenté ; à restreindre si la décision change (specs/GH337-sprint4.md).
     '[safe]',
     '\tdirectory = *',
     '[http]',
@@ -125,6 +136,42 @@ export function gitGlobalConfigPath(): string {
     state.written = true
   }
   return file
+}
+
+/**
+ * GH337 P3 — variable de TEST uniquement : chemin d'une config globale temporaire qui remplace le
+ * `~/.gitconfig` du PC dans `pcGitIdentity()`. Le vrai fichier du développeur n'est jamais lu par les tests.
+ */
+export const PC_GITCONFIG_TEST_ENV = 'POLENTA_TEST_PC_GITCONFIG'
+
+/**
+ * GH337 P3 — identité globale du PC (`user.name` / `user.email` du fichier global réel, comme
+ * `git config --global` sans isolation). Lue par un processus git ponctuel, avec les variables
+ * `GIT_CONFIG_*` de Polenta retirées. `null` si l'une des deux manque ou si git est indisponible.
+ * Repli après l'identité du dépôt et le compte actif (voir `getAuthor`, `gitUserName`, terminal).
+ */
+export async function pcGitIdentity(): Promise<GitIdentity | null> {
+  const env: NodeJS.ProcessEnv = { ...process.env }
+  for (const k of Object.keys(env)) if (/^GIT_CONFIG/i.test(k)) delete env[k]
+  const override = process.env[PC_GITCONFIG_TEST_ENV]
+  if (override) env.GIT_CONFIG_GLOBAL = override
+  const name = await gitGlobalValue('user.name', env)
+  const email = await gitGlobalValue('user.email', env)
+  return name && email ? { name, email } : null
+}
+
+function gitGlobalValue(key: string, env: NodeJS.ProcessEnv): Promise<string> {
+  let exe: string
+  try {
+    exe = gitInstall().gitExe
+  } catch {
+    return Promise.resolve('')
+  }
+  return new Promise(resolve => {
+    execFile(exe, ['config', '--global', '--get', key], { env, windowsHide: true, timeout: 10_000 }, (err, stdout) => {
+      resolve(err ? '' : String(stdout).trim())
+    })
+  })
 }
 
 export interface GitEnvOptions {

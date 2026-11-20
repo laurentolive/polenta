@@ -37,6 +37,10 @@ let scratchDir: string | null = null
 export function askpassDir(): string {
   const candidates: string[] = []
   if (process.resourcesPath) candidates.push(path.join(process.resourcesPath, 'git', 'askpass'))
+  // GH337 P1 — serveur web (Docker) : pas de process.resourcesPath ; POLENTA_WEB_RESOURCES_DIR (`/app/resources`
+  // dans l'image) porte les shims copiés au build (voir Dockerfile.web).
+  const webResources = process.env.POLENTA_WEB_RESOURCES_DIR
+  if (webResources) candidates.push(path.join(webResources, 'git', 'askpass'))
   let dir = __dirname
   for (let i = 0; i < 6; i++) {
     candidates.push(path.join(dir, 'git', 'askpass'), path.join(dir, 'src', 'main', 'git', 'askpass'))

@@ -6,9 +6,33 @@ import type { TerminalDetectResult, TerminalKind } from '@polenta/types'
 import { type AskpassCredentials, type AskpassSession, hostFromRemoteUrl, openAskpassSession, terminalCredentials } from '../git/askpass'
 import { gitFor } from '../git/git-backend'
 import { gitInstall } from '../git/git-binary'
-import { gitEnv } from '../git/git-config'
+import { gitEnv, pcGitIdentity } from '../git/git-config'
 import { gitText } from '../git/git-runner'
 import { cdCommand, resolveShell, shellEnv, type ShellSpec } from './terminal-shell.util'
+
+/**
+ * GH337 P3 — terminal : l'identité globale du PC sert de repli pour les clés `user.name` / `user.email`
+ * absentes du dépôt et du compte actif (la config effective du terminal). Ces clés passent par
+ * `GIT_CONFIG_COUNT`, qui ne sont posées que pour la clé manquante : jamais au-dessus d'une identité
+ * déjà présente. Pas de dépôt ou pas d'identité PC : rien (git garde son comportement).
+ */
+async function terminalIdentityEnv(dir: string): Promise<Record<string, string>> {
+  const read = (key: string): Promise<string> =>
+    gitFor(dir).config(key).then(v => v?.trim() ?? '', () => '')
+  const [name, email] = await Promise.all([read('user.name'), read('user.email')])
+  if (name && email) return {}
+  const pc = await pcGitIdentity().catch(() => null)
+  if (!pc) return {}
+  const pairs: Array<[string, string]> = []
+  if (!name) pairs.push(['user.name', pc.name])
+  if (!email) pairs.push(['user.email', pc.email])
+  const env: Record<string, string> = { GIT_CONFIG_COUNT: String(pairs.length) }
+  pairs.forEach(([key, value], i) => {
+    env[`GIT_CONFIG_KEY_${i}`] = key
+    env[`GIT_CONFIG_VALUE_${i}`] = value
+  })
+  return env
+}
 
 /**
  * GH238 — sessions de pseudo-terminal du panneau Terminal de la vue Version. Desktop seulement :
@@ -109,7 +133,7 @@ export class TerminalService {
         cols: Math.max(cols, 2),
         rows: Math.max(rows, 1),
         cwd: dir,
-        env: shellEnv(gitEnv({ terminal: true }), process.platform, askpass.env),
+        env: shellEnv(gitEnv({ terminal: true, extra: await terminalIdentityEnv(dir) }), process.platform, askpass.env),
         // ConPTY de Windows, pas celui livré par node-pty (option expérimentale, désactivée aussi par
         // défaut dans VS Code) : avec ce dernier, une frappe rapide arrivait parfois dans le désordre
         // au shell (`techo` pour `echo`), constaté en test d'interface.

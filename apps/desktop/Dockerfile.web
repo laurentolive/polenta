@@ -25,6 +25,7 @@ RUN cd apps/desktop \
  && POLENTA_BRAND="$POLENTA_BRAND" POLENTA_VERSION="$POLENTA_VERSION" pnpm build:web \
  && mkdir -p /out/app \
  && cp -r out/web-server out/web resources package.json /out/app/ \
+ && mkdir -p /out/app/resources/git && cp -r src/main/git/askpass /out/app/resources/git/ \
  && node scripts/web-runtime-package.mjs > /out/runtime-package.json
 
 FROM node:20-bookworm-slim

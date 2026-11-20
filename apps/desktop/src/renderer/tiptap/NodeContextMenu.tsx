@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useMenuPosition } from '../hooks/useMenuPosition'
 
 export interface NodeContextMenuItem {
   id: string
@@ -26,6 +27,7 @@ interface Props {
 // (cf. specs/T75-design.md §3).
 export function NodeContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
+  const pos = useMenuPosition(ref, x, y)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -54,7 +56,7 @@ export function NodeContextMenu({ x, y, items, onClose }: Props) {
       // mousedown de remonter jusqu'à ce genre d'écouteur global.
       onMouseDown={e => e.stopPropagation()}
       data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-52 text-xs"
-      style={{ left: x, top: y }}
+      style={{ left: pos.left, top: pos.top }}
     >
       {items.map((item, i) =>
         item === 'separator' ? (

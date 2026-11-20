@@ -47,6 +47,7 @@ import type { DisplayedExportRow } from '../../lib/exportColumns'
 import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
 import { isReflectionColumn, ReflectionValue, reflectionText, type ReflectionsData } from './ReflectionCell'
 import { backdropDismiss } from '../../lib/backdropDismiss'
+import { useMenuPosition } from '../../hooks/useMenuPosition'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -917,6 +918,7 @@ function ExcelContextMenu({
 }) {
   const { t } = useTranslation()
   const ref = useRef<HTMLDivElement>(null)
+  const pos = useMenuPosition(ref, x, y)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -936,7 +938,7 @@ function ExcelContextMenu({
     <div
       ref={ref}
       data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-40 text-xs"
-      style={{ left: x, top: y }}
+      style={{ left: pos.left, top: pos.top }}
     >
       {items.map((item, i) =>
         'separator' in item ? (

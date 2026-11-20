@@ -7,6 +7,7 @@ import { promisify } from 'util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { AuthService } from '../services/auth.service'
+import { setRemoteGuard } from '../services/forge/remote-guard'
 import { SyncService } from '../services/sync.service'
 import { activeAskpassTokens, askpassDir, closeAskpassServer, openAskpassSession, type AskpassSession } from './askpass'
 import { gitClone, gitFor, gitLsRemoteHeads } from './git-backend'
@@ -198,5 +199,53 @@ describe('SSH — le ssh embarqué est celui qui sert au remote ssh://', () => {
     expect(err).toBeTruthy()
     expect((err as { stderr: string }).stderr).toMatch(/ssh-test\.invalid|Could not resolve hostname/i)
     expect(gitInstall().pathDirs.length).toBeGreaterThan(0)
+  })
+})
+
+describe('garde des URL de remote avant git (GH337)', () => {
+  afterEach(() => setRemoteGuard(null))
+
+  const rejection = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e as Error)
+
+  it('ext:: : rejeté sans lancer git (la commande ne s\'exécute pas)', async () => {
+    const marker = path.join(root, 'ext-ran')
+    const err = await rejection(gitLsRemoteHeads(`ext::sh -c touch ${marker}`))
+    expect(err?.message).toMatch(/Transport git refusé/)
+    expect(fs.existsSync(marker)).toBe(false)
+  })
+
+  it('scp user@hôte:chemin : même garde d\'hôte que ssh (la garde voit ssh://hôte)', async () => {
+    const seen: string[] = []
+    setRemoteGuard(url => { seen.push(url.protocol + url.hostname); throw new Error('hôte refusé par la garde') })
+    const err = await rejection(gitLsRemoteHeads('git@evil.invalid:repo.git'))
+    expect(seen).toEqual(['ssh:evil.invalid'])
+    expect(err?.message).toBe('hôte refusé par la garde')
+  })
+
+  it('scp dont l\'hôte commence par « - » : rejeté (option ssh injectée)', async () => {
+    const err = await rejection(gitLsRemoteHeads('-oProxyCommand=touch x:repo'))
+    expect(err?.message).toMatch(/Hôte de remote refusé/)
+  })
+
+  it('schéma hors https, http, ssh, file (git://, ftp://) : rejeté avant git', async () => {
+    expect((await rejection(gitLsRemoteHeads('git://evil.invalid/repo.git')))?.message).toMatch(/Schéma de remote refusé : git:\/\//)
+    expect((await rejection(gitLsRemoteHeads('ftp://evil.invalid/repo.git')))?.message).toMatch(/Schéma de remote refusé : ftp:\/\//)
+  })
+
+  it('https:// : la garde reçoit l\'URL telle quelle, et son refus est propagé', async () => {
+    const seen: string[] = []
+    setRemoteGuard(url => { seen.push(url.href); throw new Error('refus https') })
+    const err = await rejection(gitLsRemoteHeads('https://forge.invalid/owner/repo.git'))
+    expect(seen).toEqual(['https://forge.invalid/owner/repo.git'])
+    expect(err?.message).toBe('refus https')
+  })
+
+  it('file:// et chemin local : la garde les voit comme file:, résultat inchangé sur le desktop', async () => {
+    const bare = bareRemote('guarded.git')
+    const seen: string[] = []
+    setRemoteGuard(url => { seen.push(url.protocol) })
+    expect(await gitLsRemoteHeads(pathToFileURL(bare).href)).toEqual([])
+    expect(await gitLsRemoteHeads(bare)).toEqual([])
+    expect(seen).toEqual(['file:', 'file:'])
   })
 })

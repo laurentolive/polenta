@@ -3,6 +3,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import * as zlib from 'zlib'
+import { pathToFileURL } from 'url'
 
 import { objectData, objectInfo, resolveGitDir, type ObjectInfo } from './cat-file-batch'
 import { GitError, isGitError, MergeConflictError } from './git-errors'
@@ -1134,6 +1135,39 @@ export class GitBackend {
   }
 }
 
+/** Schémas de remote acceptés ; tout autre schéma est refusé avant de lancer git. */
+const REMOTE_SCHEMES = new Set(['https', 'http', 'ssh', 'file'])
+
+/**
+ * GH337 — garde des URL de remote avant tout processus git. La garde du serveur web (`checkRemote`)
+ * ne voit que les URL à schéma : on ramène chaque forme à une URL qu'elle sait évaluer.
+ * - `transport::commande` (helper git, ex. `ext::`) : refusé dans tous les cas, sans lancer git ;
+ * - `schéma://` hors https, http, ssh, file : refusé ;
+ * - `[user@]hôte:chemin` (scp) : contrôlé comme `ssh://hôte/` (même garde d'hôte que ssh) ; hôte commençant
+ *   par `-` refusé (option ssh injectée) ;
+ * - tout autre valeur (chemin local, `C:\…`) : contrôlé comme `file://`.
+ */
+export function checkRemoteUrl(url: string): void {
+  if (/^[^/\\]*::/.test(url)) throw new Error('Transport git refusé (forme transport::commande)')
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(url)
+  if (scheme) {
+    if (!REMOTE_SCHEMES.has(scheme[1].toLowerCase())) throw new Error(`Schéma de remote refusé : ${scheme[1]}://`)
+    checkRemote(url)
+    return
+  }
+  const colon = url.indexOf(':')
+  const slash = url.search(/[/\\]/)
+  const isDrive = /^[a-z]:[\\/]/i.test(url)
+  if (!isDrive && colon > 0 && (slash === -1 || colon < slash)) {
+    const host = url.slice(0, colon)
+    const hostPart = host.slice(host.lastIndexOf('@') + 1)
+    if (!hostPart || hostPart.startsWith('-')) throw new Error('Hôte de remote refusé')
+    checkRemote(new URL(`ssh://${host}/`))
+    return
+  }
+  checkRemote(pathToFileURL(path.resolve(url)))
+}
+
 /**
  * SSH sans invite (`BatchMode`) : `ssh` est celui de Git for Windows, en tête du PATH (gitEnv), comme
  * la commande de `git` lui-même (design §6). Le délai de connexion suit le réglage GH15.
@@ -1150,7 +1184,7 @@ function sshCommand(): string {
 export async function netRun(
   cwd: string, url: string | null, args: string[], opts: NetworkOptions, write: boolean,
 ): Promise<RunResult> {
-  if (url && /^[a-z][a-z0-9+.-]*:\/\//i.test(url)) checkRemote(url)
+  if (url) checkRemoteUrl(url)
   const config: string[] = []
   if (url && /^https?:\/\//i.test(url)) {
     const proxy = await resolveProxyUrl(url)

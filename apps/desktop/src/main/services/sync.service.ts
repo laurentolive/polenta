@@ -179,6 +179,23 @@ function conflictFiles(err: unknown): string[] | null {
   return err instanceof MergeConflictError ? err.paths : null
 }
 
+/** GH337 — `log` par ref du graphe : au plus ce nombre de processus git à la fois (GH335, pas de saturation). */
+const GRAPH_LOG_CONCURRENCY = 4
+
+/** Applique `fn` à chaque élément, `width` appels en parallèle au plus ; résultats dans l'ordre de `items`. */
+async function mapPool<T, R>(items: T[], width: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length)
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(width, items.length) }, worker))
+  return out
+}
+
 export class SyncService {
   constructor(private readonly auth: AuthService) {}
 
@@ -874,18 +891,14 @@ export class SyncService {
       const arr = refMap.get(r.commit) ?? []; arr.push(name); refMap.set(r.commit, arr)
     }
 
-    // GH337 — un seul `git log` sur HEAD, les branches locales et distantes et les tags (au lieu d'un
-    // journal de `limit` commits par ref), puis le même tri par date d'auteur.
-    // Sélecteurs de git plutôt que la liste des oid : pas de limite de longueur de ligne de commande.
-    if (!headSha && refs.length === 0) return []
-    const tips = [...(headSha ? ['HEAD'] : []), '--branches', '--remotes=origin', '--tags']
-    let commits: Awaited<ReturnType<GitBackend['log']>>
-    try {
-      commits = await g.log(tips, { limit })
-    } catch {
-      return []
-    }
-    const all: GraphCommit[] = commits.map(c => ({
+    // GH337 — comme avant la migration : un `log` de `limit` commits par ref (HEAD, branches locales,
+    // branches distantes, tags), union, tri par date d'auteur, coupe à `limit`. Une ref en erreur est
+    // ignorée (graphe partiel). Deux refs sur le même commit ne donnent qu'un seul `log`.
+    const tips = [...new Set([headSha, ...refs.filter(r => label(r.ref) !== null).map(r => r.commit ?? '')].filter(Boolean))]
+    const logs = await mapPool(tips, GRAPH_LOG_CONCURRENCY, sha => g.log(sha, { limit }).catch(() => []))
+    const byOid = new Map<string, (typeof logs)[number][number]>()
+    for (const list of logs) for (const c of list) if (!byOid.has(c.oid)) byOid.set(c.oid, c)
+    const all: GraphCommit[] = [...byOid.values()].map(c => ({
       sha: c.oid,
       short: c.oid.slice(0, 7),
       message: c.message.split('\n')[0],

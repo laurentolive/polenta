@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { gitFor, type GitBackend } from '../git/git-backend'
 import { closeAll } from '../git/process-registry'
+import { runGit } from '../git/git-runner'
 import type { AuthService } from './auth.service'
 import { SyncService } from './sync.service'
 
@@ -30,6 +31,19 @@ async function commit(files: Record<string, string | null>, msg: string): Promis
   return g.commit({ message: msg, author: { ...A, timestamp: (t += 60) } })
 }
 const sorted = <T extends { path: string }>(xs: T[]) => [...xs].sort((a, b) => a.path.localeCompare(b.path))
+/** Dates auteur / commit fixées (secondes UTC), pour un historique dont les deux dates diffèrent. */
+const datedEnv = (author: number, committer: number) => ({
+  extra: {
+    GIT_AUTHOR_NAME: A.name, GIT_AUTHOR_EMAIL: A.email, GIT_COMMITTER_NAME: A.name, GIT_COMMITTER_EMAIL: A.email,
+    GIT_AUTHOR_DATE: `@${author} +0000`, GIT_COMMITTER_DATE: `@${committer} +0000`,
+  },
+})
+async function datedCommit(files: Record<string, string>, msg: string, author: number, committer: number): Promise<string> {
+  for (const [f, c] of Object.entries(files)) write(f, c)
+  await g.add(Object.keys(files))
+  await runGit(dir, ['commit', '-q', '--no-verify', '-m', msg], { write: true, env: datedEnv(author, committer) })
+  return (await g.resolve('HEAD'))!
+}
 
 beforeEach(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gh337-sync-'))
@@ -152,6 +166,34 @@ describe('refs, graphe et diff', () => {
     expect(graph[0]).toMatchObject({ isCurrent: true, message: 'second', author: 'Alice', parents: [c1], refs: ['main'] })
     expect(graph[1].message).toBe('premier')
     expect(graph[1].refs.sort()).toEqual(['dev-x', 'light', 'v1'])
+  })
+
+  it('graph : un log par ref, union, tri par date d\'auteur, coupe (fusion, cherry-pick à date d\'auteur ancienne)', async () => {
+    // Dates en secondes : auteur / commit. r racine ; main : p (210) ; branche old sur p ; branche feat :
+    // q (120), puis F = cherry-pick à date d'auteur ancienne (125) commité tard (300). main : fusion T (400) de feat.
+    // HEAD = main = T, old = p, feat = F. limit = 2.
+    // Ancien algorithme (un log de 2 commits par ref, dans l'ordre de git = date de commit, union,
+    // tri par date d'auteur décroissante, coupe à 2) :
+    //   T : T, F   |  feat : F, q  |  old : p, r
+    //   union triée par date d'auteur : T 400, p 210, F 125, q 120, r 100  →  [T, p]
+    // Le log unique de tous les tips coupé à 2 (date de commit) donne T, F → [T, F] : c'est le bug.
+    const r = await datedCommit({ 'r.txt': '0' }, 'r', 100, 100)
+    await datedCommit({ 'm.txt': '1' }, 'p', 210, 210)
+    const p = (await g.resolve('HEAD'))!
+    await g.createBranch('old', p)
+    await g.createBranch('feat', r)
+    await g.checkout('feat')
+    await datedCommit({ 'q.txt': '2' }, 'q', 120, 120)
+    await datedCommit({ 'f.txt': '3' }, 'F', 125, 300)
+    const F = (await g.resolve('HEAD'))!
+    await g.checkout('main')
+    await runGit(dir, ['merge', '--no-ff', '--no-edit', '-m', 'fusion feat', 'feat'], { write: true, env: datedEnv(400, 400) })
+    const T = (await g.resolve('HEAD'))!
+
+    const graph = await sync.graph(dir, 2)
+    expect(graph.map(c => c.sha)).toEqual([T, p])
+    expect(graph.map(c => c.sha)).not.toContain(F)
+    expect(graph[0]).toMatchObject({ isCurrent: true, message: 'fusion feat', parents: [p, F], refs: ['main'] })
   })
 
   it('commitFiles, diffBetween, commitDiff', async () => {

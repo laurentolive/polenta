@@ -113,7 +113,7 @@ export class SessionTokenStore extends MemoryTokenStore {
 
 /** Pas d'`openExternal` ni de `mcpServerLaunch` : sans objet côté serveur. */
 export function createWebHostContext(userDataDir: string, tokenStore: TokenStore, machineConfig: MachineConfig): HostContext {
-  return { userDataDir, tokenStore, machineConfig, deviceLabel: 'web' }
+  return { userDataDir, tokenStore, machineConfig, deviceLabel: 'web', sharedGitConfig: true }
 }
 
 export function createWebPlatformHost(

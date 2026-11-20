@@ -193,11 +193,25 @@ function parseCheckAttr(out: Buffer): Map<string, Record<string, string>> {
   return res
 }
 
+/**
+ * Exécute `fn` sur chaque élément, `n` à la fois. GH337 revue — après la première erreur, plus aucune
+ * opération n'est lancée ; la promesse ne rejette qu'une fois toutes les opérations en cours terminées
+ * (sinon le rollback, qui suit l'erreur, courrait contre des écritures encore en vol).
+ */
 async function pool<T>(items: T[], n: number, fn: (item: T) => Promise<void>): Promise<void> {
   let next = 0
+  let failure: { error: unknown } | null = null
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
-    while (next < items.length) await fn(items[next++])
+    while (!failure && next < items.length) {
+      try {
+        await fn(items[next++])
+      } catch (error) {
+        failure ??= { error }
+        return
+      }
+    }
   }))
+  if (failure) throw (failure as { error: unknown }).error
 }
 
 /** Fichiers (chemins `/`, relatifs à `root`) sous le dossier `rel`. */
@@ -344,6 +358,21 @@ export function nodeCheckout(dir: string, target: string, opts: NodeCheckoutOpti
     }
 
     step('conversion')
+    // Index : seules les entrées qui changent, suppressions d'abord (un fichier remplacé par un dossier
+    // ou l'inverse). Leurs stats restent à zéro : `git status` les compare au contenu au besoin.
+    // GH337 revue — l'index est mis à jour AVANT le disque : s'il ne peut pas l'être (index.lock d'un autre
+    // processus), rien n'est écrit et HEAD ne bouge pas. Si une écriture disque échoue ensuite, safeCheckout
+    // ramène les fichiers à HEAD (rollbackIfPartial, HEAD intact : restore --staged --worktree).
+    const indexInfo = [
+      ...all.filter(c => c.status === 'D').map(c => `0 ${ZERO_OID}\t${c.path}\0`),
+      ...all.filter(c => c.status !== 'D').map(c => `${c.newMode} ${c.newOid}\t${c.path}\0`),
+    ].join('')
+    try {
+      await runGit(dir, ['update-index', '-z', '--index-info'], { stdin: indexInfo })
+    } catch (e) {
+      throw new Error(`Mise à jour de l'index impossible, HEAD inchangé : ${(e as Error).message}`)
+    }
+    step('index')
     const abs = (p: string): string => path.join(dir, ...p.split('/'))
     const concurrency = opts.concurrency ?? 32
     await pool(changes.filter(c => c.status === 'D'), concurrency, async c => {
@@ -353,6 +382,10 @@ export function nodeCheckout(dir: string, target: string, opts: NodeCheckoutOpti
     await pool(writes.map((c, i) => ({ c, data: contents[i] })), concurrency, async ({ c, data }) => {
       const file = abs(c.path)
       await fs.promises.mkdir(path.dirname(file), { recursive: true })
+      // GH337 revue — un lien symbolique déjà présent à ce chemin (fichier ignoré, p. ex.) : writeFile le
+      // suivrait et écraserait sa cible, hors du dépôt. Le lien est retiré, puis le fichier est écrit.
+      // Les dossiers de la chaîne qui seraient des liens sont refusés plus haut (findDirFileConflict).
+      if ((await fs.promises.lstat(file).catch(() => null))?.isSymbolicLink()) await fs.promises.unlink(file)
       await fs.promises.writeFile(file, data)
     })
     for (const c of links) {
@@ -364,19 +397,10 @@ export function nodeCheckout(dir: string, target: string, opts: NodeCheckoutOpti
     }
 
     step('écriture disque')
-    // Index : seules les entrées qui changent, suppressions d'abord (un fichier remplacé par un dossier
-    // ou l'inverse). Leurs stats restent à zéro : `git status` les compare au contenu au besoin.
-    const indexInfo = [
-      ...all.filter(c => c.status === 'D').map(c => `0 ${ZERO_OID}\t${c.path}\0`),
-      ...all.filter(c => c.status !== 'D').map(c => `${c.newMode} ${c.newOid}\t${c.path}\0`),
-    ].join('')
-    await Promise.all([
-      runGit(dir, ['update-index', '-z', '--index-info'], { stdin: indexInfo }),
-      branchRef
-        ? runGit(dir, ['symbolic-ref', '-m', `checkout: moving to ${target}`, 'HEAD', branchRef])
-        : runGit(dir, ['update-ref', '--no-deref', '-m', `checkout: moving to ${target}`, 'HEAD', newOid]),
-    ])
-    step('index, HEAD')
+    await (branchRef
+      ? runGit(dir, ['symbolic-ref', '-m', `checkout: moving to ${target}`, 'HEAD', branchRef])
+      : runGit(dir, ['update-ref', '--no-deref', '-m', `checkout: moving to ${target}`, 'HEAD', newOid]))
+    step('HEAD')
     return true
   })
 }

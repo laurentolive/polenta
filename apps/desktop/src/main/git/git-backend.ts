@@ -10,7 +10,7 @@ import { gitText, isRepoWriteBusy, repoKey, runGit, splitZ, withRepoFetchLock, w
 import { closeRepo } from './process-registry'
 import { gitInstall } from './git-binary'
 import { gitHooksDir } from './git-config'
-import { nodeCheckout } from './node-checkout'
+import { isSafeTreePath, nodeCheckout } from './node-checkout'
 import { openAskpassSession, type CredentialResolver } from './askpass'
 import { checkRemote } from '../services/forge/remote-guard'
 import { resolveProxyUrl } from '../services/net-proxy'
@@ -869,6 +869,10 @@ export class GitBackend {
     const tracked = new Set(await this.lsFilesAtHead(paths))
     const inHead = paths.filter(p => tracked.has(p))
     const notInHead = paths.filter(p => !tracked.has(p))
+    // GH337 revue — un chemin non suivi n'est supprimé du disque qu'une fois vérifié comme chemin sûr du dépôt
+    // (`..`, absolu, `.git`…) : refus avant toute écriture, git n'est pas appelé.
+    const unsafe = notInHead.find(p => !isSafeTreePath(p))
+    if (unsafe !== undefined) throw new Error(`Chemin refusé hors du dépôt : ${JSON.stringify(unsafe)}`)
     if (inHead.length) {
       await this.w(['restore', '--source=HEAD', '--staged', '--worktree', '--pathspec-from-file=-', '--pathspec-file-nul'], { stdin: inHead.join('\0') })
     }

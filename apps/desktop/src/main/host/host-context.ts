@@ -38,4 +38,9 @@ export interface HostContext {
    * le serveur web sert plusieurs utilisateurs dans un même process et garde les délais par défaut.
    */
   applyNetworkTimeout?: (seconds: number) => void
+  /**
+   * GH337 revue — `true` sur le serveur web : la config git de Polenta (`dataDir/git`) y est partagée par
+   * tous les utilisateurs. L'identité du compte connecté n'y est alors jamais écrite (`[user]`, last-wins).
+   */
+  sharedGitConfig?: boolean
 }

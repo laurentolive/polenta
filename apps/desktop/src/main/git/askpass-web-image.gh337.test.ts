@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -66,5 +67,25 @@ describe('GH337 P1 — shims askpass dans l’image du serveur web', () => {
     } finally {
       fs.rmSync(appRoot, { recursive: true, force: true })
     }
+  })
+})
+
+/**
+ * GH337 revue — `askpass.sh` est exécuté directement par git (GIT_ASKPASS) : il doit être exécutable dans
+ * l'index (sinon, sous Linux/Docker, git échoue à chaque invite) et le Dockerfile doit le rendre exécutable
+ * après la copie (défense en profondeur, indépendante du mode conservé par COPY).
+ */
+describe('GH337 revue — mode exécutable du shim askpass.sh', () => {
+  it('l’index git enregistre askpass.sh en 100755', () => {
+    const repoRoot = path.resolve(APP_ROOT, '../..')
+    const out = execFileSync('git', ['ls-files', '-s', '--', 'apps/desktop/src/main/git/askpass/askpass.sh'], { cwd: repoRoot, encoding: 'utf8' })
+    expect(out.split(' ')[0]).toBe('100755')
+  })
+
+  it('Dockerfile.web rend askpass.sh exécutable (chmod 755) après la copie', () => {
+    const copyIdx = dockerfile.indexOf('cp -r src/main/git/askpass /out/app/resources/git/')
+    const chmodIdx = dockerfile.indexOf('chmod 755 /out/app/resources/git/askpass/askpass.sh')
+    expect(copyIdx).toBeGreaterThan(-1)
+    expect(chmodIdx).toBeGreaterThan(copyIdx)
   })
 })

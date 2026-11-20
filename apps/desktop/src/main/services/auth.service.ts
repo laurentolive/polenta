@@ -304,6 +304,8 @@ export class AuthService {
    * chaque changement de compte (connexion, déconnexion), en plus de l'initialisation au démarrage.
    */
   private async syncGitIdentity(): Promise<void> {
+    // GH337 revue — serveur web : config git partagée entre utilisateurs, aucune identité n'y est écrite.
+    if (this.host.sharedGitConfig) return
     const account = await this.currentAccount().catch(() => null)
     refreshGitIdentity(account ? { name: account.name, email: account.email } : null)
   }

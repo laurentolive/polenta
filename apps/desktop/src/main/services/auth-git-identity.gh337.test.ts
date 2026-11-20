@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AuthService } from './auth.service'
 import type { HostContext, TokenStore } from '../host/host-context'
 import { configureGitHome, gitGlobalConfigPath } from '../git/git-config'
+import { createWebHostContext } from '../../web-server/web-host'
 
 /**
  * GH337 P3 — la config globale de Polenta suit le compte actif à chaque changement (connexion,
@@ -57,5 +58,21 @@ describe('identité git suit le compte actif', () => {
 
     await auth.logout()
     expect(globalConfig()).not.toContain('[user]')
+  })
+})
+
+describe('GH337 revue P7 — serveur web : la config git partagée ne reçoit pas d’identité', () => {
+  it('deux comptes connectés sur le serveur web : la config globale ne contient pas de [user]', async () => {
+    // Même contexte que le serveur web (un AuthService par utilisateur, config dans dataDir/git partagée).
+    const webAuth = new AuthService(createWebHostContext(dir, tokens, { hideGithub: false }))
+    const octo = { remoteHost: 'github.com', username: 'octo', name: 'Octo', email: 'o@x' }
+    const bob = { remoteHost: 'forge.test', username: 'bob', name: 'Bob Martin', email: 'bob@acme.fr', provider: 'forgejo' as const, baseUrl: 'https://forge.test' }
+    tokens.map.set('github.com:octo', 'ghp_x')
+    tokens.map.set('forge.test:bob', 'tok-bob')
+
+    await webAuth.saveAccount(octo)
+    await webAuth.saveAccount(bob)
+    expect(globalConfig()).not.toContain('[user]')
+    expect(globalConfig()).not.toContain('Bob Martin')
   })
 })

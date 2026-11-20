@@ -26,6 +26,7 @@ RUN cd apps/desktop \
  && mkdir -p /out/app \
  && cp -r out/web-server out/web resources package.json /out/app/ \
  && mkdir -p /out/app/resources/git && cp -r src/main/git/askpass /out/app/resources/git/ \
+ && chmod 755 /out/app/resources/git/askpass/askpass.sh \
  && node scripts/web-runtime-package.mjs > /out/runtime-package.json
 
 FROM node:20-bookworm-slim

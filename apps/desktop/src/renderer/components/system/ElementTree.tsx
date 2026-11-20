@@ -15,6 +15,7 @@ import {
   treeIsAncestorOrSelf,
 } from '../../hooks/useTreeState'
 import { backdropDismiss } from '../../lib/backdropDismiss'
+import { useMenuPosition } from '../../hooks/useMenuPosition'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -87,6 +88,7 @@ function BgContextMenu({
 }) {
   const { t } = useTranslation()
   const ref = useRef<HTMLDivElement>(null)
+  const pos = useMenuPosition(ref, x, y)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -106,7 +108,7 @@ function BgContextMenu({
     <div
       ref={ref}
       data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-44 text-xs"
-      style={{ left: x, top: y }}
+      style={{ left: pos.left, top: pos.top }}
     >
       {items.map(item => (
         <button
@@ -134,6 +136,7 @@ function ContextMenu({
 }) {
   const { t } = useTranslation()
   const ref = useRef<HTMLDivElement>(null)
+  const pos = useMenuPosition(ref, x, y)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -159,7 +162,7 @@ function ContextMenu({
     <div
       ref={ref}
       data-floating-menu className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-44 text-xs"
-      style={{ left: x, top: y }}
+      style={{ left: pos.left, top: pos.top }}
     >
       {items.map((item, i) =>
         item === 'separator' ? (

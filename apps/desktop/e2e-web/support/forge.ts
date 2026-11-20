@@ -40,7 +40,10 @@ export function remoteTags(repo = DEMO_REPO): string[] {
 export function outsideClone(name: string, repo = DEMO_REPO, author = { name: 'Autre Utilisateur', email: 'autre@polenta.test' }) {
   const dir = path.join(E2E.root, 'outside', `${name}-${Date.now()}`)
   fs.mkdirSync(path.dirname(dir), { recursive: true })
-  git(['clone', '--quiet', `${E2E.gitBaseUrl}/${repo}.git`, dir])
+  // GH420 — `autocrlf=false` dès le clone : sous Windows, la config système de Git for Windows
+  // (`autocrlf=true`) écrirait les fichiers en CRLF, et `add -A` les committerait ainsi (175 fichiers
+  // réécrits dans le repo de démo, puis une fusion qui réécrit `.e2e.pref` par la suite).
+  git(['-c', 'core.autocrlf=false', 'clone', '--quiet', `${E2E.gitBaseUrl}/${repo}.git`, dir])
   git(['config', 'user.name', author.name], dir)
   git(['config', 'user.email', author.email], dir)
   git(['config', 'core.autocrlf', 'false'], dir)

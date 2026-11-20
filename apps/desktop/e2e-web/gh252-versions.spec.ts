@@ -1,9 +1,8 @@
 import { execFileSync } from 'child_process'
-import * as fs from 'fs'
-import * as os from 'os'
 import * as path from 'path'
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { E2E } from './support/env'
 import { typeOfCategory } from './support/demo-types'
 
 /**
@@ -106,12 +105,21 @@ test('U4, U5 — passage released : tag en attente, poussé avec le repo', async
   await expect(p.getByTestId('version-tag-pending')).toBeVisible()
   expect(git('tag', '--list', 'gh252-9.9').trim()).toBe('gh252-9.9')
 
-  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'polenta-gh252-bare-'))
-  execFileSync('git', ['init', '--bare', bare])
-  git('remote', 'set-url', 'origin', bare)
+  // GH420 — dépôt nu propre à ce test, servi par la forge de test (hôte autorisé) : un chemin local
+  // (`file://`) est refusé par le serveur web, comme en production (garde GH337, à ne pas retirer).
+  const name = `gh252-${Date.now()}.git`
+  const bare = path.join(E2E.remotesDir, name)
+  execFileSync('git', ['init', '--bare', '--quiet', bare])
+  execFileSync('git', ['-C', bare, 'config', 'http.receivepack', 'true'])
+  git('remote', 'set-url', 'origin', `${E2E.gitBaseUrl}/${name}`)
   await s.invoke('sync:push', repo())
   expect(execFileSync('git', ['tag', '--list'], { cwd: bare, encoding: 'utf8' })).toContain('gh252-9.9')
-  await openVersion()
+  // GH420 — le push part hors de l'écran (`sync:push`), sans invalidation côté page : le serveur doit
+  // déjà dire « poussé ». La page est relue par un chargement complet, pas par une navigation interne
+  // (une réouverture par pushState gardait le marqueur affiché sous charge).
+  expect((await s.invoke<{ tagPending: boolean }>('versions:get', repo(), versionId, ws())).tagPending).toBe(false)
+  await p.goto(s.projectUrl(`/version/${versionId}`, { repoPath: repo() }))
+  await p.waitForLoadState('networkidle')
   await expect(p.getByTestId('version-page')).toBeVisible()
   await expect(p.getByTestId('version-tag-pending')).toHaveCount(0)
 })

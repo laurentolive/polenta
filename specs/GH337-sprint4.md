@@ -199,3 +199,25 @@ et `apps/desktop/Dockerfile.web` ne copiait pas `src/`. Correction :
   qu'`askpassDir()` le trouve avec la seule variable d'environnement.
 - **Non vérifié** : l'image Docker elle-même n'a pas été construite (pas de reconstruction demandée) ; le
   test vérifie la configuration de build et le chemin d'exécution, pas le contenu réel de l'image.
+
+## Mesures finales (2026-11-20, application installée)
+
+- **Installeur** : `Polenta-Setup-0.5.0-alpha.60.exe`, 228,8 Mo, soit environ +91 Mo par rapport à la
+  v0.5.0 (137,5 Mo). Seuil : +120 Mo. **Tenu.**
+- **Checkout, aller-retour** (banc `bench-git.ts`, application installée, médiane de 5) :
+
+| Dépôt | Écriture Polenta | Git natif | Isomorphic-git (sprint 0) | Écart |
+|---|---|---|---|---|
+| handstickProduct | 655 ms | 1 581 ms | 1 678 ms | **tenu** |
+| polenta-official | 1 861 ms | 9 057 ms | 1 506 ms | +24 %, **accepté par l'humain** |
+
+- Sur polenta-official, les mesures précédentes allaient de 1 605 à 1 742 ms. Le seuil de 10 % (1 657 ms)
+  n'est pas tenu de façon stable. Décision de l'humain du 2026-11-19 : écart accepté et documenté.
+- Référence isomorphic-git : sprint 0, non re-mesurée dans la même session.
+
+## E2E de fin de sprint (2026-11-20)
+
+- Série : `gh222-tree-merge`, `gh222-diff-edit`, `gh222-raw`, `gh222-tree-diff`, `gh367-remote-branches`,
+  `gh302-update`, `gh305-web-update` : **29 réussis, 1 échec, 3 non lancés**.
+- Échec : `gh222-diff-edit` 15/16, déjà connu (passe seul). `gh222-tree-merge R8`, qui échouait sur main
+  et sur la branche, passe cette fois.

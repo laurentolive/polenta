@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { CornerDownRight, Eraser, Square, SquareTerminal, X } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
 import { useTerminal } from '../../contexts/TerminalContext'
+import { useMenuPosition } from '../../hooks/useMenuPosition'
 
 const HEIGHT_MIN = 80
 const HEIGHT_MAX_RATIO = 0.7
@@ -21,6 +22,8 @@ export function TerminalPanel() {
   const term = useTerminal()
   const panelRef = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const menuPos = useMenuPosition(menuRef, menu?.x ?? 0, menu?.y ?? 0)
 
   useEffect(() => {
     if (!menu) return
@@ -121,8 +124,9 @@ export function TerminalPanel() {
       </div>
       {menu && (
         <div
+          ref={menuRef}
           data-floating-menu className="fixed z-50 min-w-[140px] rounded border border-edge bg-surface shadow-lg py-1 text-xs"
-          style={{ left: menu.x, top: menu.y }}
+          style={{ left: menuPos.left, top: menuPos.top }}
           onMouseDown={e => e.stopPropagation()}
         >
           <button type="button" className="block w-full text-left px-3 py-1 hover:bg-surface-hover" onClick={menuAction(term.copySelection)}>

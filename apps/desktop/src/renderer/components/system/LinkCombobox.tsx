@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ElementLink } from '../element/ElementLink'
 import { parseLinkError } from './linkUtils'
@@ -57,6 +57,8 @@ export function LinkCombobox({
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  // Candidat surligné (↑ ↓, survol) ; borné à la liste courante au rendu.
+  const [active, setActive] = useState(0)
 
   const existingIds = useMemo(() => new Set(existingLinks.map(l => l.peerId)), [existingLinks])
 
@@ -98,9 +100,34 @@ export function LinkCombobox({
     }
   }
 
+  const activeIdx = Math.min(active, Math.max(filtered.length - 1, 0))
+
+  // Le candidat surligné reste visible quand on le déplace au clavier.
+  useEffect(() => {
+    if (!open) return
+    dropdownRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [activeIdx, open])
+
   const handleSelect = async (candidate: Candidate) => {
     await run(() => onAdd(candidate.id))
     inputRef.current?.focus()
+  }
+
+  // Clavier : ↓ ↑ parcourent la liste, Entrée ajoute le candidat surligné. Échap n'est pas géré
+  // ici : il ferme le popover (GH169). Les touches gérées ne remontent pas à la grille (Excel).
+  const onInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (!open) { setOpen(true); return }
+      if (filtered.length === 0) return
+      const next = e.key === 'ArrowDown' ? activeIdx + 1 : activeIdx - 1
+      setActive(Math.max(0, Math.min(next, filtered.length - 1)))
+    } else if (e.key === 'Enter' && open && filtered.length > 0) {
+      e.preventDefault()
+      e.stopPropagation()
+      void handleSelect(filtered[activeIdx])
+    }
   }
 
   return (
@@ -141,8 +168,12 @@ export function LinkCombobox({
           value={query}
           disabled={loading}
           autoFocus={autoFocus}
-          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onChange={e => { setQuery(e.target.value); setOpen(true); setActive(0) }}
           onFocus={() => setOpen(true)}
+          onKeyDown={onInputKeyDown}
+          role="combobox"
+          aria-expanded={open && filtered.length > 0}
+          aria-autocomplete="list"
           placeholder={t('system.linkCombobox.searchPlaceholder')}
           className="w-full text-xs border border-edge rounded px-2 py-1 bg-surface text-ink outline-none focus:border-status-info placeholder:text-ink-3"
         />
@@ -151,17 +182,21 @@ export function LinkCombobox({
             ref={dropdownRef}
             className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-surface border border-edge rounded shadow-lg max-h-48 overflow-y-auto"
           >
-            {filtered.map(c => (
-              <button
+            {filtered.map((c, i) => (
+              <div
                 key={c.id}
-                type="button"
+                role="option"
+                aria-selected={i === activeIdx}
                 onMouseDown={e => { e.preventDefault(); handleSelect(c) }}
-                className="w-full text-left px-2 py-1.5 text-xs hover:bg-hover flex items-baseline gap-2"
+                onMouseEnter={() => setActive(i)}
+                className={`w-full text-left px-2 py-1.5 text-xs cursor-pointer flex items-baseline gap-2 ${i === activeIdx ? 'bg-hover' : ''}`}
               >
-                <span className="font-mono text-ink shrink-0">{c.id}</span>
+                {/* GH421 — ID survolable (popup d'aperçu, GH229) ; cliquer l'ID ajoute le candidat,
+                    comme la ligne. Son mousedown ne remonte pas à la ligne : d'où le même geste ici. */}
+                <ElementLink id={c.id} className="font-mono text-ink shrink-0" onFollow={() => { void handleSelect(c) }}>{c.id}</ElementLink>
                 <span className="text-ink-3 truncate">{c.title}</span>
                 {c.repoLabel && <span className="ml-auto shrink-0 text-[10px] text-ink-3">{c.repoLabel}</span>}
-              </button>
+              </div>
             ))}
           </div>
         )}

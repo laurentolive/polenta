@@ -92,7 +92,8 @@ test('GH105-1 — candidat d\'un composant proposé, lien écrit dans le repo de
   await linkLine(card(R.id), OUT).click()
   const input = popover().getByPlaceholder('Rechercher un élément…')
   await input.fill(C.id)
-  const option = popover().getByRole('button', { name: new RegExp(C.id) }).first()
+  // GH421 — les candidats sont des options (listbox), plus des boutons.
+  const option = popover().getByRole('option', { name: new RegExp(C.id) }).first()
   await expect(option).toContainText(C.repoLabel)
   await option.dispatchEvent('mousedown')
 

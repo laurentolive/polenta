@@ -221,3 +221,26 @@ et `apps/desktop/Dockerfile.web` ne copiait pas `src/`. Correction :
   `gh302-update`, `gh305-web-update` : **29 réussis, 1 échec, 3 non lancés**.
 - Échec : `gh222-diff-edit` 15/16, déjà connu (passe seul). `gh222-tree-merge R8`, qui échouait sur main
   et sur la branche, passe cette fois.
+
+## Décisions de validation (2026-11-20)
+
+Revue de code contre la spec, puis décisions de l'humain. À reprendre dans `GH337.md` si la spec est révisée.
+
+- **Statut (§3.2, §8)** : mesuré dans l'application installée, médiane de 5. handstickProduct 101 ms,
+  polenta-official 99 ms. Référence isomorphic-git du sprint 0 : 135 ms et 255 ms. **Seuil tenu.**
+  La référence isomorphic-git n'a pas été re-mesurée dans la même session.
+- **Test GH296 inversé (§3.1)** : un fichier CRLF dans git et LF sur disque est vu **modifié**, comme
+  `git status` en ligne de commande. Décision : accepté, la spec §3.1 prime sur l'ancien comportement
+  isomorphic-git.
+- **Tests de régression (§5.4)** : seul le test générique `sync-writes` (B4) rejoue la config hostile.
+  Décision : accepté.
+- **Graphe de Version (`graph()`)** : revenu à l'ancien comportement (un `log` par ref, union, tri par
+  date d'auteur, coupe à `limit`, erreur d'une ref ignorée). Test de non-régression sur fusion et
+  cherry-pick à date d'auteur ancienne (commit 8d60957).
+- **Garde réseau (§4.4)** : `ext::` et les transports hors https/http/ssh/file rejetés avant git ;
+  scp `user@hôte:chemin` contrôlé comme ssh (pas de rejet global, car les remotes `git@github.com:…`
+  sont courants sur le desktop). Reste : un remote non configuré passé par son nom à `fetch`/`push`
+  n'est pas contrôlé (risque faible : les noms viennent de la config).
+- **E2E desktop** : gh342 12/12. gh238 4/8 : E5, E6, GH345 et E7 échouent **aussi sur main**
+  (pré-existant, non causé par GH337).
+- **E2E web** : série de 7 specs, 29 réussis, 1 échec connu (`gh222-diff-edit`, passe seul).

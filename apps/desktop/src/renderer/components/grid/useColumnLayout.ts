@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from 'react'
 import { clampFreezeCount, columnWidth, draggedWidth, dropSide, freezeOffsets, reorderColumns } from './columnLayout'
 
 export interface ColumnLayoutInput {
@@ -23,13 +23,19 @@ export interface ColumnLayoutInput {
  */
 export function useColumnLayout({ keys, autoWidths, chosenWidths, onWidthsChange, freezeCount: storedFreeze, leadingWidth, onReorder }: ColumnLayoutInput) {
   const [dragWidth, setDragWidth] = useState<{ col: string; width: number } | null>(null)
+  /** Largeur relâchée, tenue jusqu'à la prochaine mise à jour de la préférence : celle-ci arrive après
+   *  (notification asynchrone du cache), sans quoi la colonne revient un instant à l'ancienne largeur. */
+  const [released, setReleased] = useState<{ col: string; width: number } | null>(null)
   const frozenAuto = useRef<Record<string, number> | null>(null)
   const latest = useRef({ chosenWidths, onWidthsChange, autoWidths })
   latest.current = { chosenWidths, onWidthsChange, autoWidths }
 
+  useEffect(() => { setReleased(null) }, [chosenWidths])
+
+  const shown = dragWidth ?? released
   const chosen = useMemo(
-    () => (dragWidth ? { ...chosenWidths, [dragWidth.col]: dragWidth.width } : chosenWidths),
-    [chosenWidths, dragWidth],
+    () => (shown ? { ...chosenWidths, [shown.col]: shown.width } : chosenWidths),
+    [chosenWidths, shown],
   )
   const auto = frozenAuto.current ?? autoWidths
   const widthsKey = keys.map(k => columnWidth(k, chosen, auto)).join(',')
@@ -64,7 +70,10 @@ export function useColumnLayout({ keys, autoWidths, chosenWidths, onWidthsChange
       setDragWidth(null)
       frozenAuto.current = null
       // Simple clic sur la poignée : rien à enregistrer.
-      if (last !== null && last !== startWidth) latest.current.onWidthsChange({ ...latest.current.chosenWidths, [col]: last })
+      if (last !== null && last !== startWidth) {
+        setReleased({ col, width: last })
+        latest.current.onWidthsChange({ ...latest.current.chosenWidths, [col]: last })
+      }
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)

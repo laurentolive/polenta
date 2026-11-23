@@ -156,6 +156,13 @@ function ExecuteEntryPage() {
     }
   }, [testCase]) // eslint-disable-line react-hooks/exhaustive-deps -- défauts complétés par l'effet suivant
 
+  // GH428 — champs « renseigné en campagne » : valeurs saisies sur l'entrée, reprises ici en lecture seule.
+  const entryRunInputs = entry?.runInputs
+  useEffect(() => {
+    if (!entryRunInputs) return
+    setRunFieldValues(prev => ({ ...prev, ...entryRunInputs }))
+  }, [entryRunInputs])
+
   // Q7 — le type peut arriver après le test : défauts ajoutés sans écraser une saisie.
   useEffect(() => {
     setRunFieldValues(prev => ({ ...defaultFieldValues(runDefs), ...prev }))
@@ -464,14 +471,18 @@ function ExecuteEntryPage() {
                 <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('campaignPage.runFields')}</p>
                 <div className="grid grid-cols-2 gap-3">
                   {runDefs.map(def => (
-                    <DynamicField
-                      key={def.name}
-                      field={def}
-                      value={runFieldValues[def.name] ?? ''}
-                      onChange={v => setRunFieldValues(prev => ({ ...prev, [def.name]: v }))}
-                      repoPath={repoPath}
-                      requiredNow={isFieldRequiredNow(def, runFieldReader(runDefs, globalResult, runFieldValues))}
-                    />
+                    // GH428 — « renseigné en campagne » : valeur de l'entrée, en lecture seule ici.
+                    <div key={def.name}>
+                      {def.campaignInput && <p className="text-[10px] text-ink-3 mb-0.5">{t('campaignPage.campaignInputHint')}</p>}
+                      <DynamicField
+                        field={def}
+                        value={runFieldValues[def.name] ?? ''}
+                        onChange={v => setRunFieldValues(prev => ({ ...prev, [def.name]: v }))}
+                        disabled={def.campaignInput === true}
+                        repoPath={repoPath}
+                        requiredNow={isFieldRequiredNow(def, runFieldReader(runDefs, globalResult, runFieldValues))}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>

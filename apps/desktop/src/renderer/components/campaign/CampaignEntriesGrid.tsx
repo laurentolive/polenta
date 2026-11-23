@@ -1,10 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Copy, Eye, Pencil, Play, Trash2 } from 'lucide-react'
-import type { CampaignTestRun, ParamResolutionPreview, ProjectSchema, TestCampaign, TestCase, TestRunStatus } from '@polenta/types'
+import type { CampaignTestRun, ExecutionHistoryRow, ParamResolutionPreview, ProjectSchema, TestCampaign, TestCase, TestRunStatus } from '@polenta/types'
+import { fieldValueToText } from '@polenta/types'
 import { ElementLink } from '../element/ElementLink'
-import { DataGrid } from '../grid/DataGrid'
-import type { GridColumn } from '../grid/gridTypes'
+import { DataGrid, type CellEditFailure } from '../grid/DataGrid'
+import type { GridColumn, GridEditor } from '../grid/gridTypes'
+import { RUN_COLUMN_PREFIX, campaignRunFieldDefs, lastRunFieldsByEntry, uniqueTypeRefs } from '../../lib/campaignRunFields'
 import { useGridScrollKey } from '../grid/useGridScrollKey'
 import { TestParamFields } from '../TestParamFields'
 import { NotApprovedBadge } from './NotApproved'
@@ -50,6 +52,7 @@ const paramsText = (run: CampaignTestRun) =>
 export function CampaignEntriesGrid({
   campaign, isActive, repoPath, testMap, paramPreviews, schema, isApproved, statusFilter, onStatusFilter,
   onView, onExecute, onRemove, removing, onSaveParams, savingParams, onDuplicate, duplicating,
+  runHistory, onSaveRunInputs,
 }: {
   campaign: TestCampaign
   isActive: boolean
@@ -68,11 +71,22 @@ export function CampaignEntriesGrid({
   savingParams: boolean
   onDuplicate: (args: { testCaseId: string; paramValues: Record<string, string>; requirementId?: string }) => Promise<unknown>
   duplicating: boolean
+  /** GH428 — lignes d'exécutions des types de la campagne (dernier run de chaque entrée). */
+  runHistory: ExecutionHistoryRow[] | undefined
+  /** GH428 — enregistre les valeurs « renseigné en campagne » de l'entrée (jeu complet). */
+  onSaveRunInputs: (entryId: string, inputs: Record<string, string>) => Promise<unknown>
 }) {
   const { t } = useTranslation()
   const scrollKey = useGridScrollKey('campaign-entries')
   const [open, setOpen] = useState<OpenForm | null>(null)
   const [values, setValues] = useState<Record<string, string>>({})
+
+  // GH428 — champs d'exécution des types de test de la campagne, et valeur du dernier run de chaque entrée.
+  const runFieldDefs = useMemo(
+    () => campaignRunFieldDefs(schema, uniqueTypeRefs(campaign.runs.map(r => resolveRunTest(r, testMap)?.objectTypeRef))),
+    [schema, campaign.runs, testMap],
+  )
+  const lastRunFields = useMemo(() => lastRunFieldsByEntry(runHistory ?? [], campaign.id), [runHistory, campaign.id])
 
   const rows = useMemo<EntryRow[]>(() => campaign.runs.map(run => {
     const tc = resolveRunTest(run, testMap)
@@ -104,6 +118,43 @@ export function CampaignEntriesGrid({
       r.unapproved ? t('campaignPage.notApproved') : '',
       r.run.unresolvedParams?.length ? t('campaignParams.unresolvedCount', { count: r.run.unresolvedParams.length }) : '',
     ].filter(Boolean).join(' ')
+    // GH428 — une colonne par champ d'exécution. Champ « renseigné en campagne » : saisi dans la grille.
+    // Autre champ : valeur du dernier run, lecture seule.
+    const runColumns = runFieldDefs.map((def): GridColumn<EntryRow> => {
+      const input = def.campaignInput === true
+      const shown = (raw: unknown) => (def.type === 'boolean'
+        ? (String(raw) === 'true' ? t('campaignPage.yes') : String(raw) === 'false' ? t('campaignPage.no') : String(raw))
+        : fieldValueToText(raw))
+      const inputRaw = (r: EntryRow) => r.run.runInputs?.[def.name] ?? ''
+      const lastRaw = (r: EntryRow) => lastRunFields.get(r.run.entryId)?.[def.name]
+      return {
+        key: `${RUN_COLUMN_PREFIX}${def.name}`, label: def.label ?? def.name,
+        getText: r => (input ? shown(inputRaw(r)) : shown(lastRaw(r) ?? '')),
+        render: r => {
+          if (!input) return <span>{shown(lastRaw(r) ?? '')}</span>
+          const last = lastRaw(r)
+          // Dernière exécution avec une autre valeur : indication (la saisie vaut pour les runs suivants).
+          const differs = last !== undefined && String(last) !== inputRaw(r)
+          return (
+            <span>
+              {shown(inputRaw(r))}
+              {differs && <span className="ml-1 text-[10px] text-ink-3">{t('campaignPage.lastRunValue', { value: shown(last) })}</span>}
+            </span>
+          )
+        },
+        ...(input
+          ? {
+            editor: (def.type === 'enum'
+              ? { kind: 'enum', options: (def.values ?? []).map(v => ({ value: v, label: v })) }
+              : def.type === 'boolean'
+                ? { kind: 'enum', options: [{ value: 'true', label: t('campaignPage.yes') }, { value: 'false', label: t('campaignPage.no') }] }
+                : { kind: 'text' }) as GridEditor,
+            editValue: (r: EntryRow) => inputRaw(r),
+            isEditable: () => true,
+          }
+          : { isEditable: () => false }),
+      }
+    })
     return [
       {
         key: 'test', label: t('campaignPage.columns.test'), locked: true,
@@ -168,6 +219,7 @@ export function CampaignEntriesGrid({
         },
         elementId: r => r.run.runId,
       },
+      ...runColumns,
       {
         key: 'actions', label: t('campaignPage.columns.actions'), filterable: false,
         getText: () => '',
@@ -235,12 +287,40 @@ export function CampaignEntriesGrid({
         },
       },
     ]
-  }, [t, schema, isActive, removing])
+  }, [t, schema, isActive, removing, runFieldDefs, lastRunFields])
 
-  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::campaign-entries', view: 'columns', defaults: DEFAULTS }), [repoPath])
+  // GH428 — colonnes visibles par défaut : les champs saisis en campagne et les champs `defaultVisible`.
+  const prefs = useMemo(() => ({
+    repoPath, prefKey: 'grid::campaign-entries', view: 'columns',
+    defaults: [
+      ...DEFAULTS.slice(0, -1),
+      ...runFieldDefs.filter(d => d.campaignInput || d.defaultVisible).map(d => `${RUN_COLUMN_PREFIX}${d.name}`),
+      DEFAULTS[DEFAULTS.length - 1]!,
+    ],
+  }), [repoPath, runFieldDefs])
   const rowFilter = useMemo(() => (statusFilter ? (r: EntryRow) => r.run.status === statusFilter : undefined), [statusFilter])
   const canExpand = useCallback((r: EntryRow) => r.manualKeys.length > 0 || r.canDuplicate, [])
   const rowById = useMemo(() => new Map(rows.map(r => [r.run.entryId, r])), [rows])
+  // GH428 — édition d'une cellule « renseigné en campagne » : le jeu complet de l'entrée est renvoyé, le
+  // service le contrôle (conversion, champs admis). Une valeur vide retire le champ.
+  const onCellEdit = useCallback(async (rowIds: string[], key: string, value: string) => {
+    const name = key.slice(RUN_COLUMN_PREFIX.length)
+    const failed: CellEditFailure[] = []
+    for (const id of rowIds) {
+      const r = rowById.get(id)
+      if (!r) continue
+      const inputs: Record<string, string> = { ...(r.run.runInputs ?? {}) }
+      const text = value.trim()
+      if (text) inputs[name] = text
+      else delete inputs[name]
+      try {
+        await onSaveRunInputs(id, inputs)
+      } catch (err) {
+        failed.push({ id, message: err instanceof Error ? err.message : String(err) })
+      }
+    }
+    return { failed }
+  }, [rowById, onSaveRunInputs])
   // Formulaire ouvert sur une entrée disparue (retirée, relue) : fermé.
   const current = open && rowById.has(open.entryId) ? open : null
   const expanded = useMemo(() => new Set(current ? [current.entryId] : []), [current])
@@ -349,6 +429,7 @@ export function CampaignEntriesGrid({
         expanded={expanded}
         onToggleExpanded={toggleExpanded}
         scrollMemoryKey={scrollKey}
+        onCellEdit={onCellEdit}
       />
     </div>
   )

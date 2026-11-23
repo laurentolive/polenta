@@ -51,3 +51,11 @@ Format :
 ## 2026-11-19 — Résultat « à jour » annoncé sur la ref, pas sur l'arbre de l'utilisateur
 - Erreur : GH414, « Intégration à jour » était affiché quand la ref de l'intégration avait avancé, alors que l'auto-pull avait déplacé les modifs de l'utilisateur sur `dev-auto` : son arbre ne contenait pas le commit de l'équipe.
 - Règle : pour un message de résultat de synchronisation, vérifier l'arbre de travail de l'utilisateur (pas seulement la ref) et le branche courante après l'opération ; un test de l'état « fichier présent dans l'arbre » couvre ce cas.
+
+## 2026-11-23 — Liste de saisie sans valeur initiale : le premier choix ne déclenche rien
+- Erreur : GH428, la liste d'édition d'une cellule démarrait sur la première valeur, sans valeur enregistrée. Choisir cette valeur ne déclenchait aucun changement : la saisie était perdue au changement de ligne. Le test e2e passait parce que `selectOption` déclenche le changement même sur l'option déjà affichée.
+- Règle : une liste de saisie commence par une option vide quand la valeur est absente. Le test vérifie la valeur vide au départ et choisit la première valeur réelle comme le ferait l'utilisateur.
+
+## 2026-11-23 — Cellule modifiable non signalée
+- Erreur : GH428, dans une grille mêlant saisie et lecture seule, la seule différence était un anneau au survol. L'utilisateur ne voyait pas ce qui se saisissait.
+- Règle : dans une grille mixte, marquer chaque type de cellule (saisie, lecture seule) et le légender. Le test vérifie ce marquage, pas seulement la possibilité de modifier.

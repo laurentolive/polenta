@@ -135,12 +135,22 @@ export function AppLayout() {
     }
   }, [routePanel, pathname, search])
 
+  // GH425 — panneau Validation : dernière page affichée (une validation, ou l'accueil), rouverte au
+  // clic sur l'icône de la barre d'activité. Même URL, donc même clé de position de grille (GH300).
+  const [lastValidationRoute, setLastValidationRoute] = useState<{ pathname: string; search: string } | null>(null)
+
   const router = useRouter()
 
   useEffect(() => {
     setLastVersionRoute(null)
     setLastDashboardRoute(null)
+    setLastValidationRoute(null)
   }, [currentProjectId])
+
+  // Après la remise à zéro ci-dessus : au changement de projet, la route du nouveau projet l'emporte.
+  useEffect(() => {
+    if (routePanel === 'validation') setLastValidationRoute({ pathname, search: search ?? '' })
+  }, [routePanel, pathname, search])
 
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const stored = localStorage.getItem(SIDEBAR_WIDTH_KEY)
@@ -284,7 +294,12 @@ export function AppLayout() {
         break
       }
       case 'validation':
-        if (currentProjectId) navigate({ to: '/validations', search: { projectId: currentProjectId } })
+        if (currentProjectId) {
+          // GH425 — retour sur la validation quittée (même URL, donc même position de grille, GH300) ;
+          // sans page mémorisée, l'accueil du panneau.
+          if (lastValidationRoute) router.history.push(`${lastValidationRoute.pathname}${lastValidationRoute.search}`)
+          else navigate({ to: '/validations', search: { projectId: currentProjectId } })
+        }
         break
       case 'parameters':
         if (currentProjectId) navigate({ to: '/parameters', search: { projectId: currentProjectId, repo: undefined } })

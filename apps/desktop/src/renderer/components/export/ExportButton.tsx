@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQueries } from '@tanstack/react-query'
 import { AlertTriangle, Download, FileSpreadsheet, FileText, FileType } from 'lucide-react'
@@ -36,6 +37,9 @@ interface ExportButtonProps {
   label?: string
 }
 
+/** Position d'un popover de ExportButton : coordonnées du bouton, en position fixe (GH433). */
+interface PopoverAnchor { top: number; right: number }
+
 /** Bouton "Exporter" partagé, inséré dans le slot `actions` d'un `ViewHeader` — popover listant
  *  les formats disponibles pour la vue (cf. specs/T43-design.md, mapping formats/type). */
 export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, getPayload, getPrintParams, label }: ExportButtonProps) {
@@ -44,6 +48,29 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
   const [error, setError] = useState<string | null>(null)
   const [savedPath, setSavedPath] = useState<string | null>(null)
   const templates = useExportTemplates(kind, formats, repoPath, open)
+
+  // GH433 — popovers rendus dans document.body (portail) et positionnés en position:fixed depuis le bouton :
+  // la vue hôte (page à défilement, rognage horizontal) ne les coupe plus. Position relevée au clic, puis
+  // tant qu'un popover est visible (défilement, redimensionnement).
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const [anchor, setAnchor] = useState<PopoverAnchor | null>(null)
+  const measure = useCallback(() => {
+    const rect = buttonRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const next = { top: rect.bottom + 8, right: document.documentElement.clientWidth - rect.right }
+    setAnchor(prev => (prev && prev.top === next.top && prev.right === next.right ? prev : next))
+  }, [])
+  const visible = open || error !== null || savedPath !== null
+  useEffect(() => {
+    if (!visible) return
+    measure()
+    window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
+    }
+  }, [visible, measure])
 
   const exportMutation = useMutation({
     mutationFn: async (format: ExportFormat): Promise<ExportResult> => {
@@ -74,8 +101,9 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={() => { measure(); setOpen(o => !o) }}
         className="btn-secondary-sm flex items-center gap-1.5"
         title={label ?? t('exportButton.export')}
       >
@@ -83,84 +111,95 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
         {label ?? t('exportButton.export')}
       </button>
 
-      {open && (
+      {anchor && createPortal(
         <>
-          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setOpen(false))} />
-          <div
-            className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-2 flex flex-col gap-2"
-            onClick={e => e.stopPropagation()}
-          >
-            {templates.formats.map(f => (
-              <TemplateSelect
-                key={f.format}
-                label={t('exportButton.templateFor', { format: FORMAT_META[f.format].label })}
-                state={f}
-                value={templates.selection[f.format] ?? ''}
-                onChange={value => templates.select(f.format, value)}
-              />
-            ))}
-            <div className="flex gap-1">
-            {formats.map(format => {
-              const meta = FORMAT_META[format]
-              const Icon = meta.icon
-              return (
-                <button
-                  key={format}
-                  type="button"
-                  onClick={() => exportMutation.mutate(format)}
-                  // Pas d'export tant que la liste des gabarits de ce format n'est pas chargée :
-                  // la présélection (défaut du projet ou Standard) n'est pas encore connue.
-                  disabled={exportMutation.isPending || templates.formats.some(f => f.format === format && f.loading)}
-                  className="flex flex-col items-center gap-1 px-3 py-2 rounded hover:bg-hover text-xs text-ink-2 disabled:opacity-50"
-                >
-                  <Icon size={18} />
-                  {meta.label}
-                </button>
-              )
-            })}
-            </div>
-          </div>
-        </>
-      )}
+          {open && (
+            <>
+              <div className="fixed inset-0 z-40" {...backdropDismiss(() => setOpen(false))} />
+              <div
+                className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl p-2 flex flex-col gap-2"
+                style={{ top: anchor.top, right: anchor.right }}
+                onClick={e => e.stopPropagation()}
+                onMouseDown={e => e.stopPropagation()}
+              >
+                {templates.formats.map(f => (
+                  <TemplateSelect
+                    key={f.format}
+                    label={t('exportButton.templateFor', { format: FORMAT_META[f.format].label })}
+                    state={f}
+                    value={templates.selection[f.format] ?? ''}
+                    onChange={value => templates.select(f.format, value)}
+                  />
+                ))}
+                <div className="flex gap-1">
+                  {formats.map(format => {
+                    const meta = FORMAT_META[format]
+                    const Icon = meta.icon
+                    return (
+                      <button
+                        key={format}
+                        type="button"
+                        onClick={() => exportMutation.mutate(format)}
+                        // Pas d'export tant que la liste des gabarits de ce format n'est pas chargée :
+                        // la présélection (défaut du projet ou Standard) n'est pas encore connue.
+                        disabled={exportMutation.isPending || templates.formats.some(f => f.format === format && f.loading)}
+                        className="flex flex-col items-center gap-1 px-3 py-2 rounded hover:bg-hover text-xs text-ink-2 disabled:opacity-50"
+                      >
+                        <Icon size={18} />
+                        {meta.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </>
+          )}
 
-      {error && (
-        <>
-          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setError(null))} />
-          <div
-            className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-72"
-            onClick={e => e.stopPropagation()}
-          >
-            <p className="text-xs text-status-danger mb-2">{error}</p>
-            <button type="button" onClick={() => setError(null)} className="btn-secondary-sm">
-              {t('common.close')}
-            </button>
-          </div>
-        </>
-      )}
+          {error && (
+            <>
+              <div className="fixed inset-0 z-40" {...backdropDismiss(() => setError(null))} />
+              <div
+                className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-72"
+                style={{ top: anchor.top, right: anchor.right }}
+                onClick={e => e.stopPropagation()}
+                onMouseDown={e => e.stopPropagation()}
+              >
+                <p className="text-xs text-status-danger mb-2">{error}</p>
+                <button type="button" onClick={() => setError(null)} className="btn-secondary-sm">
+                  {t('common.close')}
+                </button>
+              </div>
+            </>
+          )}
 
-      {savedPath && (
-        <>
-          <div className="fixed inset-0 z-40" {...backdropDismiss(() => setSavedPath(null))} />
-          <div
-            className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-96"
-            onClick={e => e.stopPropagation()}
-          >
-            <p className="text-xs text-ink-2 mb-2 break-all">{t(capabilities.localFilesystem ? 'exportButton.exportedTo' : 'exportButton.downloaded', { path: savedPath })}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {capabilities.localFilesystem && <>
-                <button type="button" onClick={() => api.export.showInFolder(savedPath)} className="btn-secondary-sm">
-                  {t('exportButton.openFolder')}
-                </button>
-                <button type="button" onClick={() => api.export.openFile(savedPath)} className="btn-secondary-sm">
-                  {t('exportButton.openFile')}
-                </button>
-              </>}
-              <button type="button" onClick={() => setSavedPath(null)} className="btn-secondary-sm">
-                {t('common.close')}
-              </button>
-            </div>
-          </div>
-        </>
+          {savedPath && (
+            <>
+              <div className="fixed inset-0 z-40" {...backdropDismiss(() => setSavedPath(null))} />
+              <div
+                className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-96"
+                style={{ top: anchor.top, right: anchor.right }}
+                onClick={e => e.stopPropagation()}
+                onMouseDown={e => e.stopPropagation()}
+              >
+                <p className="text-xs text-ink-2 mb-2 break-all">{t(capabilities.localFilesystem ? 'exportButton.exportedTo' : 'exportButton.downloaded', { path: savedPath })}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {capabilities.localFilesystem && <>
+                    <button type="button" onClick={() => api.export.showInFolder(savedPath)} className="btn-secondary-sm">
+                      {t('exportButton.openFolder')}
+                    </button>
+                    <button type="button" onClick={() => api.export.openFile(savedPath)} className="btn-secondary-sm">
+                      {t('exportButton.openFile')}
+                    </button>
+                  </>}
+                  <button type="button" onClick={() => setSavedPath(null)} className="btn-secondary-sm">
+                    {t('common.close')}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </>,
+        document.body,
       )}
     </div>
   )

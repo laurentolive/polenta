@@ -31,10 +31,13 @@ async function navigate(p: Page, url: string) {
 }
 
 /** Saisit « criticité » dans la grille de la campagne (liste) et « quantité » (texte). */
-async function setInGrid(p: Page, id: string, criticite: string, quantite: string) {
+async function setInGrid(p: Page, id: string, criticite: string, quantite: string, fresh = false) {
   await navigate(p, s.projectUrl(`/campaign/${campaign.id}`, { repoPath: s.project.localPath }))
   const enumCell = p.getByTestId(criticiteCell(id))
   await enumCell.dblclick()
+  // Entrée sans valeur : la liste démarre sur l'option vide, pas sur la première valeur réelle (sinon la
+  // choisir ne déclenche aucun changement).
+  if (fresh) await expect(p.getByTestId(`${criticiteCell(id)}-editor`)).toHaveValue('')
   await p.getByTestId(`${criticiteCell(id)}-editor`).selectOption(criticite)
   const textCell = p.getByTestId(quantiteCell(id))
   await textCell.dblclick()
@@ -83,7 +86,10 @@ test('GH428-1 — grille de campagne : colonnes des champs d\'exécution, saisie
   await navigate(p, s.projectUrl(`/campaign/${campaign.id}`, { repoPath: s.project.localPath }))
   await expect(p.getByTestId('campaign-entries')).toContainText('Criticité GH428')
   await expect(p.getByTestId('campaign-entries')).toContainText('Quantité GH428')
-  await setInGrid(p, entryId, 'critique', '12,5')
+  // Visuel : légende « modifiable / lecture seule », cellules de saisie marquées « à saisir ».
+  await expect(p.getByTestId('campaign-entries-legend')).toContainText('Saisie en campagne')
+  await expect(p.getByTestId('campaign-entries')).toContainText('à saisir')
+  await setInGrid(p, entryId, 'critique', '12,5', true)
   const saved = await s.invoke<Campaign>('campaigns:get', s.project.localPath, campaign.id)
   expect(saved.runs[0]!.runInputs).toEqual({ gh428Criticite: 'critique', gh428Quantite: '12.5' })
   await s.shot('gh428-grid')

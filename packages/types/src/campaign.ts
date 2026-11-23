@@ -61,6 +61,10 @@ export interface CampaignTestRun {
    *  modifiables après l'ajout. Une référence ne figure jamais à la fois ici et dans
    *  `resolvedParams`. */
   paramValues?: Record<string, string>
+  /** GH428 — valeurs des champs d'exécution `campaignInput` saisies en campagne, par nom de champ.
+   *  Modifiables tant que l'entrée n'est pas retirée ; figées dans chaque run à l'exécution (le run ne
+   *  les relit pas). Absent tant que vide. */
+  runInputs?: Record<string, string>
   /** T171 — valeurs lues dans la base de paramètres et figées à l'ajout (clé = référence telle
    *  qu'écrite : `nom` ou `<nœud>::nom`, valeur déjà formatée `value unit`). Jamais modifiées. */
   resolvedParams?: Record<string, string>

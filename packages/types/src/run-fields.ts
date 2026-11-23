@@ -25,6 +25,31 @@ export function isRunFieldTypeAllowed(type: SchemaField['type']): boolean {
   return type !== 'drawio'
 }
 
+/** GH428 Q7 — types admis pour un champ d'exécution renseigné en campagne (éditables en cellule). */
+export const CAMPAIGN_INPUT_TYPES: readonly SchemaField['type'][] = ['text', 'number', 'enum', 'boolean', 'date']
+
+/**
+ * GH428 §2.2 — valeurs à figer dans un run : pour chaque champ `campaignInput` du type, la saisie
+ * (`fields`, page d'exécution ou classeur) l'emporte ; à défaut, la valeur saisie en campagne (`inputs`).
+ * Les autres champs sont repris tels quels. `undefined` si rien à écrire.
+ */
+export function mergeCampaignInputs(
+  defs: SchemaField[],
+  inputs: Record<string, string> | undefined,
+  fields: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  const merged: Record<string, unknown> = { ...fields }
+  for (const def of defs) {
+    if (!def.campaignInput) continue
+    const given = fields?.[def.name]
+    if (given !== undefined && given !== '') continue
+    const fromCampaign = inputs?.[def.name]
+    if (fromCampaign !== undefined && fromCampaign !== '') merged[def.name] = fromCampaign
+    else delete merged[def.name]
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined
+}
+
 /** Lecteur `requiredWhen` d'un run ou d'une étape : `result` = verdict, autres noms = champs de la liste. */
 export function runFieldReader(defs: SchemaField[], result: string, fields: Record<string, unknown> | undefined): FieldValueReader {
   const read = objectFieldReader({ fields: defs }, { fields })
@@ -207,6 +232,9 @@ export function runFieldIssues(types: ObjectTypeDefinition[]): RunFieldIssue[] {
       const names = new Set<string>()
       for (const def of defs) {
         if (!isRunFieldTypeAllowed(def.type)) push(def.name, `'${def.name}' : type ${def.type} non admis`)
+        // GH428 — « renseigné en campagne » : champs d'exécution seulement, types admis (Q7).
+        if (def.campaignInput && list !== 'runFields') push(def.name, `'${def.name}' : « renseigné en campagne » n'existe que pour un champ d'exécution`)
+        else if (def.campaignInput && !CAMPAIGN_INPUT_TYPES.includes(def.type)) push(def.name, `'${def.name}' : type ${def.type} non admis pour un champ renseigné en campagne`)
         if (def.name === RUN_RESULT_KEY) push(def.name, `'${RUN_RESULT_KEY}' est réservé (verdict)`)
         if (names.has(def.name)) push(def.name, `'${def.name}' déclaré deux fois`)
         names.add(def.name)

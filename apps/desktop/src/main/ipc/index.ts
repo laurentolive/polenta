@@ -219,7 +219,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'requirements:link-create', 'requirements:link-delete',
   'tests:create', 'tests:update', 'tests:execute', 'tests:open-draft',
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
-  'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
+  'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:update-run-inputs', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
   'issues:create', 'issues:update', 'issues:add-run', 'issues:add-decision',
   'validations:create', 'validations:update', 'validations:decide', 'validations:confirm', 'validations:reject',
@@ -772,6 +772,10 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('campaigns:update-run-params',
     (_e, repoPath: string, campaignId: string, entryId: string, paramValues: Record<string, string>) =>
       c.campaigns.updateRunParams(repoPath, campaignId, entryId, paramValues))
+  // GH428 — valeurs des champs d'exécution « renseigné en campagne » (contrôlées par le service).
+  r.handle('campaigns:update-run-inputs',
+    (_e, repoPath: string, campaignId: string, entryId: string, inputs: Record<string, string>) =>
+      c.campaigns.updateRunInputs(repoPath, campaignId, entryId, inputs))
   r.handle('campaigns:delete',
     (_e, repoPath: string, id: string) =>
       c.campaigns.delete(repoPath, id))

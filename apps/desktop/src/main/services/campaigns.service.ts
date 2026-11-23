@@ -5,7 +5,7 @@ import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
 import type { SchemaService } from './schema.service'
 import type { HistoryService } from './history.service'
-import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, flattenSystemNodes, isApprovalStatus, renameFieldKeys } from '@polenta/types'
+import { REQ_REF_PREFIX, carryKey, convertFieldValue, extractTestReqRefs, flattenSystemNodes, isApprovalStatus, renameFieldKeys } from '@polenta/types'
 import { snapshotOf } from './campaign-snapshot.util'
 import type { FieldRename, FieldRenameResult, HistoryCarrier, ObjectHistory } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
@@ -353,6 +353,49 @@ export class CampaignsService {
 
       campaign.runs[runIndex] = { ...campaign.runs[runIndex], paramValues }
 
+      return this.persist(repoPath, campaignId, original, campaign)
+    })
+  }
+
+  /**
+   * GH428 — valeurs des champs d'exécution « renseigné en campagne » saisies sur une entrée. Modifiables
+   * à tout moment (Q3) : un run existant n'est pas touché, la nouvelle valeur sert aux exécutions suivantes.
+   * Chaque valeur est convertie comme une saisie de run (`convertFieldValue`) ; refus : rien n'est écrit.
+   * Une valeur vide retire la clé.
+   */
+  async updateRunInputs(
+    repoPath: string,
+    campaignId: string,
+    entryId: string,
+    inputs: Record<string, string>,
+  ): Promise<TestCampaign> {
+    return this.enqueue(repoPath, campaignId, async () => {
+      const campaign = await this.get(repoPath, campaignId)
+      const original = historyBase(campaign)
+
+      const runIndex = campaign.runs.findIndex(r => r.entryId === entryId)
+      if (runIndex === -1) throw new Error(`Entry ${entryId} not found in campaign ${campaignId}`)
+      const { runInputs: _previous, ...entry } = campaign.runs[runIndex]
+
+      const objectTypeRef = entry.testSnapshot?.objectTypeRef
+        ?? (await this.testsService.findOne(repoPath, entry.testCaseId).catch(() => null))?.objectTypeRef
+      const schema = await (this.schema
+        ? this.schema.get(repoPath)
+        : this.gitService.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
+      ).catch(() => null)
+      const resolved = schema && objectTypeRef ? findObjectTypeDef(schema, objectTypeRef, 'test') : null
+      const defs = resolved && resolved !== 'unresolvable' ? (resolved.runFields ?? []).filter(d => d.campaignInput) : []
+
+      const runInputs: Record<string, string> = {}
+      for (const [name, raw] of Object.entries(inputs ?? {})) {
+        const def = defs.find(d => d.name === name)
+        if (!def) throw new Error(`« ${name} » n'est pas un champ d'exécution renseigné en campagne`)
+        const converted = convertFieldValue(def, raw)
+        if (!converted.ok) throw new Error(converted.reason)
+        if (converted.value !== undefined) runInputs[name] = String(converted.value)
+      }
+
+      campaign.runs[runIndex] = Object.keys(runInputs).length > 0 ? { ...entry, runInputs } : entry
       return this.persist(repoPath, campaignId, original, campaign)
     })
   }

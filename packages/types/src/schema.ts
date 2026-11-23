@@ -37,6 +37,9 @@ export interface SchemaField {
   /** GH139 — colonne affichée par défaut (vues Tableau / Document) tant que l'utilisateur n'a pas
    *  fait son propre choix ; défaut de l'équipe, porté par le schéma. Écrit seulement si vrai. */
   defaultVisible?: boolean
+  /** GH428 — champ d'exécution (`runFields`) renseigné par le responsable de campagne sur chaque entrée,
+   *  avant l'exécution ; la valeur est figée dans le run. Écrit seulement si vrai. */
+  campaignInput?: boolean
 }
 
 // Format de stockage d'un champ `multi_enum` : chaîne CSV (ex. "a, b, c"), pas une liste

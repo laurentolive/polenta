@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Copy, Eye, Pencil, Play, Trash2 } from 'lucide-react'
+import { AlertTriangle, Copy, Eye, Lock, Pencil, Play, Trash2 } from 'lucide-react'
 import type { CampaignTestRun, ExecutionHistoryRow, ParamResolutionPreview, ProjectSchema, TestCampaign, TestCase, TestRunStatus } from '@polenta/types'
 import { fieldValueToText } from '@polenta/types'
 import { ElementLink } from '../element/ElementLink'
@@ -131,23 +131,38 @@ export function CampaignEntriesGrid({
         key: `${RUN_COLUMN_PREFIX}${def.name}`, label: def.label ?? def.name,
         getText: r => (input ? shown(inputRaw(r)) : shown(lastRaw(r) ?? '')),
         render: r => {
-          if (!input) return <span>{shown(lastRaw(r) ?? '')}</span>
+          if (!input) {
+            return (
+              <span className="inline-flex items-center gap-1 text-ink-3" title={t('campaignPage.runResultHint')}>
+                <Lock size={10} aria-hidden="true" />
+                {shown(lastRaw(r) ?? '')}
+              </span>
+            )
+          }
+          const value = inputRaw(r)
           const last = lastRaw(r)
           // Dernière exécution avec une autre valeur : indication (la saisie vaut pour les runs suivants).
-          const differs = last !== undefined && String(last) !== inputRaw(r)
+          const differs = last !== undefined && String(last) !== value
           return (
-            <span>
-              {shown(inputRaw(r))}
-              {differs && <span className="ml-1 text-[10px] text-ink-3">{t('campaignPage.lastRunValue', { value: shown(last) })}</span>}
+            <span className="inline-flex flex-wrap items-center gap-1">
+              <span
+                className={`inline-flex items-center gap-1 rounded border border-dashed px-1.5 py-0.5 ${value ? 'border-status-info-border bg-status-info-bg text-status-info' : 'border-edge italic text-ink-3'}`}
+                title={t('campaignPage.runInputEditHint')}
+              >
+                <Pencil size={10} aria-hidden="true" />
+                {value ? shown(value) : t('campaignPage.runInputEmpty')}
+              </span>
+              {differs && <span className="text-[10px] text-ink-3">{t('campaignPage.lastRunValue', { value: shown(last) })}</span>}
             </span>
           )
         },
         ...(input
           ? {
+            // Option vide en tête : sans elle, la liste affiche la première valeur sans événement de changement.
             editor: (def.type === 'enum'
-              ? { kind: 'enum', options: (def.values ?? []).map(v => ({ value: v, label: v })) }
+              ? { kind: 'enum', options: [{ value: '', label: '—' }, ...(def.values ?? []).map(v => ({ value: v, label: v }))] }
               : def.type === 'boolean'
-                ? { kind: 'enum', options: [{ value: 'true', label: t('campaignPage.yes') }, { value: 'false', label: t('campaignPage.no') }] }
+                ? { kind: 'enum', options: [{ value: '', label: '—' }, { value: 'true', label: t('campaignPage.yes') }, { value: 'false', label: t('campaignPage.no') }] }
                 : { kind: 'text' }) as GridEditor,
             editValue: (r: EntryRow) => inputRaw(r),
             isEditable: () => true,
@@ -383,8 +398,16 @@ export function CampaignEntriesGrid({
   }
 
   const filterLabel = statusFilter ? t(RUN_STATUS_LABEL_KEY[statusFilter]) : ''
+  // GH428 — légende : ce qui se saisit dans la grille, ce qui est en lecture seule.
+  const legend = runFieldDefs.some(d => d.campaignInput) ? (
+    <span className="inline-flex items-center gap-3 text-[11px] text-ink-3" data-testid="campaign-entries-legend">
+      <span className="inline-flex items-center gap-1"><Pencil size={10} aria-hidden="true" />{t('campaignPage.legendInput')}</span>
+      <span className="inline-flex items-center gap-1"><Lock size={10} aria-hidden="true" />{t('campaignPage.legendResult')}</span>
+    </span>
+  ) : null
   const pastilles = (
     <>
+      {legend}
       {RUN_STATUSES.map(s => {
         const count = campaign.runs.filter(r => r.status === s).length
         const active = statusFilter === s

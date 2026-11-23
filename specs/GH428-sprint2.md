@@ -22,3 +22,8 @@
 
 ## Environnement
 - Le worktree a dû recevoir `apps/desktop/vendor/git` (Git embarqué, non versionné) depuis le dépôt principal : sans lui, les suites `git-backend.gh337` et `versions.gh201` échouent avec `GitUnavailableError`. Ce n'est pas un problème du ticket.
+
+## Vérification e2e (niveau 2)
+- `gh428-run-inputs.spec.ts` : 3 scénarios (E1–E6 de `GH428-tests.md`) : passent.
+- Non-régression ciblée : `gh196-run-fields`, `gh65-campaigns`, `gh73-campaign-history`, `gh80-execute-switch`, `gh68-unapproved`, `gh400-executions`, `gh389-campaigns` (25 tests) ; classeur `gh389-excel-export`, `gh81-no-write-on-read`, `gh81-verif`, `s2-core` (17 tests). Tous passent.
+- Corrections faites pendant la vérification : libellé du verdict PASS (« Passé ») et champ de saisie texte de la grille (`textbox`), dans le scénario e2e seulement.

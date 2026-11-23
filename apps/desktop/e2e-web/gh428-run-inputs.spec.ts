@@ -38,8 +38,8 @@ async function setInGrid(p: Page, id: string, criticite: string, quantite: strin
   await p.getByTestId(`${criticiteCell(id)}-editor`).selectOption(criticite)
   const textCell = p.getByTestId(quantiteCell(id))
   await textCell.dblclick()
-  await textCell.locator('input').fill(quantite)
-  await textCell.locator('input').press('Enter')
+  await textCell.getByRole('textbox').fill(quantite)
+  await textCell.getByRole('textbox').press('Enter')
   await expect(p.getByTestId(`campaign-entries-row-${id}`)).toContainText(quantite.replace(',', '.'))
 }
 
@@ -49,7 +49,7 @@ async function executeEntry(p: Page, id: string) {
   await p.getByTestId(`campaign-entries-row-${id}`).getByRole('button', { name: 'Exécuter' }).click()
   await p.waitForURL(url => url.pathname.includes('/execute/'))
   await chooseTestedVersion(s)
-  await p.locator('select:not([data-testid^="tested-"]):visible').first().selectOption({ label: 'Réussi' })
+  await p.locator('select:not([data-testid^="tested-"]):visible').first().selectOption({ label: 'Passé' })
   await p.getByRole('button', { name: 'Soumettre le résultat' }).click()
   await p.waitForURL(url => !url.pathname.includes('/execute/'))
 }
@@ -108,7 +108,7 @@ test('GH428-3 — retest après changement : le nouveau run porte la nouvelle va
   expect(again.fields).toEqual({ gh428Criticite: 'regression', gh428Quantite: 3 })
   const unchanged = await s.invoke<RunLike[]>('tests:runs', s.project.localPath, testCaseId)
   expect(unchanged.find(r => r.id === first!.id)!.fields).toEqual({ gh428Criticite: 'critique', gh428Quantite: 12.5 })
-  // E6 — la grille montre la valeur saisie et, à côté, la valeur du dernier run.
-  await navigate(p, s.projectUrl(`/campaign/${campaign.id}`, { repoPath: s.project.localPath }))
-  await expect(p.getByTestId(`campaign-entries-row-${entryId}`)).toContainText(/dernier run : critique/)
+  // E6 — saisie modifiée après le dernier run : la grille montre la nouvelle valeur et, à côté, celle du dernier run.
+  await setInGrid(p, entryId, 'critique', '3')
+  await expect(p.getByTestId(`campaign-entries-row-${entryId}`)).toContainText(/dernier run : regression/)
 })

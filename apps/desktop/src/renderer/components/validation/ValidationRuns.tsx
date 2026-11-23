@@ -8,6 +8,7 @@ import { api } from '../../api'
 import { VERDICT_CLASS, VERDICT_KEY } from '../executions/ExecutionHistoryGrid'
 import { driftText, testedValueText } from '../executions/TestedConfigView'
 import { runMentions, type RunMention } from './runMentions'
+import { groupExecutionsByTest } from './validationRunGroups'
 import { ElementLink } from '../element/ElementLink'
 import { PageLink } from '../element/PageLink'
 import { htmlToCellText } from '../grid/cellText'
@@ -44,19 +45,17 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
     queryFn: () => api.executions.history(repoPath, { requirementId }, workspaceDir),
   })
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const byTest = useMemo(() => {
-    // Tous les tests liés, même jamais exécutés : la qualité voit ce qui manque.
-    const map = new Map(tests.map(test => [test.id, { title: test.title, local: test.local, signedRun: test.lastRun, rows: [] as ExecutionHistoryRow[] }]))
-    for (const row of data?.rows ?? []) {
-      if (row.kind !== 'run') continue
-      // GH267 — un test lié après la signature n'entre pas dans le registre.
-      if (frozen && !map.has(row.testCaseId)) continue
-      const entry = map.get(row.testCaseId) ?? { title: row.testTitle, local: true, signedRun: undefined, rows: [] }
-      entry.rows.push(row)
-      map.set(row.testCaseId, entry)
-    }
-    return [...map.entries()]
-  }, [data, tests, frozen])
+  // Tous les tests liés, même jamais exécutés : la qualité voit ce qui manque (GH267 : groupes dans la copie).
+  const byTest = useMemo(() => groupExecutionsByTest(tests, data?.rows ?? [], !!frozen), [data, tests, frozen])
+  // GH430 — une entrée en attente ouvre sa page d'exécution, comme dans la grille des exécutions.
+  const openPending = (row: ExecutionHistoryRow) => {
+    if (!row.campaign || !row.entry) return
+    void navigate({
+      to: '/campaign/$campaignId/execute/$testId',
+      params: { campaignId: row.campaign.id, testId: row.entry.entryId },
+      search: { repoPath, projectId },
+    } as never)
+  }
 
   if (isLoading && !frozen) return <p className="text-xs text-ink-3 italic">{t('common.loading')}</p>
   if (error && !frozen) return <p className="text-xs text-status-danger">{String(error)}</p>
@@ -82,15 +81,15 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
   return (
     <table className="w-full text-xs border-collapse" data-testid={`validation-runs-${requirementId}`}>
       <tbody>
-        {byTest.map(([testId, { title, local, signedRun, rows }]) => {
-          const last = rows[0] as ExecutionHistoryRow | undefined
+        {byTest.map(([testId, { title, local, signedRun, runs, pending }]) => {
+          const last = runs[0] as ExecutionHistoryRow | undefined
           const shown = frozen ? signedRun : last?.run
           const isOpen = open.has(testId)
           return (
             <Fragment key={testId}>
               <tr className="border-b border-edge-subtle">
                 <td className="py-1 w-6">
-                  {rows.length > 0 && (
+                  {runs.length + pending.length > 0 && (
                     <button type="button" className="text-ink-3 hover:text-ink" aria-expanded={isOpen} aria-label={testId} data-testid={`validation-test-toggle-${testId}`}
                       onClick={() => setOpen(s => { const n = new Set(s); if (!n.delete(testId)) n.add(testId); return n })}>
                       {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -122,7 +121,21 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
                   </td>
                 )}
               </tr>
-              {isOpen && rows.map(row => (
+              {isOpen && pending.map(row => (
+                <tr key={row.key} className="border-b border-edge-subtle bg-hover/40" data-testid={`validation-pending-${row.key}`}>
+                  <td />
+                  <td className="py-1 pr-3 whitespace-nowrap">
+                    {row.entry && (
+                      <button type="button" className="font-mono text-status-info hover:underline" data-testid={`validation-pending-link-${row.key}`}
+                        onClick={() => openPending(row)}>{row.entry.entryId}</button>
+                    )}
+                  </td>
+                  <td className="py-1 pr-3 text-ink-2">{row.campaign && `${row.campaign.id} — ${row.campaign.title}`}</td>
+                  <td />
+                  <td className="py-1 whitespace-nowrap">{verdict(row)}</td>
+                </tr>
+              ))}
+              {isOpen && runs.map(row => (
                 <tr key={row.key} className="border-b border-edge-subtle bg-hover/40" data-testid={`validation-run-${row.key}`}>
                   <td />
                   <td className="py-1 pr-3 whitespace-nowrap text-ink-3">

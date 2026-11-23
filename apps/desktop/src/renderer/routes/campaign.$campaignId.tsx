@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import { Trash2, Pencil } from 'lucide-react'
 import { decodeInstances } from '../lib/reqInstances'
+import { uniqueTypeRefs } from '../lib/campaignRunFields'
+import { useCampaignRunHistory } from '../hooks/useCampaignRunHistory'
 import { api } from '../api'
 import { useProjectSchema, getCampaignTypeDef, isTestApproved } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
@@ -116,6 +118,11 @@ function CampaignDetailPage() {
     enabled: !!repoPath,
   })
 
+  // GH428 — dernier run de chaque entrée (colonnes « champs d'exécution » de la grille) : historique des
+  // types de test de la campagne. Appelé avant les retours anticipés ci-dessous (règles des hooks).
+  const runTypeRefs = uniqueTypeRefs((campaign?.runs ?? []).map(r => r.testSnapshot?.objectTypeRef ?? tests.find(t => t.id === r.testCaseId)?.objectTypeRef))
+  const { data: runHistory } = useCampaignRunHistory(repoPath, workspaceDir || undefined, runTypeRefs)
+
   // T171 — références à saisir / lues dans la base / non résolues, pour chaque test approuvé
   // candidat à l'ajout (ou à une nouvelle instance), lues à la source de la campagne.
   const { previews: paramPreviews } = useParamPreview(
@@ -163,6 +170,15 @@ function CampaignDetailPage() {
   const updateParamsMutation = useMutation({
     mutationFn: ({ entryId, paramValues }: { entryId: string; paramValues: Record<string, string> }) =>
       api.campaigns.updateRunParams(repoPath, campaignId, entryId, paramValues),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
+    },
+  })
+
+  // GH428 — champs « renseigné en campagne » d'une entrée (la grille envoie le jeu complet de l'entrée).
+  const updateRunInputsMutation = useMutation({
+    mutationFn: ({ entryId, inputs }: { entryId: string; inputs: Record<string, string> }) =>
+      api.campaigns.updateRunInputs(repoPath, campaignId, entryId, inputs),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
     },
@@ -475,6 +491,8 @@ function CampaignDetailPage() {
           removing={removeTestMutation.isPending}
           onSaveParams={(entryId, paramValues) => updateParamsMutation.mutateAsync({ entryId, paramValues })}
           savingParams={updateParamsMutation.isPending}
+          runHistory={runHistory}
+          onSaveRunInputs={(entryId, inputs) => updateRunInputsMutation.mutateAsync({ entryId, inputs })}
           onDuplicate={args => duplicateTestMutation.mutateAsync(args)}
           duplicating={duplicateTestMutation.isPending}
         />

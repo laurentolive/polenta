@@ -42,6 +42,8 @@ export type ExecutionSheetRow =
       currentStatus: string
       /** GH196 — colonnes de champ saisissables sur cette ligne (champs d'exécution du type). */
       fieldIds: string[]
+      /** GH428 — valeurs « renseigné en campagne » de l'entrée : pré-remplies, avant le run éventuel. */
+      inputFields?: Record<string, string>
       prefill?: RowPrefill
       /** GH202 — valeurs pré-remplies de la version testée, par colonne ; absent : test introuvable. */
       tested?: Record<string, string>
@@ -148,6 +150,7 @@ export function buildExecutionSheetModel(input: {
       params: formatParams(run),
       currentStatus: labels.runStatuses[run.status] ?? run.status,
       fieldIds: idsOf('runFields'),
+      ...(test && run.runInputs && Object.keys(run.runInputs).length > 0 && { inputFields: run.runInputs }),
       ...(test && testedColumns.length > 0 && { tested: testedCells(input.tested!, prefill) }),
       ...(prefill && test && {
         prefill: {
@@ -396,11 +399,15 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
         cell.fill = solid(FILL_INPUT)
         // Champ `link` : visuel de lien (bleu souligné) même vide — un lien collé ou saisi en a l'allure.
         if (f.type === 'link') cell.font = { ...(cell.font ?? {}), color: { argb: 'FF0563C1' }, underline: true }
-        const existing = r.prefill?.fields?.[f.name]
+        // GH428 — « renseigné en campagne » : la valeur de l'entrée prime sur le dernier run (elle vaut pour la
+        // prochaine exécution).
+        const inputValue = r.kind === 'instance' ? r.inputFields?.[f.name] : undefined
+        const existing = inputValue ?? r.prefill?.fields?.[f.name]
         if (existing !== undefined && existing !== null && existing !== '') {
           // GH196 — valeur déjà saisie (dernier run).
           if (f.type === 'link') writeLinkCell(cell, readLinkValues(existing))
           else if (f.type === 'boolean') cell.value = booleanWords[existing === true || existing === 'true' ? 0 : 1]
+          else if (f.type === 'number' && Number.isFinite(Number(existing))) cell.value = Number(existing)
           else cell.value = typeof existing === 'number' ? existing : String(existing)
         } else if (f.default !== undefined && f.default !== '') {
           // Q7 — valeur par défaut pré-remplie.

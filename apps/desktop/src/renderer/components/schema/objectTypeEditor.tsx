@@ -27,6 +27,8 @@ export interface EditableField {
   multiple: boolean
   /** GH139 — colonne affichée par défaut (défaut de l'équipe, porté par le schéma). */
   defaultVisible: boolean
+  /** GH428 — champ d'exécution renseigné en campagne (liste `runFields` seulement). */
+  campaignInput: boolean
   /** GH195 — `requiredWhen` en texte : `champ = v1, v2; autre = v3` (cf. `parseRequiredWhen`). */
   requiredWhen: string
   /** GH77 — nom du champ tel que chargé du schéma (non persisté) : absent pour un champ ajouté dans
@@ -71,7 +73,7 @@ function extraKeys(obj: object, editorKeys: readonly string[]): Record<string, u
   return Object.keys(rest).length > 0 ? rest : undefined
 }
 
-const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory', 'multiple', 'requiredWhen', 'defaultVisible'] as const
+const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory', 'multiple', 'requiredWhen', 'defaultVisible', 'campaignInput'] as const
 const STATUS_EDITOR_KEYS = ['name', 'label', 'color', 'isApproval', 'isTerminal'] as const
 const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory', 'runFields', 'stepFields', 'decisions', 'entryFields', 'displayIdField', 'transitions'] as const
 
@@ -84,6 +86,7 @@ export function fieldToEditable(f: SchemaField): EditableField {
     default: f.default !== undefined ? String(f.default) : '', placeholder: f.placeholder ?? '',
     trackHistory: f.trackHistory ?? false, originalName: f.name,
     multiple: f.multiple ?? false, requiredWhen: formatRequiredWhen(f.requiredWhen), defaultVisible: f.defaultVisible ?? false,
+    campaignInput: f.campaignInput ?? false,
     ...withExtra(extraKeys(f, FIELD_EDITOR_KEYS)),
   }
 }
@@ -274,6 +277,7 @@ export function editableToField(f: EditableField): SchemaField {
   if (f.trackHistory && canTrackHistory(f)) result.trackHistory = true
   if (f.type === 'link' && f.multiple) result.multiple = true
   if (f.defaultVisible) result.defaultVisible = true
+  if (f.campaignInput) result.campaignInput = true
   const requiredWhen = parseRequiredWhen(f.requiredWhen)
   if (requiredWhen) result.requiredWhen = requiredWhen
   return { ...result, ...f.extra }
@@ -324,7 +328,8 @@ export function editableToObjType(t: EditableObjectType): ObjectTypeDefinition {
   if (t.category === 'test') {
     const runField = (f: EditableField) => editableToField({ ...f, trackHistory: false, defaultVisible: false })
     if (t.runFields.length > 0) result.runFields = t.runFields.map(runField)
-    if (t.stepFields.length > 0) result.stepFields = t.stepFields.map(runField)
+    // GH428 — « renseigné en campagne » n'existe que pour un champ d'exécution (`runFields`).
+    if (t.stepFields.length > 0) result.stepFields = t.stepFields.map(f => runField({ ...f, campaignInput: false }))
   }
   if (t.category === 'validation') {
     result.decisions = t.decisions
@@ -392,7 +397,7 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
 // ── Factories ─────────────────────────────────────────────────────────────────
 
 export function emptyField(): EditableField {
-  return { name: '', label: '', type: 'text', values: '', required: false, default: '', placeholder: '', trackHistory: false, multiple: false, requiredWhen: '', defaultVisible: false }
+  return { name: '', label: '', type: 'text', values: '', required: false, default: '', placeholder: '', trackHistory: false, multiple: false, requiredWhen: '', defaultVisible: false, campaignInput: false }
 }
 
 export function emptyStatus(): EditableStatus {
@@ -605,6 +610,7 @@ export function FieldsTable({ fields, onChange, statuses, category, variant = 'o
               <th className={thClass}>{t('schema.editor.colEnumValues')}</th>
               <th className={`${thClass} text-center`}>{t('schema.editor.colRequired')}</th>
               <th className={thClass} title={t('schema.editor.colRequiredWhenTitle')}>{t('schema.editor.colRequiredWhen')}</th>
+              {variant === 'run' && <th className={`${thClass} text-center`} title={t('schema.editor.colCampaignInputTitle')}>{t('schema.editor.colCampaignInput')}</th>}
               {!isRunList && <th className={`${thClass} text-center`} title={t('schema.editor.colHistoryTitle')}>{t('schema.editor.colHistory')}</th>}
               {!isRunList && <th className={`${thClass} text-center`} title={t('schema.editor.colDefaultVisibleTitle')}>{t('schema.editor.colDefaultVisible')}</th>}
               <th className={thClass}>{t('schema.editor.colDefault')}</th>
@@ -640,6 +646,16 @@ export function FieldsTable({ fields, onChange, statuses, category, variant = 'o
                     issues={f.requiredWhen.trim() ? issues.filter(x => x.field === f.name) : []}
                   />
                 </td>
+                {variant === 'run' && <td className={`${tdClass} text-center`}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('schema.editor.colCampaignInputTitle')}
+                    checked={f.campaignInput}
+                    onChange={e => set(i, { campaignInput: e.target.checked })}
+                    className="h-3 w-3 accent-ink"
+                    data-testid="campaign-input-checkbox"
+                  />
+                </td>}
                 {!isRunList && <td className={`${tdClass} text-center`}>
                   <input
                     type="checkbox"

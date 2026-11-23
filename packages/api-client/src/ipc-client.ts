@@ -375,6 +375,8 @@ export function createIpcClient(
         invoke('campaigns:preview-params', p, source, testCaseIds, workspaceDir),
       updateRunParams: (p, campaignId, entryId, paramValues) =>
         invoke('campaigns:update-run-params', p, campaignId, entryId, paramValues),
+      updateRunInputs: (p, campaignId, entryId, inputs) =>
+        invoke('campaigns:update-run-inputs', p, campaignId, entryId, inputs),
       delete: (p, id) => invoke('campaigns:delete', p, id),
       executionSheet: {
         export: (p, campaignId, locale, workspaceDir) => invoke('campaigns:execution-sheet-export', p, campaignId, locale, workspaceDir ?? null),

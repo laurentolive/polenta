@@ -983,6 +983,8 @@ export interface ApiClient {
     /** T171 — résolution prévisionnelle des paramètres de tests à ajouter (sans écriture). */
     previewParams(repoPath: string, source: { campaignId?: string }, testCaseIds: string[], workspaceDir?: string): Promise<ParamResolutionPreview[]>
     updateRunParams(repoPath: string, campaignId: string, entryId: string, paramValues: Record<string, string>): Promise<TestCampaign>
+    /** GH428 — valeurs des champs d'exécution « renseigné en campagne » de l'entrée. */
+    updateRunInputs(repoPath: string, campaignId: string, entryId: string, inputs: Record<string, string>): Promise<TestCampaign>
     delete(repoPath: string, id: string): Promise<void>
     /** GH36 — exécution hors outil via un classeur Excel. */
     executionSheet: {

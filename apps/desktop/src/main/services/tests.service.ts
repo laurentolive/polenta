@@ -1,5 +1,5 @@
-import { initialStatus, isUnknownStatus, prepareRunFields, renameFieldKeys } from '@polenta/types'
-import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun, WithTransitionWarnings } from '@polenta/types'
+import { initialStatus, isUnknownStatus, mergeCampaignInputs, prepareRunFields, renameFieldKeys } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCampaign, TestCase, TestRun, WithTransitionWarnings } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -253,7 +253,11 @@ export class TestsService {
     // GH196 — champs d'exécution et d'étape : convertis et contrôlés sur le verdict final, avec le type
     // du test lu dans le repo du test (composant compris). Refus : rien n'est écrit.
     const typeDef = await readOwnedTypeDef(this.git, repoPath, testCase.objectTypeRef, targetRepo)
-    const prepared = prepareRunFields(typeDef, { result, fields: dto.fields, stepResults })
+    // GH428 §2.2 — champs « renseigné en campagne » : la saisie (dto) l'emporte sur la valeur de l'entrée.
+    // Contrôlés comme les autres, sur la valeur finale (Q4).
+    const campaignInputs = entry ? await this.campaignRunInputs(repoPath, entry.campaignId, entry.entryId) : undefined
+    const runFields = mergeCampaignInputs(typeDef?.runFields ?? [], campaignInputs, dto.fields)
+    const prepared = prepareRunFields(typeDef, { result, fields: runFields, stepResults })
     if (!prepared.ok) throw new FieldWriteError(prepared.field, prepared.reason)
 
     // GH202 — version du repo de la campagne (`repoPath`), même pour un test de composant. L'import du
@@ -300,6 +304,13 @@ export class TestsService {
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
+
+  /** GH428 — valeurs « renseigné en campagne » de l'entrée, lues dans la campagne du repo ouvert (le run ne
+   *  relit jamais l'entrée ensuite). Campagne ou entrée absente : rien à fusionner. */
+  private async campaignRunInputs(repoPath: string, campaignId: string, entryId: string): Promise<Record<string, string> | undefined> {
+    const campaign = await this.git.readYaml<TestCampaign>(repoPath, `campaigns/${campaignId}.yaml`).catch(() => null)
+    return campaign?.runs?.find(r => r.entryId === entryId)?.runInputs
+  }
 
   /** Prefix resolved from `repoPath`'s schema, number allocated in `targetRepo` — see
    *  RequirementsService.nextId (GH20). */

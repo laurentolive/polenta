@@ -63,12 +63,18 @@ function computeLegend(def: Spec, entries: string[], input: FitInput, userLegend
     return { orient: 'bottom', direction: 'horizontal', columns, labelLimit: Math.ceil(labelWidth), symbolLimit: 0 }
   }
 
-  // Orientation imposée par la spec : on n'adapte que ce qui en dépend (limites de libellé).
+  // Orientation imposée par la spec : on n'adapte que ce qui en dépend. En haut ou en bas, la légende est
+  // une rangée : elle passe en colonnes selon la largeur, comme celle que l'on place soi-même en bas ; à
+  // gauche, à droite ou dans un coin (`top-left`…), seules les limites de libellé s'appliquent.
   if (userOrient) {
-    const horizontal = !['left', 'right'].includes(userOrient)
-    return horizontal
-      ? sideLegend(Math.max(60, input.width - LEGEND_PAD_PX - SYMBOL_PX - LABEL_GAP_PX))
-      : sideLegend(input.width * RIGHT_MAX_SHARE - SYMBOL_PX - LABEL_GAP_PX)
+    if (userOrient === 'top' || userOrient === 'bottom') {
+      const { orient: _orient, ...row } = bottomLegend()
+      return row
+    }
+    const rowLike = userOrient.startsWith('top-') || userOrient.startsWith('bottom-')
+    return sideLegend(rowLike || userOrient === 'none'
+      ? Math.max(60, input.width - LEGEND_PAD_PX - SYMBOL_PX - LABEL_GAP_PX)
+      : input.width * RIGHT_MAX_SHARE - SYMBOL_PX - LABEL_GAP_PX)
   }
 
   const hasTitle = (isObject(def.legend) ? def.legend.title : def.title) !== null

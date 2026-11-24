@@ -34,7 +34,6 @@ interface Drag {
   max: number
   latest: number
   frame: number
-  moved: boolean
   userSelect: string
 }
 
@@ -57,7 +56,9 @@ export function ResizeHandle({ axis, label, testId, getStartSize, getBounds, onL
     drag.current = null
     if (d.frame) cancelAnimationFrame(d.frame)
     document.body.style.userSelect = d.userSelect
-    onEnd(commit && d.moved ? d.latest : null)
+    // Rien à enregistrer si la valeur finale est celle de départ (clic, ou aller-retour jusqu'au point de départ) :
+    // la largeur de départ est celle AFFICHÉE, qu'une zone étroite peut avoir réduite sous la largeur demandée.
+    onEnd(commit && d.latest !== d.start ? d.latest : null)
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
@@ -67,7 +68,7 @@ export function ResizeHandle({ axis, label, testId, getStartSize, getBounds, onL
     e.currentTarget.setPointerCapture(e.pointerId)
     const [min, max] = getBounds()
     const start = getStartSize()
-    drag.current = { start, origin: coord(e), min, max, latest: start, frame: 0, moved: false, userSelect: document.body.style.userSelect }
+    drag.current = { start, origin: coord(e), min, max, latest: start, frame: 0, userSelect: document.body.style.userSelect }
     document.body.style.userSelect = 'none'
   }
 
@@ -75,7 +76,6 @@ export function ResizeHandle({ axis, label, testId, getStartSize, getBounds, onL
     const d = drag.current
     if (!d) return
     d.latest = Math.min(Math.max(Math.round(d.start + coord(e) - d.origin), d.min), d.max)
-    d.moved = d.moved || d.latest !== d.start
     if (!d.frame) {
       d.frame = requestAnimationFrame(() => {
         d.frame = 0

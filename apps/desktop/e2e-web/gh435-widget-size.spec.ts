@@ -156,6 +156,30 @@ test('E1b — hauteur, dashboard privé : valeur écrite dans le .pref, carte à
   expect(Math.abs(await height(card('Haute')) - 400)).toBeLessThanOrEqual(1)
 })
 
+test('E1c — glissement qui revient à son point de départ : rien n\'est enregistré, le fichier reste identique', async () => {
+  const id = await makeDashboard('GH435 E1c', [{ title: 'Retour' }])
+  await s.page.setViewportSize(WIDE)
+  await openDashboard(id)
+  const slot = slotOf('Retour')
+  await expect.poll(() => width(slot)).toBe(544)
+  const file = path.join(s.project.localPath, 'dashboards', id, 'dashboard.yaml')
+  const before = fs.readFileSync(file, 'utf8')
+
+  const b = (await slot.getByTestId('widget-resize-w').boundingBox())!
+  const x = b.x + b.width / 2
+  const y = b.y + b.height / 2
+  await s.page.mouse.move(x, y)
+  await s.page.waitForTimeout(80)
+  await s.page.mouse.down()
+  await s.page.mouse.move(x + 150, y, { steps: 8 })
+  await s.page.mouse.move(x, y, { steps: 8 })
+  await s.page.mouse.up()
+  // Laisser à une éventuelle écriture le temps d'arriver.
+  await s.page.waitForTimeout(600)
+  expect(await width(slot)).toBe(544)
+  expect(fs.readFileSync(file, 'utf8')).toBe(before)
+})
+
 test('E2 — bornes : jamais hors 240 à 1104 en largeur ni 160 à 720 en hauteur, à aucune frame', async () => {
   const id = await makeDashboard('GH435 E2', [{ title: 'Bornée', width: 700, height: 320 }])
   await s.page.setViewportSize(WIDE)

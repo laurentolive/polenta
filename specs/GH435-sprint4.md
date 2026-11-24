@@ -56,10 +56,20 @@ cartes jamais coupées entre deux pages, polices lisibles, mises à jour des SPE
 
 - `pnpm typecheck` : 0 erreur. ESLint sur tous les fichiers modifiés : 0 erreur. `pnpm lint` global : 3 erreurs
   **préexistantes** sur `main` (issue #437).
-- Unitaires (`apps/desktop`, `npx vitest run`) : **245 fichiers, 2362 tests passés**, 5 ignorés.
-- E2E (`pnpm build:web` puis Playwright) : GH435 **21 / 21** (`gh435-widget-size` 11, `gh435-rendering` 10) ;
+- Unitaires (`apps/desktop`, `npx vitest run`) : **245 fichiers, 2363 tests passés**, 5 ignorés, obtenus avec
+  `--poolOptions.threads.maxThreads=4`. Deux passages complets à 16 threads ont chacun échoué sur **un seul test
+  différent** par dépassement des 20 s d'un test git (`demo-conformity` C5, `sync.service.gh173` U8) alors que la
+  suite durait 165 s au lieu de 47 s (machine lente, aucun processus parasite) ; chacun passe seul (13/13 et
+  22/22) et la suite complète passe à 4 threads. Dépassements de charge, sans rapport avec le ticket ; non
+  reproduits sur `main` (non lancé).
+- E2E (`pnpm build:web` puis Playwright) : GH435 **22 / 22** (`gh435-widget-size` 12, `gh435-rendering` 10) ;
   voisins (GH74 édition et suivi, GH93, GH125, GH67, GH69, GH65 navigation, GH389 misc, impression S4)
-  **44 / 44**. Total du dernier passage : 65 / 65.
+  **44 / 44**. Total du dernier passage, après les corrections de revue : **66 / 66**.
+- Revue de code (medium, PR #436) sur les sprints 3 et 4 : 6 remarques, toutes traitées — impression qui
+  n'attendait jamais un graphique sans taille (2 remarques « importantes » : annonce de fin de rendu au bout
+  de 250 ms de taille stable, widget sans taille rendu tout de suite), fuite d'un rendu hors écran si une
+  étape échoue, glissement revenu à son point de départ enregistré à tort (test E1c), légende imposée en haut
+  ou en bas mise en colonnes, règle CSS d'impression exprimée en plancher (`max()`).
 - Niveau 3 (suite e2e complète) : **non lancé**, il attend le « Validé » (le ticket touche le renderer, les
   services du main et le serveur web : il sera requis).
 - Non lancés : `e2e-desktop` (Electron), impression sur papier réel.

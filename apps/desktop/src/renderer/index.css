@@ -359,9 +359,6 @@
 /* GH435 — impression d'un dashboard : le moteur réduit la page à l'échelle `PRINT_SCALE` (0,65) ; le texte HTML
    des cartes (titres, sélecteurs, tableaux) ne descend pas sous `--print-min-font` (8 px imprimés), posée sur
    la route d'impression. Hors @layer : sélecteurs d'attribut sur les classes de taille de texte. */
-.print-widgets .text-xs,
-.print-widgets [class*='text-[10px]'],
-.print-widgets [class*='text-[11px]'] {
-  font-size: var(--print-min-font);
-  line-height: 1.35;
-}
+.print-widgets .text-xs { font-size: max(0.75rem, var(--print-min-font)); line-height: 1.35; }
+.print-widgets [class*='text-[10px]'] { font-size: max(10px, var(--print-min-font)); line-height: 1.35; }
+.print-widgets [class*='text-[11px]'] { font-size: max(11px, var(--print-min-font)); line-height: 1.35; }

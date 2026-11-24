@@ -33,6 +33,8 @@ function loadVega() {
 
 /** Intervalle minimal entre deux redessins pendant que la carte change de taille. */
 const REDRAW_INTERVAL_MS = 120
+/** À l'impression, délai de stabilité de la taille avant d'annoncer le rendu terminé (supérieur à l'intervalle de redessin). */
+const PRINT_SETTLE_MS = 250
 
 /** Rôles Vega dont un clic ne désigne aucune ligne de données (légende, axes, titre). */
 const NON_DATA_ROLE = /^(axis|legend|title)/
@@ -90,12 +92,26 @@ export function VegaView({ spec, rows, onMark, printMode = false, onRendered }: 
   const onRenderedRef = useRef(onRendered)
   onRenderedRef.current = onRendered
 
+  const measured = size !== null
   const width = size?.width ?? 0
   const height = size?.height ?? 0
 
   useEffect(() => {
-    if (width < 1 || height < 1) return
+    if (!measured) return
+    // Conteneur sans taille (replié, masqué) : rien à dessiner, et l'impression n'attend pas ce widget.
+    if (width < 1 || height < 1) {
+      onRenderedRef.current?.()
+      return
+    }
     let cancelled = false
+    let settle: ReturnType<typeof setTimeout> | null = null
+    /** Rendu terminé à la taille courante. À l'impression, seulement une fois la taille restée stable : un
+     *  changement de taille (en-tête qui s'allonge, polices) relance le rendu et annule cette annonce, pour
+     *  qu'un PDF ne soit jamais pris entre deux dessins. */
+    const signalRendered = () => {
+      if (printMode) settle = setTimeout(() => onRenderedRef.current?.(), PRINT_SETTLE_MS)
+      else onRenderedRef.current?.()
+    }
     /** Retire le rendu affiché (erreur, trop petit) ; `finalize` libère ses écouteurs. */
     const clear = () => {
       shown.current?.finalize()
@@ -118,6 +134,8 @@ export function VegaView({ spec, rows, onMark, printMode = false, onRendered }: 
         onRenderedRef.current?.()
         return
       }
+      /** Rendu hors écran en cours de préparation : libéré si une étape échoue avant son insertion. */
+      let staged: Shown | null = null
       try {
         const { embed, expr } = await loadVega()
         if (cancelled) return
@@ -147,6 +165,7 @@ export function VegaView({ spec, rows, onMark, printMode = false, onRendered }: 
           actions: false,
           mode: 'vega-lite',
         })
+        staged = { finalize: result.finalize }
         if (cancelled) {
           result.finalize()
           return
@@ -163,10 +182,11 @@ export function VegaView({ spec, rows, onMark, printMode = false, onRendered }: 
         }
         if (isTooSmall(measureChart(result.view as unknown as MeasurableView, { width, height }))) {
           result.finalize()
+          staged = null
           clear()
           setError(null)
           setTooSmall(true)
-          onRenderedRef.current?.()
+          signalRendered()
           return
         }
         result.view.addEventListener('click', (_event, item) => {
@@ -180,11 +200,13 @@ export function VegaView({ spec, rows, onMark, printMode = false, onRendered }: 
         el.replaceChildren(staging)
         el.style.cursor = onMarkRef.current ? 'pointer' : ''
         shown.current = { finalize: result.finalize }
+        staged = null
         previous?.finalize()
         setError(null)
         setTooSmall(false)
-        onRenderedRef.current?.()
+        signalRendered()
       } catch (err) {
+        staged?.finalize()
         if (cancelled) return
         clear()
         setTooSmall(false)
@@ -194,8 +216,9 @@ export function VegaView({ spec, rows, onMark, printMode = false, onRendered }: 
     })()
     return () => {
       cancelled = true
+      if (settle) clearTimeout(settle)
     }
-  }, [spec, rows, theme, printMode, t, width, height])
+  }, [spec, rows, theme, printMode, t, measured, width, height])
 
   // Démontage : le dernier rendu libère ses écouteurs.
   useEffect(() => () => {

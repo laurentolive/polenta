@@ -68,8 +68,22 @@ describe('U12 — place et limites de la légende', () => {
 describe('U13 — ce qui n\'est pas touché', () => {
   it('clés de légende écrites par l\'utilisateur conservées, le reste calculé', () => {
     const legend = legendOf(fitSpec(BAR({ orient: 'top', labelLimit: 100, title: null, symbolOpacity: 1 }), input(544, 256, ROWS_LONG)))!
-    expect(legend).toMatchObject({ orient: 'top', labelLimit: 100, title: null, symbolOpacity: 1, symbolLimit: 0 })
-    expect(legend).not.toHaveProperty('columns')
+    expect(legend).toMatchObject({ orient: 'top', labelLimit: 100, title: null, symbolOpacity: 1, symbolLimit: 0, direction: 'horizontal' })
+  })
+
+  it('orientation imposée en haut ou en bas : la rangée passe en colonnes ; à droite ou dans un coin : limites seules', () => {
+    const top = legendOf(fitSpec(BAR({ orient: 'top' }), input(544, 256, ROWS_LONG)))!
+    expect(top.orient).toBe('top')
+    expect(top.columns as number).toBeGreaterThanOrEqual(1)
+    const bottom = legendOf(fitSpec(BAR({ orient: 'bottom' }), input(1104, 256, ROWS_LONG)))!
+    expect(bottom.columns as number).toBeGreaterThan(top.columns as number)
+    for (const orient of ['right', 'left', 'top-left', 'bottom-right', 'none']) {
+      const legend = legendOf(fitSpec(BAR({ orient }), input(544, 256, ROWS_LONG)))!
+      expect(legend.orient, orient).toBe(orient)
+      expect(legend, orient).not.toHaveProperty('columns')
+      expect(legend, orient).not.toHaveProperty('direction')
+      expect(legend.symbolLimit, orient).toBe(0)
+    }
   })
 
   it('legend: null, champ quantitatif, spec sans encodage : rendus tels quels', () => {

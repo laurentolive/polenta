@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Dashboard, Widget } from '@polenta/types'
-import { DASHBOARD_REF_WIDTH, WIDGET_MAX_HEIGHT, WIDGET_MIN_HEIGHT, WIDGET_MIN_WIDTH } from '@polenta/types'
+import { clampWidgetHeight, clampWidgetWidth, DASHBOARD_REF_WIDTH, WIDGET_MAX_HEIGHT, WIDGET_MIN_HEIGHT, WIDGET_MIN_WIDTH } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
 import { isPrivateScopeId } from '../../main/services/id-scope.util'
@@ -114,11 +114,14 @@ function presentDashboard(d: Dashboard, queryTitles?: Map<string, string>) {
   }
 }
 
-/** GH435 — dimensions d'un widget après `update_widget` : un nombre pose, `null` retire, absent conserve. */
+/**
+ * GH435 — dimensions d'un widget après `update_widget` : un nombre pose, `null` retire, absent conserve.
+ * Mêmes règles de bornage que le service (l'aperçu ne doit jamais différer de l'écriture).
+ */
 function applyDims(widget: Widget, width: number | null | undefined, height: number | null | undefined): Widget {
   const { width: w0, height: h0, ...rest } = widget
-  const w = width === undefined ? w0 : width ?? undefined
-  const h = height === undefined ? h0 : height ?? undefined
+  const w = width === undefined ? w0 : width === null ? undefined : clampWidgetWidth(width)
+  const h = height === undefined ? h0 : height === null ? undefined : clampWidgetHeight(height)
   return { ...rest, ...(w !== undefined ? { width: w } : {}), ...(h !== undefined ? { height: h } : {}) }
 }
 

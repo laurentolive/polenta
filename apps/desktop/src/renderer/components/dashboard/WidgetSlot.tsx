@@ -56,11 +56,23 @@ export function WidgetSlot({ widget, zoneWidth, printMode, onResize, onDragLock,
     })
   }, [])
 
+  // Un enregistrement en cours ne doit pas effacer la taille d'un glissement plus récent (le même bord saisi
+  // de nouveau avant la fin de la relecture) : chaque mise à jour en direct ou nouvel enregistrement
+  // invalide les précédents.
+  const generation = useRef({ width: 0, height: 0 })
+  const setLiveDim = useCallback((kind: 'width' | 'height', value: number) => {
+    generation.current[kind]++
+    setDim(kind, value)
+  }, [setDim])
+
   /** Fin d'un glissement : enregistre, puis rend la main à la valeur enregistrée. */
   const commit = useCallback((kind: 'width' | 'height', value: number | null) => {
     if (value === null || !onResize) return setDim(kind, null)
+    const mine = ++generation.current[kind]
     setDim(kind, value)
-    onResize({ [kind]: value }).catch(() => { /* l'erreur est affichée par la page */ }).finally(() => setDim(kind, null))
+    onResize({ [kind]: value })
+      .catch(() => { /* l'erreur est affichée par la page */ })
+      .finally(() => { if (generation.current[kind] === mine) setDim(kind, null) })
   }, [onResize, setDim])
 
   const slotRect = () => slot.current?.getBoundingClientRect()
@@ -78,7 +90,7 @@ export function WidgetSlot({ widget, zoneWidth, printMode, onResize, onDragLock,
               testId="widget-resize-w"
               getStartSize={() => slotRect()?.width ?? widgetRequestedWidth(widget)}
               getBounds={() => [clampWidgetWidth(0, zoneWidth), clampWidgetWidth(Number.MAX_SAFE_INTEGER, zoneWidth)]}
-              onLive={(w) => setDim('width', w)}
+              onLive={(w) => setLiveDim('width', w)}
               onEnd={(w) => commit('width', w)}
               onReset={() => { onResize({ width: null }).catch(() => { /* idem */ }) }}
               onPointerInside={onDragLock}
@@ -90,7 +102,7 @@ export function WidgetSlot({ widget, zoneWidth, printMode, onResize, onDragLock,
             testId="widget-resize-h"
             getStartSize={() => slotRect()?.height ?? height}
             getBounds={() => [WIDGET_MIN_HEIGHT, WIDGET_MAX_HEIGHT]}
-            onLive={(h) => setDim('height', clampWidgetHeight(h))}
+            onLive={(h) => setLiveDim('height', clampWidgetHeight(h))}
             onEnd={(h) => commit('height', h)}
             onReset={() => { onResize({ height: null }).catch(() => { /* idem */ }) }}
             onPointerInside={onDragLock}

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Dashboard, Widget } from '@polenta/types'
+import { DASHBOARD_REF_WIDTH, WIDGET_MAX_HEIGHT, WIDGET_MIN_HEIGHT, WIDGET_MIN_WIDTH } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
 import { isPrivateScopeId } from '../../main/services/id-scope.util'
@@ -36,6 +37,9 @@ import {
 
 const scopeSchema = z.enum(['shared', 'private'])
 const widgetSizeSchema = z.enum(['sm', 'md', 'lg'])
+// GH435 — dimensions en px, mêmes bornes que l'application (les bornes sont dans `@polenta/types`).
+const widgetWidthSchema = z.number().int().min(WIDGET_MIN_WIDTH).max(DASHBOARD_REF_WIDTH)
+const widgetHeightSchema = z.number().int().min(WIDGET_MIN_HEIGHT).max(WIDGET_MAX_HEIGHT)
 
 const listDashboardsInput = {
   scope: scopeSchema.optional().describe('ne garder que ce scope'),
@@ -66,6 +70,8 @@ const addWidgetInput = {
   spec: z.string().optional().describe('spec Vega-Lite (texte JSON, "data": { "name": "rows" }) — requise sans template'),
   template: templateSchema.optional().describe('modèle de widget + paramètres (cf. list_templates) : transformation et spec générées'),
   size: widgetSizeSchema.optional().default('md'),
+  width: widgetWidthSchema.optional().describe(`largeur en px (${WIDGET_MIN_WIDTH} à ${DASHBOARD_REF_WIDTH}) ; défaut : celle de size (sm 264, md 544, lg 1104)`),
+  height: widgetHeightSchema.optional().describe(`hauteur en px (${WIDGET_MIN_HEIGHT} à ${WIDGET_MAX_HEIGHT}) ; défaut : 256, ou ajustée au contenu pour un tableau`),
   position: z.number().int().min(0).optional().describe('index dans l’ordre des widgets, défaut = à la fin'),
   dryRun: z.boolean().optional().default(true),
 }
@@ -79,6 +85,8 @@ const updateWidgetInput = {
   spec: z.string().optional().describe('nouvelle spec Vega-Lite — détache le widget de son modèle'),
   template: templateSchema.optional().describe('nouveau modèle / paramètres : code régénéré'),
   size: widgetSizeSchema.optional(),
+  width: widgetWidthSchema.nullable().optional().describe('largeur en px ; null : retour à la largeur de size'),
+  height: widgetHeightSchema.nullable().optional().describe('hauteur en px ; null : retour au défaut (256, ou ajustée au contenu pour un tableau)'),
   dryRun: z.boolean().optional().default(true),
 }
 
@@ -104,6 +112,14 @@ function presentDashboard(d: Dashboard, queryTitles?: Map<string, string>) {
       queryTitles ? { ...w, queryTitle: queryTitles.get(w.queryId) ?? null } : w,
     ),
   }
+}
+
+/** GH435 — dimensions d'un widget après `update_widget` : un nombre pose, `null` retire, absent conserve. */
+function applyDims(widget: Widget, width: number | null | undefined, height: number | null | undefined): Widget {
+  const { width: w0, height: h0, ...rest } = widget
+  const w = width === undefined ? w0 : width ?? undefined
+  const h = height === undefined ? h0 : height ?? undefined
+  return { ...rest, ...(w !== undefined ? { width: w } : {}), ...(h !== undefined ? { height: h } : {}) }
 }
 
 /** Ordre après insertion de `id` à `position` (fin si absente ou au-delà). */
@@ -180,7 +196,8 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
       description:
         'Liste les dashboards de la vue Suivi (partagés ; + privés de --user si fourni), widgets ' +
         "dans l'ordre d'affichage. Chaque widget : id, title, queryId, queryTitle, transform (JS), spec " +
-        "(Vega-Lite), template (modèle d'origine), state.customized, size (sm|md|lg).",
+        "(Vega-Lite), template (modèle d'origine), state.customized, size (sm|md|lg), width / height (px, " +
+        'présents seulement s’ils ont été réglés).',
       inputSchema: listDashboardsInput,
     },
     async ({ scope }) => {
@@ -283,10 +300,11 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
         'facultative + une spec Vega-Lite (cf. get_data_contract : agréger dans la transformation en faisant ' +
         "l'union des _ids, jamais avec aggregate dans la spec ; données = { \"name\": \"rows\" }). dryRun " +
         '(défaut true) : valide la spec, EXÉCUTE requête + transformation et retourne un aperçu SANS RIEN ÉCRIRE. ' +
-        "Un dashboard partagé n'accepte pas de requête privée.",
+        "Un dashboard partagé n'accepte pas de requête privée. Taille : size (sm / md / lg) ou dimensions " +
+        'width (240 à 1104 px) et height (160 à 720 px) ; un tableau sans height s’ajuste à son nombre de lignes.',
       inputSchema: addWidgetInput,
     },
-    async ({ dashboardId, title, queryId, transform, spec, template, size, position, dryRun }) => {
+    async ({ dashboardId, title, queryId, transform, spec, template, size, width, height, position, dryRun }) => {
       const loaded = await loadWritableDashboard(c, dashboardId)
       if ('error' in loaded) return loaded.error
       const { dashboard } = loaded
@@ -296,9 +314,10 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
       if ('error' in code) return code.error
       const checked = await checkWidget(c, dashboard, { queryId, ...code })
       if ('error' in checked) return checked.error
+      const dims = { ...(width !== undefined ? { width } : {}), ...(height !== undefined ? { height } : {}) }
 
       if (dryRun) {
-        const widget: Widget = { id: PENDING_ID, title: cleanTitle, queryId, size, ...code, state: { customized: !template } }
+        const widget: Widget = { id: PENDING_ID, title: cleanTitle, queryId, size, ...dims, ...code, state: { customized: !template } }
         const next: Dashboard = {
           ...dashboard,
           widgets: [...dashboard.widgets, widget],
@@ -309,7 +328,7 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
 
       const { username } = resolveUser(c)
       let updated = await c.dashboards.addWidget(c.repoPath, username, dashboardId, {
-        title: cleanTitle, queryId, size, ...(template ? { template } : code),
+        title: cleanTitle, queryId, size, ...dims, ...(template ? { template } : code),
       })
       const widget = updated.widgets[updated.widgets.length - 1]
       const order = insertAt(updated.widgetOrder, widget.id, position)
@@ -325,12 +344,13 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
     {
       title: 'Update widget',
       description:
-        'Modifie un widget (titre, requête, taille, transformation / spec, ou modèle + paramètres). Une ' +
+        'Modifie un widget (titre, requête, taille, dimensions width / height — null les remet au défaut —, ' +
+        'transformation / spec, ou modèle + paramètres). Une ' +
         'transformation ou une spec fournie détache le widget de son modèle. Contenu modifié : mêmes contrôles ' +
         "qu'add_widget. dryRun (défaut true) : aperçu SANS RIEN ÉCRIRE.",
       inputSchema: updateWidgetInput,
     },
-    async ({ dashboardId, widgetId, title, queryId, transform, spec, template, size, dryRun }) => {
+    async ({ dashboardId, widgetId, title, queryId, transform, spec, template, size, width, height, dryRun }) => {
       const loaded = await loadWritableDashboard(c, dashboardId)
       if ('error' in loaded) return loaded.error
       const { dashboard } = loaded
@@ -352,15 +372,15 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
         if (spec !== undefined) nextCode = { ...nextCode, spec }
       }
       const { transform: _old, ...rest } = existing
-      const merged: Widget = {
+      const merged: Widget = applyDims({
         ...rest,
         ...(cleanTitle !== undefined ? { title: cleanTitle } : {}),
         ...(queryId !== undefined ? { queryId } : {}),
         ...(size !== undefined ? { size } : {}),
         ...nextCode,
-      }
+      }, width, height)
 
-      // Titre / taille seuls : contenu inchangé, pas de revalidation.
+      // Titre / taille / dimensions seuls : contenu inchangé, pas de revalidation.
       const touchesContent = queryId !== undefined || transform !== undefined || spec !== undefined || template !== undefined
       let preview: unknown = null
       let warnings: SuiviWarning[] = []
@@ -378,6 +398,8 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
         ...(cleanTitle !== undefined ? { title: cleanTitle } : {}),
         ...(queryId !== undefined ? { queryId } : {}),
         ...(size !== undefined ? { size } : {}),
+        ...(width !== undefined ? { width } : {}),
+        ...(height !== undefined ? { height } : {}),
         ...(template ? { template } : {}),
         ...(!template && transform !== undefined ? { transform } : {}),
         ...(!template && spec !== undefined ? { spec } : {}),

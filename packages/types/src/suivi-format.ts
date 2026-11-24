@@ -4,6 +4,7 @@
 
 import { SUIVI_FORMAT_VERSION } from './dashboard'
 import type { WidgetSize } from './dashboard'
+import { readWidgetDim } from './widget-size'
 import { findQueryTemplate, findWidgetTemplate } from './suivi-templates'
 import type { TemplateRef, WidgetCode } from './suivi-templates'
 import type { QueryParameterDef } from './suivi-params'
@@ -29,6 +30,9 @@ export interface StoredWidget {
   title: string
   queryId: string
   size: WidgetSize
+  /** GH435 — dimensions réglées à la souris (px) ; omises au défaut. */
+  width?: number
+  height?: number
   template?: TemplateRef
   transform?: string
   spec?: string
@@ -68,6 +72,8 @@ export interface ReadWidget {
   title: string
   queryId: string
   size: WidgetSize
+  width?: number
+  height?: number
   transform?: string
   spec: string
   template?: { id: string; version: number; params: Record<string, unknown>; hash?: string }
@@ -179,8 +185,13 @@ function readWidget(raw: Raw, legacy: boolean, code?: Partial<WidgetCode>): Read
     return { ...base, spec: '{}', legacyFormat: true }
   }
   const transform = code?.transform ?? (typeof raw.transform === 'string' ? raw.transform : undefined)
+  // GH435 — dimensions : bornées à la lecture, ignorées si non numériques.
+  const width = readWidgetDim(raw.width, 'width')
+  const height = readWidgetDim(raw.height, 'height')
   return {
     ...base,
+    ...(width !== undefined ? { width } : {}),
+    ...(height !== undefined ? { height } : {}),
     ...(transform !== undefined ? { transform } : {}),
     spec: code?.spec ?? str(raw.spec, '{}'),
     ...(raw.template ? { template: raw.template as ReadWidget['template'] } : {}),

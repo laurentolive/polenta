@@ -262,7 +262,9 @@ Tools disponibles :
   \`add_widget\` / \`update_widget\` / \`delete_widget\` / \`reorder_widgets\` — dashboards. Un widget
   référence une requête sauvegardée et porte soit \`template: { id, params }\` (paramètres = colonnes
   du résultat), soit \`transform\` (JS facultatif, \`(rows, polenta) => rows\`) + \`spec\` Vega-Lite
-  (\`"data": { "name": "rows" }\`, pas d'\`aggregate\`). Toutes les écritures ont \`dryRun\` par
+  (\`"data": { "name": "rows" }\`, pas d'\`aggregate\`). Taille : \`size\` (\`sm\` / \`md\` / \`lg\`) ou
+  dimensions en px \`width\` (240 à 1104) et \`height\` (160 à 720) ; un widget tableau sans \`height\`
+  s'ajuste à son nombre de lignes. Toutes les écritures ont \`dryRun\` par
   défaut. Les objets **privés** ne sont accessibles que si le serveur est lancé avec
   \`--user <login>\` (ou \`POLENTA_USER\`) ; sinon seul le scope partagé est visible et modifiable.
 - \`list_library\` / \`read_library_module\` / \`write_library_module\` — bibliothèque JS du projet

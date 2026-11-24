@@ -91,8 +91,14 @@ export function originalRow(datum: Record<string, unknown>, rows: readonly Recor
   return found
 }
 
-/** `config` Vega-Lite dérivée des jetons du thème courant. */
-export function themeConfig(resolve: (name: string) => string | null = tokenColor): Record<string, unknown> {
+/** Taille de police (px) des axes et légendes à l'écran. */
+export const CHART_FONT_PX = 10
+
+/**
+ * `config` Vega-Lite dérivée des jetons du thème courant. `minFont` : taille de police des axes et légendes
+ * (GH435 : relevée à l'impression pour rester lisible une fois l'échelle appliquée).
+ */
+export function themeConfig(resolve: (name: string) => string | null = tokenColor, minFont: number = CHART_FONT_PX): Record<string, unknown> {
   const c = (name: string, fallback: string) => resolve(name) ?? fallback
   const ink = c('ink', '#0f172a')
   const ink2 = c('activity-fg', '#475569')
@@ -102,8 +108,8 @@ export function themeConfig(resolve: (name: string) => string | null = tokenColo
     background: 'transparent',
     font: 'system-ui, sans-serif',
     view: { stroke: 'transparent' },
-    axis: { domainColor: edge, gridColor: edge, tickColor: edge, labelColor: ink2, titleColor: ink2, labelFontSize: 10, titleFontSize: 10 },
-    legend: { labelColor: ink, titleColor: ink2, labelFontSize: 10, titleFontSize: 10, symbolType: 'square' },
+    axis: { domainColor: edge, gridColor: edge, tickColor: edge, labelColor: ink2, titleColor: ink2, labelFontSize: minFont, titleFontSize: minFont },
+    legend: { labelColor: ink, titleColor: ink2, labelFontSize: minFont, titleFontSize: minFont, symbolType: 'square' },
     title: { color: ink },
     text: { color: ink },
     range: { category: series },

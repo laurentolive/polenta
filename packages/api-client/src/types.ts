@@ -186,6 +186,9 @@ export interface AddWidgetDto {
   title: string
   queryId: string
   size: WidgetSize
+  /** GH435 — dimensions en px (bornées par le service) ; absentes : défaut du préréglage. */
+  width?: number | null
+  height?: number | null
   transform?: string
   spec?: string
   template?: TemplateInput
@@ -195,6 +198,9 @@ export interface UpdateWidgetDto {
   title?: string
   queryId?: string
   size?: WidgetSize
+  /** GH435 — un nombre pose la dimension, `null` la retire (retour au défaut), absent la conserve. */
+  width?: number | null
+  height?: number | null
   transform?: string | null
   spec?: string
   template?: TemplateInput | null

@@ -1,8 +1,9 @@
 /**
  * DashboardGrid — grid of widget cards for the Dashboard view (T77 sprint 2).
  *
- * Predefined sizes only (sm/md/lg map to a fixed column span on a 4-column grid) —
- * no free pixel resize (explicitly hors scope, T77.md). Reorderable by native HTML5
+ * GH435 — cards flow left to right and wrap (`flex-wrap`); each widget carries its own width and height
+ * in px (defaults: its sm/md/lg preset, 256 px high), adjustable with the handles of `WidgetSlot` and
+ * bounded by the zone width. Reorderable by native HTML5
  * drag & drop, same technique as `DashboardPanel.tsx`/`ElementTree` (no new DnD lib),
  * adapted for a wrapping grid: drop position is decided from the cursor's horizontal
  * half of the target card rather than vertical, since cards flow left-to-right.
@@ -14,11 +15,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
 import { AlertTriangle, Loader2, Pencil, SlidersHorizontal, Trash2 } from 'lucide-react'
-import type { Dashboard, SavedQuery, Widget, WidgetSize } from '@polenta/types'
+import type { Dashboard, SavedQuery, Widget } from '@polenta/types'
+import { DASHBOARD_REF_WIDTH, WIDGET_MAX_HEIGHT, WIDGET_MIN_HEIGHT } from '@polenta/types'
 import { useWidgetRun } from '../../hooks/useScriptRun'
+import { useElementSize } from '../../hooks/useElementSize'
 import { DrillDownModal } from './DrillDownModal'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
+import { WidgetSlot, type WidgetSizePatch } from './WidgetSlot'
 import { orderItems } from '../sidebar/ReorderableSidebarSection'
 import { WidgetParamSelectors } from './ParamBar'
 import type { WidgetParams } from '../../hooks/useDashboardParams'
@@ -44,12 +48,9 @@ interface Props {
   paramOptions?: ParamOptions
   /** GH93 — choix de l'utilisateur pas encore lus : les widgets attendent (une seule exécution). */
   paramsReady?: boolean
-}
-
-const SIZE_SPAN: Record<WidgetSize, string> = {
-  sm: 'col-span-1',
-  md: 'col-span-2',
-  lg: 'col-span-4',
+  /** GH435 — enregistre une dimension réglée à la souris (`null` : retour au défaut). La promesse se
+   *  résout une fois le dashboard relu, ou est rejetée si l'écriture échoue. Absent : pas de poignées. */
+  onResizeWidget?: (widgetId: string, patch: WidgetSizePatch) => Promise<void>
 }
 
 function WidgetCard({
@@ -68,6 +69,8 @@ function WidgetCard({
   paramOptions = {},
   paramsReady = true,
   onDragLock,
+  height,
+  resizing = false,
 }: {
   widget: Widget
   dashboardId: string
@@ -86,6 +89,11 @@ function WidgetCard({
   paramsReady?: boolean
   /** Pointeur sur les sélecteurs : glisser de la carte désactivé. */
   onDragLock?: (locked: boolean) => void
+  /** GH435 — hauteur de la carte (px) : glissement en cours, sinon hauteur enregistrée ou par défaut ;
+   *  `undefined` : hauteur automatique (tableau sans hauteur enregistrée). */
+  height: number | undefined
+  /** GH435 — une poignée de cette carte est en cours de glissement. */
+  resizing?: boolean
 }) {
   const { t } = useTranslation()
   const params = widgetParams?.params
@@ -104,10 +112,21 @@ function WidgetCard({
   const interactive = !printMode && !!query
 
   return (
-    <div className="bg-surface border border-edge rounded-lg flex flex-col overflow-hidden h-64" data-testid="widget-card">
+    <div
+      className={`bg-surface border rounded-lg flex flex-col overflow-hidden ${resizing ? 'border-status-info-solid' : 'border-edge'}`}
+      // GH435 — sans hauteur : tableau ajusté à son contenu, entre le minimum et le maximum.
+      style={height === undefined ? { minHeight: WIDGET_MIN_HEIGHT, maxHeight: WIDGET_MAX_HEIGHT } : { height }}
+      data-testid="widget-card"
+    >
       <div className="border-b border-edge-subtle shrink-0">
       <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <p className="text-xs font-medium text-ink truncate">{widget.title}</p>
+        <p
+          className="text-xs font-medium text-ink truncate"
+          // Infobulle seulement si le titre est réellement tronqué (jamais une bulle pour rien).
+          onMouseEnter={(e) => { e.currentTarget.title = e.currentTarget.scrollWidth > e.currentTarget.clientWidth ? widget.title : '' }}
+        >
+          {widget.title}
+        </p>
         {!printMode && !readOnly && (
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -143,23 +162,23 @@ function WidgetCard({
         />
       )}
       </div>
-      <div className="flex-1 min-h-0 p-2" data-testid="widget-body">
+      <div className="flex flex-1 min-h-0 flex-col p-2" data-testid="widget-body">
         {!query ? (
-          <div className="flex items-center justify-center h-full gap-2 text-xs text-ink-3 italic px-4 text-center">
+          <div className="flex flex-1 items-center justify-center gap-2 text-xs text-ink-3 italic px-4 text-center">
             <AlertTriangle size={13} className="shrink-0" />
             {t('dashboardPage.queryNotFound')}
           </div>
         ) : waiting ? (
-          <div className="flex items-center justify-center h-full gap-2 text-xs text-ink-3 italic px-4 text-center" data-testid="widget-param-missing">
+          <div className="flex flex-1 items-center justify-center gap-2 text-xs text-ink-3 italic px-4 text-center" data-testid="widget-param-missing">
             <SlidersHorizontal size={13} className="shrink-0" />
             {t('suiviParams.choose', { label: missing.join(', ') })}
           </div>
         ) : isLoading || !paramsReady ? (
-          <div className="flex items-center justify-center h-full text-ink-3">
+          <div className="flex flex-1 items-center justify-center text-ink-3">
             <Loader2 size={16} className="animate-spin" />
           </div>
         ) : error ? (
-          <div className="flex items-center justify-center h-full text-xs text-status-danger italic px-4 text-center" data-testid="widget-error">
+          <div className="flex flex-1 items-center justify-center text-xs text-status-danger italic px-4 text-center" data-testid="widget-error">
             {error instanceof Error ? error.message : t('dashboard.widgetModal.queryExecutionError')}
           </div>
         ) : (
@@ -187,10 +206,14 @@ function WidgetCard({
   )
 }
 
-export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir, username, onReorder, onDeleteWidget, onEditWidget, printMode = false, onWidgetRendered, paramsOf, paramOptions, paramsReady = true }: Props) {
+export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir, username, onReorder, onDeleteWidget, onEditWidget, printMode = false, onWidgetRendered, paramsOf, paramOptions, paramsReady = true, onResizeWidget }: Props) {
   // GH74 — réordonner : jamais en impression ni sur un dashboard en lecture seule.
   const editable = !printMode && !dashboard.state.readOnly
   const { t } = useTranslation()
+  // GH435 — largeur de la zone : borne la largeur des cartes. Avant la première mesure (et à l'impression,
+  // qui ne dépend jamais de la fenêtre) : la largeur de référence.
+  const [gridRef, zone] = useElementSize<HTMLDivElement>()
+  const zoneWidth = printMode ? DASHBOARD_REF_WIDTH : zone?.width ?? DASHBOARD_REF_WIDTH
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
@@ -260,43 +283,64 @@ export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir,
   return (
     <>
       <div ref={dragImageRef} className="fixed -top-96 left-0 w-1 h-1 opacity-0" />
-      <div className="grid grid-cols-4 gap-4">
-        {ordered.map((widget) => (
-          <div key={widget.id} className={`relative ${SIZE_SPAN[widget.size]}`}>
-            {dropTarget?.id === widget.id && dropTarget.position === 'before' && (
-              <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-status-info-solid z-10 pointer-events-none" />
-            )}
-            <div
-              draggable={editable && dragLockedId !== widget.id}
-              onDragStart={editable ? (e) => handleDragStart(e, widget.id) : undefined}
-              onDragOver={editable ? (e) => handleDragOver(e, widget.id) : undefined}
-              onDrop={editable ? handleDrop : undefined}
-              onDragEnd={editable ? handleDragEnd : undefined}
-              className={draggingId === widget.id ? 'opacity-40' : ''}
+      <div
+        ref={gridRef}
+        className="flex flex-wrap items-start gap-4"
+        style={printMode ? { width: DASHBOARD_REF_WIDTH } : undefined}
+        data-testid="dashboard-grid"
+      >
+        {ordered.map((widget) => {
+          const lockDrag = (locked: boolean) => setDragLockedId((prev) => (locked ? widget.id : prev === widget.id ? null : prev))
+          return (
+            <WidgetSlot
+              key={widget.id}
+              widget={widget}
+              zoneWidth={zoneWidth}
+              printMode={printMode}
+              onResize={editable && onResizeWidget ? (patch) => onResizeWidget(widget.id, patch) : undefined}
+              onDragLock={lockDrag}
             >
-              <WidgetCard
-                widget={widget}
-                dashboardId={dashboard.id}
-                savedQueries={savedQueries}
-                repoPath={repoPath}
-                workspaceDir={workspaceDir}
-                username={username}
-                onRendered={onWidgetRendered ? () => onWidgetRendered(widget.id) : undefined}
-                onRequestEdit={() => onEditWidget(widget)}
-                onRequestDelete={() => setPendingDeleteId(widget.id)}
-                printMode={printMode}
-                readOnly={!!dashboard.state.readOnly}
-                widgetParams={paramsOf?.(widget)}
-                paramOptions={paramOptions}
-                paramsReady={paramsReady}
-                onDragLock={(locked) => setDragLockedId((prev) => (locked ? widget.id : prev === widget.id ? null : prev))}
-              />
-            </div>
-            {dropTarget?.id === widget.id && dropTarget.position === 'after' && (
-              <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-status-info-solid z-10 pointer-events-none" />
-            )}
-          </div>
-        ))}
+              {({ height, resizing }) => (
+                <>
+                  {dropTarget?.id === widget.id && dropTarget.position === 'before' && (
+                    <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-status-info-solid z-10 pointer-events-none" />
+                  )}
+                  <div
+                    draggable={editable && dragLockedId !== widget.id}
+                    onDragStart={editable ? (e) => handleDragStart(e, widget.id) : undefined}
+                    onDragOver={editable ? (e) => handleDragOver(e, widget.id) : undefined}
+                    onDrop={editable ? handleDrop : undefined}
+                    onDragEnd={editable ? handleDragEnd : undefined}
+                    className={draggingId === widget.id ? 'opacity-40' : ''}
+                  >
+                    <WidgetCard
+                      widget={widget}
+                      dashboardId={dashboard.id}
+                      savedQueries={savedQueries}
+                      repoPath={repoPath}
+                      workspaceDir={workspaceDir}
+                      username={username}
+                      onRendered={onWidgetRendered ? () => onWidgetRendered(widget.id) : undefined}
+                      onRequestEdit={() => onEditWidget(widget)}
+                      onRequestDelete={() => setPendingDeleteId(widget.id)}
+                      printMode={printMode}
+                      readOnly={!!dashboard.state.readOnly}
+                      widgetParams={paramsOf?.(widget)}
+                      paramOptions={paramOptions}
+                      paramsReady={paramsReady}
+                      onDragLock={lockDrag}
+                      height={height}
+                      resizing={resizing}
+                    />
+                  </div>
+                  {dropTarget?.id === widget.id && dropTarget.position === 'after' && (
+                    <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-status-info-solid z-10 pointer-events-none" />
+                  )}
+                </>
+              )}
+            </WidgetSlot>
+          )
+        })}
       </div>
 
       {pendingDeleteId && (

@@ -522,8 +522,8 @@ opération privée → `PRIVATE_SCOPE_UNAVAILABLE`. Un id partagé hors format `
 | `delete_query` | `{ id, dryRun? }` | `QUERY_IN_USE` + widgets dépendants |
 | `list_dashboards` | `{ scope? }` | widgets dans l'ordre, `template`, `state` ; **ne déclenche pas le seed** |
 | `create_dashboard` / `update_dashboard` / `delete_dashboard` | — | créé vide ; renommage seul ; requêtes conservées à la suppression |
-| `add_widget` | `{ dashboardId, title, queryId, template? \| (transform?, spec), size='md', position?, dryRun? }` | règles widget ci-dessous ; `position` = index dans `widgetOrder` |
-| `update_widget` | `{ dashboardId, widgetId, title?, queryId?, template? \| transform? / spec?, size?, dryRun? }` | code fourni → widget personnalisé |
+| `add_widget` | `{ dashboardId, title, queryId, template? \| (transform?, spec), size='md', width?, height?, position?, dryRun? }` | règles widget ci-dessous ; `position` = index dans `widgetOrder` ; GH435 : `width` entier 240 à 1104 px et `height` entier 160 à 720 px (hors bornes ou non entier : refus du schéma ; absents : largeur du préréglage `size`, hauteur 256 px, ou tableau ajusté à son contenu) |
+| `update_widget` | `{ dashboardId, widgetId, title?, queryId?, template? \| transform? / spec?, size?, width?, height?, dryRun? }` | code fourni → widget personnalisé ; GH435 : `width` / `height` comme `add_widget`, `null` retire la dimension (retour au défaut) ; l'aperçu `dryRun` et l'écriture bornent de la même façon (`clampWidgetWidth` / `clampWidgetHeight`) ; `list_dashboards` renvoie `width` / `height` quand ils sont réglés |
 | `delete_widget` / `reorder_widgets` | — | `reorder_widgets` : permutation exacte ; `delete_widget` retire aussi les valeurs de paramètres choisies pour ce widget dans le `.pref` de l'utilisateur (GH125) ; aucun tool ne lit ni n'écrit ces valeurs |
 
 **Règles widget** (dans l'ordre) : `DASHBOARD_NOT_FOUND` / `SUIVI_READ_ONLY` → `INVALID_INPUT`

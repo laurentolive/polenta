@@ -1,5 +1,5 @@
 import type { Dashboard, GraphParamValue, QueryParameterKind, QueryScope, ReadDashboard, ReadWidget, ScopeWidgetRef, StoredDashboard, StoredWidget, TemplateRef, Widget, WidgetCode, WidgetParamValues, WidgetSize } from '@polenta/types'
-import { normalizeParamValue, QUERY_PARAMETER_KINDS, readDashboardRecord, SUIVI_FORMAT_VERSION, widgetCodeForHash } from '@polenta/types'
+import { clampWidgetHeight, clampWidgetWidth, normalizeParamValue, QUERY_PARAMETER_KINDS, readDashboardRecord, SUIVI_FORMAT_VERSION, widgetCodeForHash } from '@polenta/types'
 import type { GitService } from './git.service'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
 import { assertScope, generatePrivateId, isPrivateScopeId } from './id-scope.util'
@@ -25,6 +25,9 @@ export interface AddWidgetDto {
   title: string
   queryId: string
   size: WidgetSize
+  /** GH435 — dimensions en px, bornées (240 à 1104, 160 à 720) ; absentes : défaut du préréglage. */
+  width?: number | null
+  height?: number | null
   /** Code fourni (widget personnalisé)… */
   transform?: string
   spec?: string
@@ -36,6 +39,9 @@ export interface UpdateWidgetDto {
   title?: string
   queryId?: string
   size?: WidgetSize
+  /** GH435 — dimensions : un nombre (borné) les pose, `null` retire la clé (retour au défaut), absent conserve. */
+  width?: number | null
+  height?: number | null
   /** Code modifié : la référence de modèle est conservée (widget détaché si le code diffère).
    *  `transform: null` retire la transformation. */
   transform?: string | null
@@ -64,12 +70,38 @@ interface PrefStore {
   [key: string]: unknown
 }
 
+/**
+ * GH435 — dimension reçue de l'IPC ou du MCP : `undefined` (conserver) et `null` (retirer) tels quels,
+ * un nombre fini est arrondi et borné, tout le reste est refusé (jamais écrit dans un fichier).
+ */
+function checkedDim(value: unknown, kind: 'width' | 'height'): number | null | undefined {
+  if (value === undefined || value === null) return value
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${kind === 'width' ? 'Largeur' : 'Hauteur'} de widget invalide : ${String(value)}`)
+  }
+  return kind === 'width' ? clampWidgetWidth(value) : clampWidgetHeight(value)
+}
+
+/** Widget avec les dimensions du DTO appliquées (`null` retire la clé). */
+function withDims<T extends { width?: number; height?: number }>(widget: T, dto: { width?: unknown; height?: unknown }): T {
+  let out = widget
+  for (const kind of ['width', 'height'] as const) {
+    const value = checkedDim(dto[kind], kind)
+    if (value === undefined) continue
+    const { [kind]: _old, ...rest } = out
+    out = (value === null ? rest : { ...rest, [kind]: value }) as T
+  }
+  return out
+}
+
 /** Dashboard en cours de modification (code des widgets inclus, sans état calculé). */
 interface DraftWidget {
   id: string
   title: string
   queryId: string
   size: WidgetSize
+  width?: number
+  height?: number
   transform?: string
   spec: string
   template?: TemplateRef
@@ -176,6 +208,8 @@ export class DashboardsService {
       title: w.title,
       queryId: w.queryId,
       size: w.size,
+      ...(w.width !== undefined ? { width: w.width } : {}),
+      ...(w.height !== undefined ? { height: w.height } : {}),
       ...(w.transform !== undefined ? { transform: w.transform } : {}),
       spec: w.spec,
       ...(template ? { template } : {}),
@@ -255,7 +289,7 @@ export class DashboardsService {
 
   async addWidget(repoPath: string, username: string, dashboardId: string, dto: AddWidgetDto): Promise<Dashboard> {
     return this.mutate(repoPath, username, dashboardId, (d, scope) => {
-      const widget: DraftWidget = { id: this.generateWidgetId(), title: dto.title, queryId: dto.queryId, size: dto.size, ...this.resolveCode(dto) }
+      const widget = withDims<DraftWidget>({ id: this.generateWidgetId(), title: dto.title, queryId: dto.queryId, size: dto.size, ...this.resolveCode(dto) }, dto)
       if (scope === 'shared') this.assertWidgetsShareable([widget])
       return { ...d, widgets: [...d.widgets, widget], widgetOrder: [...d.widgetOrder, widget.id] }
     })
@@ -271,6 +305,7 @@ export class DashboardsService {
           ...(dto.queryId !== undefined ? { queryId: dto.queryId } : {}),
           ...(dto.size !== undefined ? { size: dto.size } : {}),
         }
+        next = withDims(next, dto)
         if (dto.template === null) {
           const { template: _t, ...rest } = next
           next = rest
@@ -390,6 +425,8 @@ export class DashboardsService {
       createdAt: d.createdAt,
       widgets: d.widgets.map((w) => ({
         id: w.id, title: w.title, queryId: w.queryId, size: w.size,
+        ...(w.width !== undefined ? { width: w.width } : {}),
+        ...(w.height !== undefined ? { height: w.height } : {}),
         ...(w.transform !== undefined ? { transform: w.transform } : {}),
         spec: w.spec,
         ...(w.template ? { template: w.template } : {}),
@@ -398,7 +435,12 @@ export class DashboardsService {
   }
 
   private storedWidget(w: DraftWidget): StoredWidget {
-    return { id: w.id, title: w.title, queryId: w.queryId, size: w.size, ...(w.template ? { template: w.template } : {}) }
+    return {
+      id: w.id, title: w.title, queryId: w.queryId, size: w.size,
+      ...(w.width !== undefined ? { width: w.width } : {}),
+      ...(w.height !== undefined ? { height: w.height } : {}),
+      ...(w.template ? { template: w.template } : {}),
+    }
   }
 
   private stored(d: Draft): StoredDashboard {

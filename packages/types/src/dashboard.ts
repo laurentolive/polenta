@@ -121,6 +121,10 @@ export interface Widget {
   title: string
   queryId: string
   size: WidgetSize
+  /** GH435 — largeur demandée (px, 240 à 1104) ; absente : celle du préréglage `size`. */
+  width?: number
+  /** GH435 — hauteur (px, 160 à 720) ; absente : 256, ou ajustée au contenu pour un tableau. */
+  height?: number
   /** Transformation JS facultative (`export default (rows, polenta) => rows`). */
   transform?: string
   /** Spec Vega-Lite (texte JSON, conservé tel quel). */

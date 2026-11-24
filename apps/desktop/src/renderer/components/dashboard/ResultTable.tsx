@@ -117,7 +117,7 @@ export function ResultTable({ result, onRowClick, compact = false, print = false
   }
 
   return (
-    <div className={`flex flex-col min-h-0 ${compact ? 'h-full' : 'max-h-[60vh]'}`} data-testid="query-result">
+    <div className={`flex flex-col min-h-0 ${compact ? 'flex-1' : 'max-h-[60vh]'}`} data-testid="query-result">
       <DataGrid
         gridId="query-result"
         title={title ?? t('dashboardPage.resultTable.gridTitle')}

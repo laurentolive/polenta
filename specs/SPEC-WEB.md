@@ -141,7 +141,7 @@ apps/desktop/
   (`http://127.0.0.1:<port>/?__print=<route>&…` si le serveur écoute sur toutes les interfaces) :
   mêmes routes `/print/*` et même code React que le desktop. Le bridge appelle
   `__polentaPrintReady` / `__polentaDrawioSnapshotReady`, exposées par la page headless. PDF :
-  `page.pdf` A4 ; diagrammes d'un export par gabarit : captures à l'échelle 2, **par lots de 20**
+  `page.pdf` A4 (GH435 : pour un dashboard, `scale` = 0,65 et marges de 10 mm, identiques au desktop — `PDF_LAYOUT_BY_KIND`, `playwrightPdfLayout`) ; diagrammes d'un export par gabarit : captures à l'échelle 2, **par lots de 20**
   (la liste voyage dans l'URL). Délais : PDF 20 s ; diagrammes 30 s + 12 s par diagramme et par lot
   (les diagrammes non rendus retombent sur le repli texte). `POLENTA_WEB_PRINT=false` désactive
   l'impression (message explicite).

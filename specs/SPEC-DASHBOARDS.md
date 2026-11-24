@@ -4,7 +4,9 @@
 > Dépend de : [SPEC-TECH-stack.md](SPEC-TECH-stack.md) §1.1/§2, [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md), [SPEC-REQ-requirements.md](SPEC-REQ-requirements.md)
 > Introduit par T77 (sprints 1–3) ; réécrit par GH74 (graphe de données JSON, scripts JS isolés, rendu Vega-Lite) ;
 > paramètres choisis à l'affichage : GH93 (§5.1) ; colonnes calculées de la Vue Système : GH70 (§5.2) ;
-> changement de portée depuis l'app, partage d'un dashboard avec ses requêtes : GH67 (§7.0b)
+> changement de portée depuis l'app, partage d'un dashboard avec ses requêtes : GH67 (§7.0b) ;
+> dimensions réglables des widgets, mise en page en flux, rendu adapté à la carte, impression à l'échelle A4 :
+> GH435 (§6.1, §7.0)
 
 ---
 
@@ -341,6 +343,47 @@ column:
   premier niveau toujours vide, déprécié ; impression : lignes texte) ; widget en attente d'un
   paramètre obligatoire : « Aucune donnée. ».
 
+### 6.1 Dimensions, mise en page, rendu adapté, impression (GH435)
+
+Constantes et règles de bornage : `packages/types/src/widget-size.ts` (une seule définition, renderer / main / MCP).
+
+- **Dimensions par widget.** `width` et `height` (px, entiers, facultatifs) portés par le widget :
+  largeur de 240 px à `W` = 1104 px (largeur de référence du dashboard = zone de la page, `max-w-6xl` −
+  `p-6`), hauteur de 160 à 720 px. Absentes : largeur du préréglage `size` (`sm` 264 · `md` 544 · `lg`
+  1104, soit ¼, ½ et pleine largeur avec 16 px d'espacement), hauteur 256 px ; un widget **tableau** natif
+  sans hauteur s'ajuste à son contenu (160 à 720 px, puis défilement dans la carte). Valeur hors bornes
+  lue d'un fichier : ramenée aux bornes ; non numérique : ignorée.
+- **Flux.** Les cartes se placent de gauche à droite et passent à la ligne (`flex-wrap`, alignées en haut) ;
+  largeur affichée = largeur demandée bornée par le minimum et la **largeur de la zone** (mesurée sur la zone
+  du dashboard, pas sur la fenêtre) ; zone de moins de 640 px : pleine largeur. La largeur enregistrée n'est
+  jamais modifiée par la taille de la fenêtre.
+- **Poignées** (`ResizeHandle`, `WidgetSlot`) : bord droit (largeur) et bord bas (hauteur), visibles en
+  permanence, bornées, une mise à jour par frame ; valeur arrondie et enregistrée au relâchement (un clic
+  sans mouvement n'écrit rien) ; la taille glissée reste appliquée jusqu'à la relecture du dashboard ; échec
+  d'écriture : retour à la taille enregistrée et message d'erreur ; double-clic : retour au défaut de cette
+  dimension. Saisir une poignée ne déplace pas la carte (verrou du glisser). Aucune poignée à l'impression ni
+  sur un dashboard en lecture seule. Dans la modale, choisir un autre préréglage `sm` / `md` / `lg` remet
+  les dimensions au défaut.
+- **Rendu adapté à la carte** (`VegaView`, `vegaFit.ts`). Le graphique occupe exactement le corps de sa
+  carte (axes et légende compris, `autosize: fit` + `contains: padding` conservés) et se redessine à chaque
+  changement de taille (`useElementSize`, au plus ~8 fois par seconde pendant un glissement) ; chaque rendu se
+  fait hors écran puis remplace le précédent d'un coup. **Second passage de mise en page** : `autosize: fit`
+  ne se calcule qu'une fois, avant l'arrivée des lignes (source `rows` vide, donc ni légende ni libellés) ;
+  `view.resize()` après l'injection des lignes place le tracé d'après la légende et les axes réels (sans lui,
+  la légende dépasse de la vue). `fitSpec` choisit la place de la légende avant la compilation : à droite si
+  elle tient dans 40 % de la largeur et dans la hauteur, sinon en bas en colonnes ; `labelLimit` selon la place,
+  `symbolLimit: 0` ; limites des libellés d'axes nominaux ; clés `legend` / `axis` de la spec de l'utilisateur
+  jamais remplacées. Un graphique dont le tracé mesure moins de 48 px, ou dont la légende dépasse encore de
+  la vue, n'est pas inséré : le widget affiche « Widget trop petit pour ce graphique — agrandissez-le »
+  (`widget-too-small`). Libellé tronqué (« … ») : infobulle avec le texte entier ; titre de widget : infobulle
+  seulement s'il est tronqué.
+- **Impression** (`/print/dashboard`). Le dashboard est mis en page à `W` (jamais réduit à la fenêtre) ; le
+  moteur d'impression applique l'échelle `PRINT_SCALE` = ⌊largeur utile A4 (210 − 2 × 10 mm = 718,1 px) /
+  `W`⌋ = 0,65 (option `scale` d'Electron `printToPDF` et de Chromium `page.pdf`), avec des marges de 10 mm
+  identiques sur le desktop et le web (`PDF_LAYOUT_BY_KIND`) ; une carte n'est jamais coupée entre deux
+  pages (`break-inside: avoid`) ; polices des graphiques relevées (13 px de mise en page = 8,45 px imprimés)
+  et texte HTML des cartes relevé par la règle CSS `.print-widgets`.
+
 ---
 
 ## 7. Stockage, seeds, maturité
@@ -350,7 +393,7 @@ column:
 | Entité | Partagé (repo) | Privé (`.{user}.pref`) |
 |---|---|---|
 | Requête | `queries/QUERY-NNNN/` : `query.yaml` (`id`, `title`, `formatVersion: 1`, `template?`, `parameters?` (GH93), `column?` (GH70, §5.2 ; `splitColumn` / `splitLabelColumn` GH126), `createdBy`, `createdAt`) + `script.js` | `savedQueries[]` (script inclus, jamais de `column`), ID `local-<ts>-<rand>` |
-| Dashboard | `dashboards/DASHBOARD-NNNN/` : `dashboard.yaml` (widgets : `id`, `title`, `queryId`, `size`, `template?`) + `<widgetId>.js` (transformation) + `<widgetId>.vl.json` (spec) | `dashboards[]` (code des widgets inclus) |
+| Dashboard | `dashboards/DASHBOARD-NNNN/` : `dashboard.yaml` (widgets : `id`, `title`, `queryId`, `size`, `width?`, `height?` (GH435, px, sans changer `formatVersion`), `template?`) + `<widgetId>.js` (transformation) + `<widgetId>.vl.json` (spec) | `dashboards[]` (code des widgets inclus) |
 | Historique de requêtes | — | `queryHistory` (texte du script) |
 | Valeurs des paramètres des widgets (GH125) | — | `suiviWidgetParamValues` (dashboard → widget → `name:kind` → valeur) ; `suiviParamValues` (GH93) abandonnée, retirée à la première écriture |
 
@@ -500,7 +543,10 @@ bibliothèque). Budgets (contexte préparé) : avancement des campagnes < 200 ms
   requêtes, GH67), ordre du panneau latéral, historique, seeds, bandeau — réservés à l'app.
 - Rétrogradation groupée (dashboard partagé → privé avec ses requêtes), dédoublonnage de requêtes
   identiques au partage, bouton de portée d'un dashboard dans le panneau (GH67).
-- Redimensionnement libre des widgets ; partage d'un widget entre dashboards.
+- Mise en page libre des widgets (coordonnées quelconques), poignée d'angle, redimensionnement au clavier,
+  zoom en pourcentage par widget, largeur de référence `W` réglable ou zone du dashboard élargie sur grand
+  écran (GH435 : le redimensionnement à la souris par largeur et hauteur, lui, est livré) ; partage d'un widget
+  entre dashboards.
 - Alertes / notifications sur seuils, requêtes planifiées.
 - Colonnes calculées (GH70) : tri des colonnes de la Vue Excel, vue Édition et autres vues (Recherche,
   traçabilité, page campagne), colonnes éditables, colonnes personnelles (requêtes privées), paramètres

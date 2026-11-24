@@ -25,6 +25,7 @@ import { isPrivateScopeId } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { DashboardGrid } from '../components/dashboard/DashboardGrid'
+import type { WidgetSizePatch } from '../components/dashboard/WidgetSlot'
 import { useDashboardParams } from '../hooks/useDashboardParams'
 import { WidgetConfigModal, type WidgetConfigResult } from '../components/dashboard/WidgetConfigModal'
 import { DashboardShareModal } from '../components/dashboard/DashboardShareModal'
@@ -121,12 +122,15 @@ function DashboardPage() {
   const [showAddWidget, setShowAddWidget] = useState(false)
   const [editingWidget, setEditingWidget] = useState<Widget | null>(null)
   const [scopeError, setScopeError] = useState<string | null>(null)
+  /** GH435 — échec d'enregistrement d'une dimension réglée à la souris (la carte est revenue à sa taille). */
+  const [sizeError, setSizeError] = useState<string | null>(null)
   /** GH67 — confirmation du partage avec les requêtes privées des widgets. */
   const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     setTitleDraft(dashboard?.title ?? '')
     setScopeError(null)
+    setSizeError(null)
     setSharing(false)
   }, [dashboard?.id, dashboard?.title])
 
@@ -193,6 +197,22 @@ function DashboardPage() {
   const deleteWidgetMutation = useMutation({
     mutationFn: (widgetId: string) => api.dashboards.deleteWidget(repoPath, username, dashboardId!, widgetId),
     onSuccess: invalidateDashboard,
+  })
+
+  // GH435 — dimension d'un widget réglée à la souris. `onSuccess` renvoie la relecture : la promesse de
+  // `mutateAsync` (donc celle des poignées) ne se résout qu'une fois la nouvelle taille lue, pour que la
+  // carte ne saute pas entre la taille glissée et la taille enregistrée.
+  const resizeWidgetMutation = useMutation({
+    mutationFn: ({ widgetId, patch }: { widgetId: string; patch: WidgetSizePatch }) =>
+      api.dashboards.updateWidget(repoPath, username, dashboardId!, widgetId, patch),
+    onSuccess: () => {
+      setSizeError(null)
+      return Promise.all([
+        qc.invalidateQueries({ queryKey: dashboardQueryKey }),
+        qc.invalidateQueries({ queryKey: ['dashboards', repoPath, username] }),
+      ])
+    },
+    onError: (err) => setSizeError(t('dashboardPage.sizeSaveError', { message: err instanceof Error ? err.message : String(err) })),
   })
 
   if (!projectId) return <p className="text-sm text-ink-3 p-4">{t('common.projectNotLoaded')}</p>
@@ -297,6 +317,11 @@ function DashboardPage() {
           {scopeError}
         </p>
       )}
+      {sizeError && (
+        <p className="text-xs text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2" data-testid="widget-size-error">
+          {sizeError}
+        </p>
+      )}
       {sharing && (
         <DashboardShareModal
           repoPath={repoPath}
@@ -319,6 +344,7 @@ function DashboardPage() {
         onReorder={(order) => reorderMutation.mutate(order)}
         onDeleteWidget={(widgetId) => deleteWidgetMutation.mutate(widgetId)}
         onEditWidget={(widget) => setEditingWidget(widget)}
+        onResizeWidget={(widgetId, patch) => resizeWidgetMutation.mutateAsync({ widgetId, patch }).then(() => undefined)}
       />
 
       {showAddWidget && (

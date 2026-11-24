@@ -1264,6 +1264,8 @@
       "sizeSmall": "Small",
       "sizeMedium": "Medium",
       "sizeLarge": "Large",
+      "sizeAuto": "auto",
+      "sizeCustomHint": "Custom size: {{width}} × {{height}} px — picking another size resets the dimensions to default.",
       "editTitle": "Edit widget",
       "addTitle": "Add a widget",
       "titleLabel": "Title",
@@ -1458,10 +1460,16 @@
     "useAddWidgetHint": "Use \"Add a widget\" to get started.",
     "deleteWidgetConfirmTitle": "Delete widget?",
     "deleteWidgetConfirmBody": "<b>{{title}}</b> will be removed from the dashboard.",
+    "resize": {
+      "width": "Resize width (double-click: default width)",
+      "height": "Resize height (double-click: default height)"
+    },
+    "sizeSaveError": "Unable to save the widget size: {{message}}",
     "widget": {
       "chooseCategoryAndMeasure": "Choose a category and a measure.",
       "chooseMeasure": "Choose a measure.",
       "noData": "No data for this query.",
+      "tooSmall": "Widget too small for this chart — enlarge it.",
       "chooseMatrixFields": "Choose the rows, the columns and the value."
     },
     "resultTable": {

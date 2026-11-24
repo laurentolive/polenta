@@ -14,20 +14,31 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Code2, LayoutTemplate, RotateCcw, X } from 'lucide-react'
 import type { GraphParamValue, QueryScope, SavedQuery, Widget, WidgetCode, WidgetSize } from '@polenta/types'
+import { WIDGET_DEFAULT_HEIGHT, WIDGET_PRESET_WIDTH } from '@polenta/types'
 import type { TemplateInput } from '@polenta/api-client'
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { useScriptRun } from '../../hooks/useScriptRun'
 import { useCampaignOptions, useSuiviTemplates } from '../../hooks/useSuiviCatalog'
-import { WidgetRenderer } from './widgets/WidgetRenderer'
+import { nativeView, WidgetRenderer } from './widgets/WidgetRenderer'
 import { TemplateForm } from './TemplateForm'
 import { CodeEditor } from './CodeEditor'
 import { hasVegaAggregate } from './vegaTheme'
 
+/** GH435 — `width` / `height` à `null` : changement de préréglage, les dimensions réglées à la souris sont
+ *  remises au défaut. Absents : les dimensions enregistrées sont conservées. */
+interface WidgetConfigBase {
+  title: string
+  queryId: string
+  size: WidgetSize
+  width?: null
+  height?: null
+}
+
 /** Contenu enregistré : modèle + paramètres, ou code (transformation + spec). */
 export type WidgetConfigResult =
-  | { title: string; queryId: string; size: WidgetSize; template: TemplateInput }
-  | { title: string; queryId: string; size: WidgetSize; transform: string | null; spec: string }
+  | (WidgetConfigBase & { template: TemplateInput })
+  | (WidgetConfigBase & { transform: string | null; spec: string })
 
 interface Props {
   dashboardScope: QueryScope
@@ -107,7 +118,9 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
 
   function save() {
     if (!canSave) return
-    const base = { title: title.trim(), queryId, size }
+    // GH435 — un autre préréglage remet les dimensions réglées à la souris au défaut ; sinon elles restent.
+    const resetDims = !!initialWidget && size !== initialWidget.size
+    const base: WidgetConfigBase = { title: title.trim(), queryId, size, ...(resetDims ? { width: null, height: null } : {}) }
     // Code non modifié (même affiché dans l'onglet Code) : le modèle est enregistré, pas le code.
     if (!codeEdited && template) onSave({ ...base, template: { id: templateId, params } })
     else onSave({ ...base, transform: transform.trim() ? transform : null, spec })
@@ -159,6 +172,14 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
                 ))}
               </div>
             </div>
+            {initialWidget && (initialWidget.width !== undefined || initialWidget.height !== undefined) && (
+              <p className="text-[11px] text-ink-3" data-testid="widget-size-custom">
+                {t('dashboard.widgetModal.sizeCustomHint', {
+                  width: initialWidget.width ?? WIDGET_PRESET_WIDTH[initialWidget.size],
+                  height: initialWidget.height ?? (nativeView(initialWidget.spec)?.view === 'table' ? t('dashboard.widgetModal.sizeAuto') : WIDGET_DEFAULT_HEIGHT),
+                })}
+              </p>
+            )}
 
             <div className="flex items-center gap-2 pt-2 border-t border-edge-subtle">
               <div className="flex rounded-lg border border-edge overflow-hidden text-xs">

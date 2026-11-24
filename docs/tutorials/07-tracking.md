@@ -20,6 +20,12 @@ not tested, how the campaigns are progressing. It relies on **queries** over the
 - **Add a widget** adds one; a widget's pencil edits it. A widget is set up with a **template**
   (*Template* tab: chart type, columns, measure); the *Code* tab shows the generated code, which an
   advanced user can edit (the widget is then "customized", *Back to template* undoes it).
+- **Widget size**: drag the **right edge** (width) or the **bottom edge** (height) of its card; the size is
+  saved on release, with the dashboard. A double-click on the edge restores the default value, as does
+  picking another *Small / Medium / Large* size in the widget window. Cards wrap when the window shrinks; a
+  chart too small to show everything says so instead of cutting its legend; a table without a set height
+  fits its number of rows (up to 720 px, then it scrolls). In the PDF export the dashboard is scaled to an
+  A4 page, without splitting a widget across two pages.
 - **Private** / **Shared**: a shared dashboard is saved in the repository and visible to the whole
   team; a private dashboard stays with its author. Sharing a private dashboard whose widgets use
   private queries (such as *Campagnes*) opens a confirmation that lists them: they are shared with it,

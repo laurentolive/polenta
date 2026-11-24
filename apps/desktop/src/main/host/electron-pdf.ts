@@ -2,7 +2,7 @@ import { BrowserWindow } from 'electron'
 import * as path from 'path'
 import * as fsP from 'fs/promises'
 import type { ExportKind } from '@polenta/types'
-import { PRINT_ROUTE_BY_KIND } from './print-renderer'
+import { electronPdfLayout, PRINT_ROUTE_BY_KIND } from './print-renderer'
 
 /**
  * Rend une route imprimable (`/print/<kind>`) dans une fenêtre Electron cachée puis produit un
@@ -57,7 +57,8 @@ export async function renderKindToPdf(
       }
     })
 
-    const pdfBuffer = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4' })
+    // GH435 — dashboard : échelle et marges explicites (`electronPdfLayout`) ; les autres exports, inchangés.
+    const pdfBuffer = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4', ...electronPdfLayout(kind) })
     await fsP.writeFile(destPath, pdfBuffer)
   } finally {
     win.destroy()

@@ -1,7 +1,7 @@
 import * as fsP from 'fs/promises'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import type { PrintRenderer } from '../../main/host/print-renderer'
-import { PRINT_ROUTE_BY_KIND } from '../../main/host/print-renderer'
+import { PRINT_ROUTE_BY_KIND, playwrightPdfLayout } from '../../main/host/print-renderer'
 import { drawioKey, type DrawioSnapshot, type DrawioSnapshotter } from '../../main/services/export/template/drawio-ref'
 
 /**
@@ -129,7 +129,8 @@ export class HeadlessPrinter {
     await page.exposeFunction('__polentaPrintReady', () => { ready() })
     await page.goto(this.printUrl(route, params))
     await withTimeout(readyPromise, PDF_TIMEOUT_MS, 'Délai dépassé au chargement de la page à imprimer')
-    await fsP.writeFile(destPath, await page.pdf({ format: 'A4', printBackground: true }))
+    // GH435 — dashboard : mêmes échelle et marges que le desktop (`playwrightPdfLayout`).
+    await fsP.writeFile(destPath, await page.pdf({ format: 'A4', printBackground: true, ...playwrightPdfLayout(kind) }))
   }
 
   /** `unique` : références déjà dédoublonnées (`drawioKey`), non vide. */

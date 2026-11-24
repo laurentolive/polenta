@@ -241,7 +241,7 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
 
           <div className="flex flex-col min-h-0 border border-edge rounded-lg overflow-hidden">
             <p className="px-3 py-2 text-xs font-medium text-ink-2 border-b border-edge-subtle shrink-0">{t('dashboard.widgetModal.previewTitle')}</p>
-            <div className="flex-1 min-h-[260px] p-2">
+            <div className="flex flex-1 min-h-[260px] flex-col p-2" data-testid="widget-preview">
               {!queryId ? (
                 <p className="text-xs text-ink-3 italic text-center pt-10">{t('dashboard.widgetModal.selectQueryHint')}</p>
               ) : isLoading ? (

@@ -152,6 +152,11 @@ pendant un glissement. Aucun `zoom` CSS dans l'application, donc `contentRect` e
   4. les clés posées par l'utilisateur dans `legend` (`orient`, `columns`, `labelLimit`, `symbolLimit`…)
      l'emportent ; `legend: null` n'est pas touché.
   Axes nominaux / ordinaux : `labelLimit` borné à 40 % de la largeur (axe y) ou 35 % de la hauteur (axe x).
+- **Second passage de mise en page (ajouté au sprint 3, constaté dans Chromium).** `autosize: fit` ne se
+  calcule qu'une fois, au premier passage, quand `rows` est vide ; après `view.data('rows', …).runAsync()`,
+  `await view.resize().runAsync()` replace le tracé d'après la légende et les axes réels (sans lui, la légende
+  dépasse de la vue : le premier essai du sprint 3 affichait « trop petit » partout). Un script de contrôle
+  rend le graphique dans Chromium (md, lg, sm) avec et sans adaptation.
 - **Mesure et « trop petit ».** Après `runAsync`, la zone de tracé est lue sur la scène Vega
   (`view.scenegraph().root.items[0]` : `width`, `height` ; repli sur les signaux `width` / `height` — à
   confirmer par un essai au début du sprint 3). Tracé < 48 px d'un côté, ou légende dont les bornes

@@ -1,8 +1,12 @@
 # GH435 — Scénarios de test
 
 Spec : `specs/GH435.md` (critères 1 à 16). Design : `specs/GH435-design.md`.
-Unitaires : vitest (`apps/desktop`). E2E : `apps/desktop/e2e-web/gh435-widget-size.spec.ts` (client web,
-mouvements de souris réels, jamais seulement le clavier — leçon 2026-11-19). Objets créés par le test via IPC
+Unitaires : vitest (`apps/desktop`, lancé directement avec `POLENTA_GIT_DIR`). E2E : `apps/desktop/e2e-web/gh435-widget-size.spec.ts`
+(E1 à E3, E5b partie 1, E8 à E12 : poignées, flux, modale) et `gh435-rendering.spec.ts` (E4 à E7, E13, E13b, E14 :
+rendu, tableaux, impression), client web, mouvements de souris réels, jamais seulement le clavier — leçon 2026-11-19.
+Écarts avec la liste ci-dessous : E5c ajouté (nombre de lignes qui change) ; E13c (polices ≥ 8 px) est inclus dans E13 ;
+fichiers unitaires réels : `widget-size.gh435`, `dashboards-size.gh435`, `mcp-dashboards.gh435`, `vegaFit.gh435`
+(U12 à U14 et U12b : mesure sur une vue Vega sans navigateur), `vegaTheme.gh435` (U16), `print-renderer.gh435` (U15). Objets créés par le test via IPC
 (`dashboards:*`, `queries:*`), comme les specs GH74 / GH125.
 
 ## 1. Unitaires

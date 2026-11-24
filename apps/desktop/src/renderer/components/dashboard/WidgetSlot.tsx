@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Widget } from '@polenta/types'
 import {
   clampWidgetHeight, clampWidgetWidth, WIDGET_DEFAULT_HEIGHT, WIDGET_MAX_HEIGHT, WIDGET_MIN_HEIGHT, WIDGET_MIN_WIDTH, widgetDisplayWidth, widgetRequestedWidth,
 } from '@polenta/types'
 import { ResizeHandle } from './ResizeHandle'
+import { nativeView } from './widgets/WidgetRenderer'
 
 /** Dimensions à enregistrer : un nombre pose, `null` remet la valeur par défaut. */
 export interface WidgetSizePatch {
@@ -39,10 +40,13 @@ export function WidgetSlot({ widget, zoneWidth, printMode, onResize, onDragLock,
 
   const requested = live?.width ?? widgetRequestedWidth(widget)
   const display = printMode ? clampWidgetWidth(requested) : widgetDisplayWidth(requested, zoneWidth)
-  const height = live?.height ?? widget.height ?? WIDGET_DEFAULT_HEIGHT
+  // Tableau sans hauteur enregistrée : la carte s'ajuste à son contenu (entre 160 et 720 px).
+  const isTable = useMemo(() => nativeView(widget.spec)?.view === 'table', [widget.spec])
+  const height = live?.height ?? widget.height ?? (isTable ? undefined : WIDGET_DEFAULT_HEIGHT)
 
+  // Impression : largeur fixe, et une carte n'est jamais coupée entre deux pages.
   const style: React.CSSProperties = printMode
-    ? { flex: `0 0 ${display}px` }
+    ? { flex: `0 0 ${display}px`, breakInside: 'avoid' }
     : display === '100%'
       ? { flex: '0 0 100%' }
       : { flex: `0 1 ${display}px`, maxWidth: '100%', minWidth: `min(${WIDGET_MIN_WIDTH}px, 100%)` }
@@ -100,7 +104,7 @@ export function WidgetSlot({ widget, zoneWidth, printMode, onResize, onDragLock,
             axis="y"
             label={t('dashboardPage.resize.height')}
             testId="widget-resize-h"
-            getStartSize={() => slotRect()?.height ?? height}
+            getStartSize={() => slotRect()?.height ?? height ?? WIDGET_DEFAULT_HEIGHT}
             getBounds={() => [WIDGET_MIN_HEIGHT, WIDGET_MAX_HEIGHT]}
             onLive={(h) => setLiveDim('height', clampWidgetHeight(h))}
             onEnd={(h) => commit('height', h)}

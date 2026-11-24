@@ -6,7 +6,7 @@
  */
 export function WidgetEmptyState({ message }: { message: string }) {
   return (
-    <div className="flex items-center justify-center h-full text-xs text-ink-3 italic px-4 text-center">
+    <div className="flex flex-1 items-center justify-center text-xs text-ink-3 italic px-4 text-center">
       {message}
     </div>
   )

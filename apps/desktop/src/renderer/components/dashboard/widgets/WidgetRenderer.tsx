@@ -52,7 +52,7 @@ export function WidgetRenderer({ spec, run, onSelect, printMode, onRendered }: P
   if (!run) return null
   if (!run.ok) {
     return (
-      <div className="flex items-center justify-center h-full px-4 text-center" data-testid="widget-error">
+      <div className="flex flex-1 items-center justify-center px-4 text-center" data-testid="widget-error">
         <p className="text-xs text-status-danger italic break-words">{scriptErrorText(run.error)}</p>
       </div>
     )
@@ -63,7 +63,7 @@ export function WidgetRenderer({ spec, run, onSelect, printMode, onRendered }: P
     const field = native.field ?? 'value'
     return (
       <div
-        className={`flex flex-col items-center justify-center h-full gap-1${onSelect ? ' cursor-pointer rounded hover:bg-hover' : ''}`}
+        className={`flex flex-1 flex-col items-center justify-center gap-1${onSelect ? ' cursor-pointer rounded hover:bg-hover' : ''}`}
         onClick={onSelect ? () => onSelect(run.rows[0]) : undefined}
         data-drilldown={onSelect ? 'kpi' : undefined}
       >
@@ -74,7 +74,9 @@ export function WidgetRenderer({ spec, run, onSelect, printMode, onRendered }: P
   if (native?.view === 'table') {
     const columns = native.columns?.length ? run.columns.filter((c) => native.columns!.includes(c.name)) : run.columns
     return (
-      <div className="h-full overflow-hidden">
+      // GH435 — chaîne en colonne flex jusqu'au défilement de la grille : une carte à hauteur automatique
+      // (plafonnée) fait défiler le tableau au plafond, une carte à hauteur fixe aussi.
+      <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         <ResultTable result={{ columns, rows: run.rows }} onRowClick={onSelect} compact />
       </div>
     )

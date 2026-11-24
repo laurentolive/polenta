@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
+import { DASHBOARD_REF_WIDTH, printFontFloor } from '@polenta/types'
 import { api } from '../api'
 import { DashboardGrid } from '../components/dashboard/DashboardGrid'
 import { useDashboardParams } from '../hooks/useDashboardParams'
@@ -53,8 +54,16 @@ function PrintDashboardPage() {
 
   if (!dashboard) return <div className="p-10 bg-print-bg min-h-screen" />
 
+  // GH435 (specs/GH435.md § 3.7) — mise en page à la largeur de référence du dashboard, jamais réduite à la
+  // fenêtre : le moteur d'impression (`scale` de `printToPDF` / `page.pdf`, marges de 10 mm posées par le
+  // main) réduit ensuite la page à la largeur utile A4. Plus de `p-10` ni de `min-h-screen` : les marges
+  // viennent du moteur, et une hauteur minimale d'une page ferait imprimer une page blanche de trop.
   return (
-    <div className="p-10 bg-print-bg text-print-ink text-sm min-h-screen">
+    <div
+      className="print-widgets bg-print-bg text-print-ink text-sm"
+      style={{ width: DASHBOARD_REF_WIDTH, '--print-min-font': `${printFontFloor()}px` } as React.CSSProperties}
+      data-testid="print-dashboard"
+    >
       <h1 className="text-xl font-semibold mb-4">{t('printDashboardPage.title', { title: dashboard.title })}</h1>
       <DashboardGrid
         dashboard={dashboard}

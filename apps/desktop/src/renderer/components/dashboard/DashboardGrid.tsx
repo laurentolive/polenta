@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
 import { AlertTriangle, Loader2, Pencil, SlidersHorizontal, Trash2 } from 'lucide-react'
 import type { Dashboard, SavedQuery, Widget } from '@polenta/types'
-import { DASHBOARD_REF_WIDTH } from '@polenta/types'
+import { DASHBOARD_REF_WIDTH, WIDGET_MAX_HEIGHT, WIDGET_MIN_HEIGHT } from '@polenta/types'
 import { useWidgetRun } from '../../hooks/useScriptRun'
 import { useElementSize } from '../../hooks/useElementSize'
 import { DrillDownModal } from './DrillDownModal'
@@ -89,8 +89,9 @@ function WidgetCard({
   paramsReady?: boolean
   /** Pointeur sur les sélecteurs : glisser de la carte désactivé. */
   onDragLock?: (locked: boolean) => void
-  /** GH435 — hauteur de la carte (px) : glissement en cours, sinon hauteur enregistrée ou par défaut. */
-  height?: number
+  /** GH435 — hauteur de la carte (px) : glissement en cours, sinon hauteur enregistrée ou par défaut ;
+   *  `undefined` : hauteur automatique (tableau sans hauteur enregistrée). */
+  height: number | undefined
   /** GH435 — une poignée de cette carte est en cours de glissement. */
   resizing?: boolean
 }) {
@@ -113,12 +114,19 @@ function WidgetCard({
   return (
     <div
       className={`bg-surface border rounded-lg flex flex-col overflow-hidden ${resizing ? 'border-status-info-solid' : 'border-edge'}`}
-      style={{ height }}
+      // GH435 — sans hauteur : tableau ajusté à son contenu, entre le minimum et le maximum.
+      style={height === undefined ? { minHeight: WIDGET_MIN_HEIGHT, maxHeight: WIDGET_MAX_HEIGHT } : { height }}
       data-testid="widget-card"
     >
       <div className="border-b border-edge-subtle shrink-0">
       <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <p className="text-xs font-medium text-ink truncate">{widget.title}</p>
+        <p
+          className="text-xs font-medium text-ink truncate"
+          // Infobulle seulement si le titre est réellement tronqué (jamais une bulle pour rien).
+          onMouseEnter={(e) => { e.currentTarget.title = e.currentTarget.scrollWidth > e.currentTarget.clientWidth ? widget.title : '' }}
+        >
+          {widget.title}
+        </p>
         {!printMode && !readOnly && (
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -154,23 +162,23 @@ function WidgetCard({
         />
       )}
       </div>
-      <div className="flex-1 min-h-0 p-2" data-testid="widget-body">
+      <div className="flex flex-1 min-h-0 flex-col p-2" data-testid="widget-body">
         {!query ? (
-          <div className="flex items-center justify-center h-full gap-2 text-xs text-ink-3 italic px-4 text-center">
+          <div className="flex flex-1 items-center justify-center gap-2 text-xs text-ink-3 italic px-4 text-center">
             <AlertTriangle size={13} className="shrink-0" />
             {t('dashboardPage.queryNotFound')}
           </div>
         ) : waiting ? (
-          <div className="flex items-center justify-center h-full gap-2 text-xs text-ink-3 italic px-4 text-center" data-testid="widget-param-missing">
+          <div className="flex flex-1 items-center justify-center gap-2 text-xs text-ink-3 italic px-4 text-center" data-testid="widget-param-missing">
             <SlidersHorizontal size={13} className="shrink-0" />
             {t('suiviParams.choose', { label: missing.join(', ') })}
           </div>
         ) : isLoading || !paramsReady ? (
-          <div className="flex items-center justify-center h-full text-ink-3">
+          <div className="flex flex-1 items-center justify-center text-ink-3">
             <Loader2 size={16} className="animate-spin" />
           </div>
         ) : error ? (
-          <div className="flex items-center justify-center h-full text-xs text-status-danger italic px-4 text-center" data-testid="widget-error">
+          <div className="flex flex-1 items-center justify-center text-xs text-status-danger italic px-4 text-center" data-testid="widget-error">
             {error instanceof Error ? error.message : t('dashboard.widgetModal.queryExecutionError')}
           </div>
         ) : (

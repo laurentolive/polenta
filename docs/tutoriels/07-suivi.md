@@ -21,6 +21,13 @@ Vue **Suivi**, dashboard *Pilotage LL800* :
   **modèle** (onglet *Modèle* : type de graphe, colonnes, mesure) ; l'onglet *Code* montre le code
   généré, modifiable par un utilisateur avancé (le widget est alors « personnalisé », *Revenir au
   modèle* annule).
+- **Taille d'un widget** : tirez le **bord droit** (largeur) ou le **bord bas** (hauteur) de sa carte ; la
+  taille est enregistrée au relâchement, avec le dashboard. Un double-clic sur le bord remet la valeur par
+  défaut, comme le choix d'une autre taille *Petit / Moyen / Large* dans la fenêtre du widget. Les cartes
+  passent à la ligne quand la fenêtre se réduit ; un graphique trop petit pour tout afficher le dit au lieu
+  de couper sa légende ; un tableau sans hauteur réglée s'ajuste à son nombre de lignes (jusqu'à 720 px,
+  puis il défile). À l'export PDF, le dashboard est mis à l'échelle d'une page A4, sans couper un widget
+  entre deux pages.
 - **Privé** / **Partagé** : un dashboard partagé est enregistré dans le dépôt et visible de toute
   l'équipe ; un dashboard privé reste à son auteur. Partager un dashboard privé dont des widgets
   utilisent des requêtes privées (comme *Campagnes*) ouvre une confirmation qui les liste : elles sont

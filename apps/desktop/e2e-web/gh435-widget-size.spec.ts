@@ -62,9 +62,11 @@ const openDashboard = (id: string) => navigate(s.projectUrl('/dashboard', { dash
 const card = (title: string) => s.page.getByTestId('widget-card').filter({ has: s.page.getByText(title, { exact: true }) })
 const slotOf = (title: string) => card(title).locator('xpath=ancestor::*[@data-testid="widget-slot"]')
 const grid = () => s.page.getByTestId('dashboard-grid')
+/** Widget enregistré ; vide pendant une écriture en cours (écriture sans fichier temporaire : lu entre la
+ *  troncature et l'écriture, le dashboard est vu absent). */
 const saved = async (dashboardId: string, title: string): Promise<Widget> => {
-  const d = await s.invoke<Dashboard>('dashboards:get', s.project.localPath, username, dashboardId)
-  return d.widgets.find(w => w.title === title)!
+  const d = await s.invoke<Dashboard | null>('dashboards:get', s.project.localPath, username, dashboardId)
+  return d?.widgets.find(w => w.title === title) ?? ({} as Widget)
 }
 const sharedYaml = (dashboardId: string) =>
   yaml.load(fs.readFileSync(path.join(s.project.localPath, 'dashboards', dashboardId, 'dashboard.yaml'), 'utf8')) as { widgets: Array<Record<string, unknown>> }

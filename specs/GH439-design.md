@@ -1,249 +1,295 @@
-# GH439 — Design technique
+# GH439 — Design technique (révision 2)
 
 Spec : `specs/GH439.md`. Scénarios : `specs/GH439-tests.md`.
 
 ## 1. Vue d'ensemble
 
 ```
-Page /version/<ID>/requirements                    Export (xlsx / pdf)
-        │                                                  │
-  useVersionRequirements ── versions:requirements ──┐      ├─ xlsx : ExportButton kind « version-requirements »
-        │            (IPC desktop / canal web)       │      │         → table.xlsx (+ feuille « Version »)
-  VersionRequirementsGrid (DataGrid, lecture seule)  │      └─ pdf  : /print/version-requirements (même colonnes,
-        │                                            ▼               mêmes filtres) → printToPDF / Chromium headless
-  versionRequirementColumns (colonnes partagées) VersionRequirementsService
-                                                     ├─ VersionsService.requirementsOf / schemaOf   (état de la version)
-                                                     ├─ inPerimeter                                   (hors terminaux)
-                                                     ├─ TraceabilityService.getMatrix                 (couverture, état courant)
-                                                     ├─ VersionsService.designVersionsFor             (si colonne visible)
-                                                     └─ VersionTrackingService.readWithFields         (« modifiée depuis », si visible)
+Page /version/<ID>  (version.$versionId.tsx)
+ ├─ ViewHeader : titre, ID + pastille d'état, actions [Exporter] [🔒] [tag en attente] [Release]
+ └─ sections repliables (SectionToggle + useSectionOpen) :
+      Informations · Composants · Changements · Analyse d'impact · Tests à exécuter · Exigences (fermée, lazy)
+                                                                                       │
+                                                         useVersionRequirements ── versions:requirements ── VersionRequirementsService
+                                                                                                              ├─ VersionsService.requirementsOf/schemaOf (état de la version)
+                                                                                                              ├─ inPerimeter                              (hors terminaux)
+                                                                                                              └─ version.verification (figée)  |  TraceabilityService.getMatrix (en cours)
+
+Passage released (VersionsService.release) ──► + verification { computedAt, rows[] } dans le commit du fichier de version
+
+Exporter (ExportButton, choix de sections)
+   ├─ xlsx : buildVersionSectionTables(...) → TablesExportPayload → 'version:xlsx' → un onglet par section
+   └─ pdf  : /print/version (mêmes données, même buildVersionSectionTables) → printToPDF / Chromium headless
 ```
 
-Aucune écriture, aucun nouveau format de fichier, aucun changement du modèle de données.
+Un seul nouveau champ persistant : `verification` dans le fichier de version, posé au passage released.
 
-## 2. Fichiers
+## 2. Modèle de données
 
-### 2.1 À créer
+```ts
+// packages/types/src/product-version.ts
+export interface VersionVerificationRow { id: string; status: CoverageStatus; tests: string[] }
+export interface VersionVerification { computedAt: string; rows: VersionVerificationRow[] }   // rows triées par ID
+
+export interface ProductVersion { /* … */ verification?: VersionVerification }
+```
+
+- Champ système : écrit par `release()` seulement, jamais par `update()` (même garde que `analysis`, `freeze`).
+- `copy()` reconstruit la version à partir de champs choisis : `verification` n'en fait pas partie (test).
+- Renommage de schéma (GH381 `rewriteObjects`) : la valeur d'un `CoverageStatus` n'est pas un statut du projet, rien à migrer.
+- `VersionPage` (`versions:get`) **n'embarque pas** `verification` (volumineux : une ligne par exigence) : retiré de
+  l'objet `version` renvoyé ; lecture par `versions:requirements` seulement. À vérifier au sprint 1 comment `page()`
+  construit aujourd'hui cet objet (il renvoie peut-être déjà `analysis` tel quel) pour appliquer la même règle sans
+  régression.
+- CLAUDE.md (« Champs propres aux versions »), SPEC-REQ §11.1 : ajouter `verification` (dernier sprint).
+
+## 3. Fichiers
+
+### 3.1 À créer
 
 | Fichier | Rôle |
 |---|---|
-| `packages/types/src/version-requirements.ts` | `VersionRequirementRow`, `VersionRequirementsPage`, `VersionRequirementsInclude` (exporté par l'index) |
-| `apps/desktop/src/main/services/version-requirements.service.ts` | lecture : version → exigences du périmètre → colonnes calculées |
-| `apps/desktop/src/main/services/version-requirements-rows.util.ts` | fonction pure `buildRequirementRows` (périmètre, tri, assemblage des colonnes), testable sans git |
-| `apps/desktop/src/renderer/routes/version_.$versionId.requirements.tsx` | route `/version/$versionId/requirements` (le `_` évite l'imbrication sous `version.$versionId`, comme `versions_.backlog.tsx`) |
-| `apps/desktop/src/renderer/components/versions/VersionRequirementsGrid.tsx` | grille et en-tête de la page |
-| `apps/desktop/src/renderer/components/versions/versionRequirementColumns.ts` | définition des colonnes (`GridColumn<VersionRequirementRow>`), **partagée** par la grille et la route imprimable : le texte exporté est celui de l'écran par construction |
-| `apps/desktop/src/renderer/components/versions/useVersionRequirements.ts` | hook de lecture (clé de requête, `include` déduit des colonnes visibles) |
-| `apps/desktop/src/renderer/routes/print.version-requirements.tsx` | route imprimable du PDF |
-| Tests : `version-requirements.gh439.test.ts` (main), `versionRequirementColumns.gh439.test.ts` (renderer), `e2e-web/gh439-version-requirements.spec.ts` | voir `GH439-tests.md` |
+| `packages/types/src/version-requirements.ts` | `VersionRequirementRow`, `VersionRequirementsPage` |
+| `apps/desktop/src/main/services/version-requirements.service.ts` | lecture des exigences d'une version (état de la version + couverture) |
+| `apps/desktop/src/main/services/version-requirements-rows.util.ts` | `buildRequirementRows` pure : périmètre, tri, assemblage, testable sans git |
+| `apps/desktop/src/main/services/version-verification.util.ts` | `buildVerification(requirements, matrix, now)` pure : rows triées pour le gel |
+| `renderer/components/versions/VersionRequirementsSection.tsx` | section « Exigences » : ligne d'information, grille |
+| `renderer/components/versions/versionRequirementColumns.ts` | `buildVersionRequirementColumns({ page, t, language, gestures })` |
+| `renderer/components/versions/versionChangeColumns.ts`, `versionTestColumns.ts`, `versionAnalysisColumns.ts` | colonnes **extraites** des trois grilles existantes (voir § 7) |
+| `renderer/components/versions/versionSectionTables.ts` | `buildVersionSectionTables(input)` → `SectionTable[]`, **partagée** par l'export Excel et la route imprimable |
+| `renderer/components/versions/VersionInfoSection.tsx` | section « Informations » (bloc d'en-tête déplacé) |
+| `renderer/components/versions/useVersionRequirements.ts` | hook de lecture (`enabled` = section ouverte) |
+| `renderer/components/versions/useVersionExport.ts` | sections proposées, collecte des données, `getPayload` / `getPrintParams` |
+| `renderer/routes/print.version.tsx` | route imprimable `/print/version` |
+| Tests : `version-requirements.gh439.test.ts`, `versions.release-verification.gh439.test.ts` (main) ; `versionSectionTables.gh439.test.ts` (renderer) ; `e2e-web/gh439-version-page.spec.ts`, `e2e-web/gh439-version-export.spec.ts` | voir `GH439-tests.md` |
 
-### 2.2 À modifier
+### 3.2 À modifier
 
 | Fichier | Modification | Pourquoi |
 |---|---|---|
-| `packages/types/src/product-version.ts` | code d'erreur `VERSION_NOT_FROZEN` (version abandonnée sans gel) | refus explicite plutôt qu'une liste du disque |
-| `packages/types/src/export.ts` | `ExportKind` += `'version-requirements'` ; `TableExportPayload.infoSheet?: { name: string; rows: { label: string; value: string }[] }` | un seul kind pour xlsx **et** pdf (`ExportButton` n'a qu'un `kind`) ; feuille d'identification |
-| `apps/desktop/src/main/container.ts` | `VersionTrackingService` sorti de l'appel inline en constante, partagé ; instanciation du nouveau service | même instance (caches de contenu bornés) pour `VersionsService` et le nouveau service |
-| `apps/desktop/src/main/ipc/index.ts` | `r.handle('versions:requirements', (_e, repoPath, id, include, workspaceDir) => c.versionRequirements.page(...))` | canal de lecture |
-| `apps/desktop/src/web-server/channel-policy.ts` | `'versions:requirements'` dans la liste blanche, arguments chemin `[0, 3]` | client web (spec §5) |
-| `packages/api-client/src/types.ts`, `ipc-client.ts` | `versions.requirements(repoPath, id, include, workspaceDir?)` | contrat renderer |
-| `apps/desktop/src/main/services/export.service.ts` | `'version-requirements:xlsx'` → `exportTableXlsx` (même générateur que `table:xlsx`) | pas de nouveau générateur xlsx |
-| `apps/desktop/src/main/services/export/table.xlsx.ts` | écrit la feuille `infoSheet` si présente | identification du livrable |
-| `apps/desktop/src/main/host/print-renderer.ts` | `PRINT_ROUTE_BY_KIND['version-requirements']` ; `PdfLayout` += `landscape?`, `pageNumbers?` ; `electronPdfLayout` / `playwrightPdfLayout` les traduisent (`landscape`, `displayHeaderFooter` + `footerTemplate`) | A4 paysage et pied « page n / N », les deux moteurs (Chromium) partagent la syntaxe |
-| `apps/desktop/src/renderer/components/grid/GridToolbar.tsx` | `exportTable` accepte `kind?`, `formats?`, `getPrintParams?` (défaut inchangé : `table`, `['xlsx']`) | les grilles existantes ne changent pas |
-| `apps/desktop/src/renderer/components/grid/exportTable.ts` | `buildTablePayload` accepte `infoSheet` | feuille « Version » |
-| `apps/desktop/src/renderer/components/export/exportFilenames.ts` | `versionRequirementsExportBaseName(repo, label)` | nom proposé |
-| `apps/desktop/src/renderer/routes/version.$versionId.tsx` | bouton « Exigences » (absent si version abandonnée sans gel) | accès |
-| `apps/desktop/src/renderer/components/versions/useVersions.ts` | clé de requête dans `useInvalidateVersions` et dans le groupe d'invalidation de la couverture (celui de `validations:page`) | la page suit une exécution, un lien, une release sans recharger |
-| `apps/desktop/src/renderer/i18n/locales/{fr,en}.json` | clés `versionRequirements.*` | FR / EN |
-| `apps/desktop/src/renderer/routeTree.gen.ts` | régénéré (la route est nouvelle) | convention du ticket qui ajoute une route |
-| SPEC-REQ §11 (nouveau §11.5), SPEC-SYSTEM-VIEW (tableau Grilles communes), SPEC-WEB §11, SPEC-INDEX | dernier sprint | `WORKFLOW.md` Agent Dev |
+| `packages/types/src/product-version.ts` | `verification?`, code `VERSION_NOT_FROZEN` | § 2 ; refus d'une version abandonnée sans gel |
+| `packages/types/src/export.ts` | `ExportKind` += `'version'` ; `TablesExportPayload { sheets: TableExportPayload[] }` | export multi-onglets |
+| `main/services/versions.service.ts` | `release()` calcule et écrit `verification` ; `setImpactSources` reçoit aussi `getMatrix` ; `page()` retire `verification` | § 4 |
+| `main/container.ts` | `new VersionRequirementsService(...)` ; `versions.setImpactSources({ traceability, campaigns })` (traceability expose déjà `getMatrix`) | câblage |
+| `main/ipc/index.ts`, `web-server/channel-policy.ts` | canal `versions:requirements` (args chemin `[0, 2]`) | desktop et web |
+| `packages/api-client/src/types.ts`, `ipc-client.ts` | `versions.requirements(repoPath, id, workspaceDir?)` | contrat |
+| `main/services/export.service.ts`, `export/table.xlsx.ts` | `'version:xlsx'` → `exportTablesXlsx` : un onglet par `TableExportPayload` (`addTableSheet` extrait de `buildTableWorkbook`) ; noms d'onglet uniques | multi-onglets |
+| `main/host/print-renderer.ts` | `PRINT_ROUTE_BY_KIND.version`, `PdfLayout` += `landscape?`, `pageNumbers?` (+ `electronPdfLayout`, `playwrightPdfLayout`) | A4 paysage, pied de page |
+| `renderer/components/export/ExportButton.tsx` | prop `choices?: { items: { key; label }[]; storageKey }` : cases à cocher dans le popover, sélection transmise à `getPayload(format, { templated, selected })` et `getPrintParams(selected)` ; formats désactivés sans sélection | choix de sections |
+| `renderer/routes/version.$versionId.tsx` | sous-titre ID + pastille toujours ; plus de `useHeaderCollapsed` ni de bouton ; `Exporter` dans `actions` ; sections `Informations`, `Exigences` ; `Composants` sorti du bloc d'en-tête ; `OrphanComponents` toujours visible | § 2 de la spec |
+| `renderer/components/versions/useVersions.ts` | `useSectionOpen(section, defaultOpen = true)` ; clé de requête dans `useInvalidateVersions` | `Exigences` fermée par défaut |
+| `renderer/components/versions/VersionChangesTable.tsx`, `VersionTestsSection.tsx`, `VersionAnalysisSection.tsx` | colonnes déléguées aux modules extraits ; `noExport` sur leur `DataGrid` | D9 |
+| `renderer/components/grid/useHeaderCollapsed.ts` | type `page` réduit à `'validation'` | la version n'en a plus |
+| `renderer/components/export/exportFilenames.ts` | `versionExportBaseName(repo, label)` | nom proposé |
+| `renderer/i18n/locales/{fr,en}.json` | `versions.info`, `versions.requirements.*`, `versions.export.*` | FR / EN |
+| `renderer/routeTree.gen.ts` | régénéré (route `/print/version`) | nouvelle route |
+| `e2e-web/gh389-versions.spec.ts` | scénario de repli de l'en-tête → section « Informations » ; `expectGridContract` : bouton Exporter absent des trois grilles de la page | D9, spec § 2.1 |
+| SPEC-REQ §11 (§11.1 `verification`, §11.5 section Exigences), SPEC-SYSTEM-VIEW (grilles, export), SPEC-ELECTRON-DESKTOP §19.8b / §19.15, SPEC-WEB §11, SPEC-INDEX, CLAUDE.md | dernier sprint | `WORKFLOW.md` Agent Dev |
 
-## 3. Types
+## 4. Couverture figée au passage released
+
+Dans `VersionsService.release()`, à côté de `freezeAnalysis` (même commit, même `stamp`) :
 
 ```ts
-// packages/types/src/version-requirements.ts
-export interface VersionRequirementsInclude {
-  /** Colonne Design visible ; absente de la page sinon (aucun calcul). */
-  design?: boolean
-  /** Colonne « Modifiée depuis » visible. */
-  changedSince?: boolean
-}
+const verification = this.impactSources ? await this.freezeVerification(repoPath, head, workspaceDir) : undefined
+// ... { ...version, ..., freeze, ...(analysis && { analysis }), ...(verification && { verification }) }
+```
 
-export interface VersionRequirementRow {
-  requirementId: string
-  title: string
-  objectTypeRef: string
-  status: string                        // statut à l'état de la version
-  version: number                       // révision de l'exigence à l'état de la version
-  fields: Record<string, unknown>       // champs à l'état de la version
-  coverageStatus: CoverageStatus        // état courant
-  tests: Array<{ id: string; title: string }>
-  /** Présent seulement si `include.design` ; `null` : jamais livrée à l'identique. */
-  designVersion?: { id: string; title: string } | null
-  /** Présent seulement si `include.changedSince` et version figée. */
-  changedSince?: boolean
-}
+`freezeVerification(repoPath, head, workspaceDir)` :
 
-export interface VersionRequirementsPage {
-  version: { id: string; title: string; state: VersionState; freeze: { tag: string; sha: string; at: string } | null }
-  component: { label: string; repoPath: string }
+1. `schema = schemaAt(head)` ; `reqs = inPerimeter(schema, await requirementsOf(repoPath, { freeze: { sha: head } }))` — **la
+   même fonction que la lecture**, donc la même liste que celle que la page affichera à `freeze.sha`.
+2. `matrix = await impactSources.traceability.getMatrix(repoPath, {}, workspaceDir)` (état du workspace au passage,
+   comme l'analyse d'impact — précédent GH245 : « calculée sur l'état du workspace au moment du passage »).
+3. `buildVerification(reqs, matrix, new Date())` (pure) : une ligne par exigence du périmètre `{ id, status, tests: [IDs] }`,
+   `status = 'not_covered'` si absente de la matrice, rows triées par ID numérique.
+
+Une erreur de lecture de la matrice **fait échouer le passage** (comme la validation : sans matrice, tout paraîtrait non
+couvert) — rien n'est écrit, la version reste en cours. `impactSources` absent (tests unitaires sans traçabilité) :
+pas de `verification`, comportement d'aujourd'hui.
+
+Écart connu, assumé (précédent GH245) : la couverture lit le **workspace**, `freeze.sha` est `HEAD`. Un lien ou une
+exécution non commités au moment du passage sont comptés dans `verification` sans être dans le commit figé. Le message
+du passage n'y change rien ; la ligne d'information dit « figée à la release », pas « à `freeze.sha` ».
+
+## 5. Service de lecture
+
+```ts
+class VersionRequirementsService {
+  constructor(
+    versions: Pick<VersionsService, 'get' | 'versionType' | 'schemaOf' | 'requirementsOf' | 'isReadonly'>,
+    traceability: Pick<TraceabilityService, 'getMatrix'>,
+  )
+  page(repoPath, versionId, workspaceDir?): Promise<VersionRequirementsPage>
+}
+```
+
+```ts
+interface VersionRequirementRow {
+  requirementId: string; title: string; objectTypeRef: string
+  status: string; version: number; fields: Record<string, unknown>   // à l'état de la version
+  coverageStatus: CoverageStatus | null                               // null : non figée (version released avant GH439) ou ligne absente
+  tests: string[]
+}
+interface VersionRequirementsPage {
+  version: { id; title; state: VersionState; freeze: { tag; sha; at } | null }
+  component: { label; repoPath }
+  verification: 'frozen' | 'missing' | 'live'     // origine de la colonne Vérification
   rows: VersionRequirementRow[]
-  requirementFields: SchemaField[]                  // union des champs des types d'exigence (schéma du gel)
-  requirementTypeLabels: Record<string, string>     // objectTypeRef → libellé
-  requirementStatusLabels: Record<string, string>   // statut → libellé (schéma du gel)
-  readonly: boolean
+  requirementFields: SchemaField[]                // union des champs des types d'exigence, schéma du gel
+  requirementTypeLabels: Record<string, string>
+  requirementStatusLabels: Record<string, string>
 }
 ```
 
-`requirementFields` et les libellés viennent du **schéma du gel** (`schemaOf`), pas du schéma courant : un type renommé
-ou supprimé depuis ne casse pas la lecture (GH266). `readonly` ne bloque rien (lecture seule) mais s'affiche comme sur
-les autres pages de version.
+Algorithme de `page` :
 
-## 4. Service `VersionRequirementsService`
+1. `version = versions.get(...)` ; `state = versionState(...)`. `abandoned && !freeze` → `VersionError('VERSION_NOT_FROZEN')`.
+2. `schema = schemaOf`, `all = requirementsOf` (commit absent → `VERSION_NOT_FOUND`, remonte : pas de liste vide),
+   `reqs = inPerimeter(schema, all)`.
+3. `version.freeze` :
+   - `version.verification` présent → `verification: 'frozen'`, couverture par ID depuis `rows` ;
+   - absent → `'missing'`, `coverageStatus: null` partout (U8).
+   `freeze` absent (en cours) → `getMatrix(repoPath, {}, workspaceDir)` indexé par ID → `'live'` (une exigence absente de la
+   matrice vaut `not_covered`, comme `ValidationsService.liveColumns`).
+4. `rows = buildRequirementRows(...)` (pure, tri numérique) ; champs et libellés lus du **schéma du gel**
+   (`flattenSystemNodes`, types de catégorie `requirement`).
 
-```ts
-constructor(
-  versions: Pick<VersionsService, 'get' | 'versionType' | 'schemaOf' | 'requirementsOf' | 'designVersionsFor' | 'isReadonly'>,
-  traceability: Pick<TraceabilityService, 'getMatrix'>,
-  tracking: Pick<VersionTrackingService, 'readWithFields'>,
-)
-async page(repoPath, versionId, include, workspaceDir?): Promise<VersionRequirementsPage>
-```
-
-Algorithme :
-
-1. `version = await versions.get(repoPath, versionId)` (`VERSION_NOT_FOUND` sinon). `state = versionState(typeDef, version.status)`.
-2. `state === 'abandoned' && !version.freeze` → `VersionError('VERSION_NOT_FROZEN')`.
-3. `schema = await versions.schemaOf(repoPath, version)` ; `all = await versions.requirementsOf(repoPath, version)`
-   (commit figé illisible → `VERSION_NOT_FOUND`, l'erreur remonte : jamais de liste vide) ;
-   `reqs = inPerimeter(schema, all)` (réutilisé de `validation-rows.util.ts`).
-4. Couverture : `matrix = await traceability.getMatrix(repoPath, {}, workspaceDir)`, indexée par ID : `{ status, tests }`.
-   Même appel que `ValidationsService.liveColumns` : une exigence absente de la matrice vaut `not_covered`.
-5. `include.design` → `versions.designVersionsFor(repoPath, reqs.map(r => r.state))`.
-6. `include.changedSince && version.freeze` → pour chaque exigence, `tracking.readWithFields(repoPath, 'requirements/<ID>.yaml')`
-   (disque) ; `changedSince = !current || current.state.key !== r.state.key` (fichier disparu : modifiée). Lectures **par lots
-   bornés** (32 à la fois) : le verrou de tâches Git est global au processus (leçon GH335), pas de `Promise.all` sur tout
-   le repo.
-7. `rows = buildRequirementRows(...)` (pure : assemble, trie par ID numérique, n'ajoute `designVersion` / `changedSince`
-   que si demandés).
-8. `requirementFields`, libellés de types et de statuts : lus du schéma du gel, types de catégorie `requirement` du
-   repo (`flattenSystemNodes`, comme `ValidationsService.requirementDisplay`).
-
-Coût : `requirementsOf` lit un fichier par exigence à `freeze.sha` via le `git cat-file --batch-command` persistant du
-repo (GH337) et un cache de contenu borné ; pas de processus par fichier. `getMatrix` parcourt le workspace comme pour la
-validation.
+Une version released lit **zéro** couverture dans l'état courant : ni matrice, ni exécutions (critère 2 par construction).
 
 ### Alternatives rejetées
 
 | Alternative | Pourquoi non |
 |---|---|
-| Réutiliser `SystemView` / `ExcelView` avec un paramètre « version » | ces composants sont liés au contexte (arbre, sélection, édition, éditeurs, vues d'équipe) et à l'index courant ; une lecture figée y demanderait un mode lecture seule dans 1 400 + lignes de composant. La grille commune (GH389) donne le même rendu, les mêmes filtres et le même 👁 sans ce couplage |
-| Réutiliser `ValidationsService.page` | exige une validation existante et porte décisions, reprise, signature |
-| Ajouter la liste au `VersionPage` existant | alourdit la page d'une version (lecture de toutes les exigences à chaque ouverture) pour un écran à part |
-| Couverture recalculée au gel | relire liens, tests, exécutions à un commit : nouvelle brique et nouveau coût, hors besoin exprimé (décision D2) ; le calcul `computeCoverage` est pur et le permettrait plus tard sans changer le contrat |
-| Copier la couverture dans le fichier de version à la release | nouveau champ système, migration des versions existantes, pas de reprise possible |
-| Un kind d'export par format | `ExportButton` n'a qu'un `kind` ; deux kinds feraient deux boutons |
+| Recalculer la couverture à `freeze.sha` (relire liens, tests, exécutions à un commit) | nouvelle brique de lecture historique, coûteuse ; le besoin est « ce qui était vérifié à la release », une copie à la release le donne exactement |
+| Couverture courante + colonne « Modifiée depuis » (révision 1) | refusé par l'humain (D2) ; la copie rend la colonne inutile |
+| Mettre `verification` dans `analysis` | `analysis` est l'analyse d'impact (racines, lignes d'impact) ; un autre sujet, un autre cycle de lecture |
+| Page dédiée `/version/<ID>/requirements` (révision 1) | refusée (D5) : la section suit le motif des autres sections de la page |
+| Un export par grille | refusé (D6) : export global avec choix de sections |
+| Réutiliser `SystemView` / `ExcelView` | liés au contexte (arbre, sélection, édition) et à l'index courant ; la grille commune (GH389) donne le même rendu |
 
-## 5. Renderer
+## 6. Section « Exigences » (renderer)
 
-### 5.1 Route et en-tête
+- `VersionRequirementsSection` reçoit `repoPath`, `projectId`, `versionId`, `state`, `freeze` ; état `open` via
+  `useSectionOpen('requirements', false)` ; `useVersionRequirements(..., enabled = open)`.
+- `DataGrid` (`gridId="version-requirements"`, `noExport`), préférences `{ repoPath, prefKey: 'grid::version-requirements',
+  view: 'columns', defaults }`, `useGridScrollKey('version-requirements')`. Pas d'édition, pas de cases.
+- Colonnes (`buildVersionRequirementColumns`) : `getText` = texte affiché ; `coverageStatus` : `CoverageBadge` à l'écran,
+  libellé `system.coverage.status.<s>` en texte, « — » quand `coverageStatus === null`. Le badge exige peut-être des
+  cellules de matrice : adaptateur `{ coverageStatus, cells: [] }` (à vérifier au sprint 2 ; sinon texte + `title`).
+- Richtext : `htmlToCellText(fieldValueToText(v))`.
+- Ligne d'information : trois textes selon `page.verification` (spec § 2.3).
+- Invalidation : clé `['versions', 'requirements', repoPath, id, workspaceDir]` dans `useInvalidateVersions` ; pour une version
+  en cours elle suit aussi le groupe d'invalidation de la couverture (celui de `validations:page`) — à confirmer au sprint 2.
 
-`version_.$versionId.requirements.tsx` : mêmes paramètres de recherche que `version.$versionId.tsx` (`repoPath`,
-`workspaceDir`). Charge la page via `useVersionRequirements`, rend `VersionRequirementsGrid`. Titre d'onglet
-(`useSetTabTitle`) « Exigences — <label> ». L'en-tête reprend le `ViewHeader` de la page d'une version : pastille d'état,
-`PageLink` vers la version, ligne d'information (spec § 2.2).
+## 7. Section « Informations » et mise en page
 
-Erreur `VERSION_NOT_FROZEN` / `VERSION_NOT_FOUND` : `versionErrorText` (déjà utilisé par la page d'une version), message
-dans la zone de la grille.
+- `VersionInfoSection` reprend, sans changement de comportement, le bloc `version-header` (libellé, statut, basée sur,
+  tag figé, champs du type, Enregistrer / Annuler). Même `SectionToggle` que les autres (compteur rendu **optionnel**),
+  `useSectionOpen('info')`, `data-testid="version-info-toggle"` / `"version-info"`.
+- `Composants` : redevient une section de premier niveau, `useSectionOpen('components')` (déjà existant) ;
+  `OrphanComponents` rendu **hors section** (alerte).
+- Barre de titre : `subtitle = <span>{version.id}<pastille d'état/></span>` toujours ; `actions` sans bouton de repli.
+- `useHeaderCollapsed('version')` retiré de la page ; le hook ne sert plus qu'à la validation (type `'validation'`).
+- `SectionToggle` est aujourd'hui local à `version.$versionId.tsx` : le sortir dans `components/versions/SectionToggle.tsx`
+  (compteur optionnel) pour que `Informations`, `Exigences` et les autres l'utilisent.
 
-### 5.2 Colonnes
+### Colonnes extraites des trois grilles existantes
 
-`buildVersionRequirementColumns({ page, t, language })` retourne la liste ordonnée des colonnes
-(`id`, `title`, `status`, `objectTypeRef`, une colonne par champ, `version`, `coverageStatus`, `tests`, `designStatus`,
-`changedSince`). Chaque colonne porte `getText` (texte affiché : export et filtre), `render` (cellule), `defaultVisible`.
-
-- Défauts : `id`, `title`, `status`, champs `defaultVisible` du type (sinon trois premiers, `defaultVisibleFields`),
-  `coverageStatus`.
-- `coverageStatus` : `CoverageBadge` à l'écran ; `getText` = `t('system.coverage.status.<s>')` (filtrable sur le libellé,
-  GH224). Le badge reçoit `coverage` et les tests : fournir l'adaptateur `{ coverageStatus, cells: [] }` si le badge exige
-  des cellules (à vérifier au sprint 2, le tooltip liste les tests).
-- Richtext : `htmlToCellText(fieldValueToText(v))`, comme la grille de validation.
-- `id` : `ElementLink` (l'exigence courante) ; `designStatus` : `PageLink` vers la version.
-
-### 5.3 Grille
-
-`DataGrid` + `GridToolbar` (`gridId="version-requirements"`), préférences `useGridPrefs({ repoPath, prefKey:
-'grid::version-requirements', view: 'columns', defaults })`, `useColumnFilters`, `useColumnLayout`, `useRowSelection`,
-`useGridKeyboard`, `useGridScrollKey('version-requirements')`, `RowClamp`. Pas d'édition, pas de cases : la sélection
-sert aux gestes communs.
-
-`include` du hook = `{ design: visible.includes('designStatus'), changedSince: visible.includes('changedSince') }` :
-cocher une de ces colonnes déclenche une nouvelle lecture (clé de requête distincte, `keepPreviousData`).
-
-### 5.4 Export
-
-`GridToolbar.exportTable` reçoit :
+`VersionChangesTable`, `VersionTestsSection` et `VersionAnalysisSection` définissent leurs colonnes dans un `useMemo`. Elles
+passent dans des fonctions pures :
 
 ```ts
-{ repoPath, title, getPayload: () => buildTablePayload(..., infoSheet), kind: 'version-requirements',
-  formats: ['xlsx', 'pdf'], getPrintParams: () => ({ repoPath, versionId, workspaceDir, username, title,
-                                                      filters: JSON.stringify(filters), filterKeys: JSON.stringify(filterKeys) }) }
+buildVersionChangeColumns({ t, gestures, removable }): GridColumn<VersionChangeRow>[]
+buildVersionTestColumns({ t }): GridColumn<VersionTestToRun>[]
+buildVersionAnalysisColumns({ t, titleOf }): GridColumn<VersionImpactRow>[]
 ```
 
-- **xlsx** : `buildTablePayload` (GH389) produit lignes filtrées / colonnes visibles ; `infoSheet` = feuille « Version »
-  (composant, label, état, tag, date de gel, commit figé, « n exportées / total », date d'export). Générateur
-  `table.xlsx.ts` : une seconde feuille quand `infoSheet` est fourni.
-- **pdf** : `api.export.save(..., 'pdf', undefined, printParams, ...)` → `PRINT_ROUTE_BY_KIND` → fenêtre cachée.
+Les composants les appellent dans leur `useMemo` ; l'export les appelle avec des gestes inertes (précédent :
+`buildExecutionColumns` + `INERT_GESTURES` de `print.executions.tsx`). **Pas de duplication** des `getText` : le texte
+exporté est celui de l'écran. Colonnes de gestes (`actions`, `diff`) : exclues de l'export par clé.
 
-## 6. Route imprimable `/print/version-requirements`
+## 8. Export global
 
-Même patron que `print.executions.tsx` : `validateSearch` sur `repoPath, versionId, workspaceDir, username, title, filters,
-filterKeys` ; recharge la page (`versions:requirements`), lit les colonnes visibles du `.pref` (`grid::version-requirements`,
-vue `columns`), construit les colonnes avec **le même** `buildVersionRequirementColumns`, applique `filters` (même fonction
-que la grille, `columnFilters`), rend :
+### 8.1 Choix des sections et collecte (`useVersionExport`)
 
-- bloc d'identification (mêmes lignes que la feuille « Version ») ;
-- `<table>` statique : `thead` en `display: table-header-group` (répété à chaque page), `tr { break-inside: avoid }`,
-  cellules texte (badge de couverture rendu en texte coloré) ;
-- appelle `useNotifyPrintReady(loaded && prefsLoaded)`.
+Sections proposées : `info`, `components` (si la version a des composants), `changes`, `analysis` et `tests` (si état ≠
+abandonnée), `requirements` (si la section est disponible). `ExportButton` reçoit `choices` (cases, mémorisation
+`localStorage` par poste en `try/catch`) ; pas de sélection → formats désactivés.
 
-`include` = colonnes visibles du `.pref` (même règle que l'écran). Largeur de colonne : proportionnelle aux largeurs
-enregistrées, sinon automatique ; `word-break` sur les champs longs.
+`getPayload('xlsx', { selected })` :
 
-`PDF_LAYOUT_BY_KIND['version-requirements'] = { scale: 1, marginMm: PRINT_MARGIN_MM, landscape: true, pageNumbers: true }` :
-Electron `printToPDF({ landscape, displayHeaderFooter, headerTemplate: '<span></span>', footerTemplate })`, Playwright
-`page.pdf({ landscape, displayHeaderFooter, … })` ; `footerTemplate` utilise les classes `pageNumber` / `totalPages` de
-Chromium. L'échelle reste 1 (pas la réduction du dashboard).
+1. données déjà chargées par la page : `page` (versions:get), `impactQuery.data` (analyse, tests) ;
+2. `requirements` : `queryClient.fetchQuery(['versions','requirements',…])` — chargée **même section fermée** ;
+3. colonnes visibles : `api.pref.getFieldVisibility(repoPath, username, 'grid::<id>')` + `gridPrefKeys('columns')`, défauts
+   de chaque grille (`DEFAULTS` des composants, exportés) — **mêmes préférences que l'écran** ;
+4. `buildVersionSectionTables({ selected, page, impact, requirements, visibleColumns, t, language })` → `SectionTable[]` ;
+5. `TablesExportPayload = { sheets: tables.map(toTableExportPayload) }` (`sheetNameOf(label)`, largeurs enregistrées).
 
-## 7. Décisions techniques
+### 8.2 `buildVersionSectionTables`
 
-- **Vérification = état courant** (D2) : même fonction que la vue exigence, sans nouvelle lecture historique. Le contrat
-  (`coverageStatus` par ligne) ne change pas si une version future la calcule au gel.
-- **Pas de cache côté main** : la page se recalcule à chaque lecture ; l'invalidation du renderer (`useInvalidateVersions`
-  + groupe couverture) suffit. Les lectures figées profitent du cache de contenu borné de `VersionTrackingService`.
-- **Colonnes calculées à la demande** (`include`) : évite de lire le design (parcours des versions released) et l'état
-  courant de chaque exigence quand l'utilisateur ne les affiche pas (critère 3).
-- **Aucun tri** (règle des grilles communes) : ordre des ID.
-- **Indicateurs** : aucun compteur calculé (GH79) ; le « n / total » de la barre d'outils est celui de toute grille.
+Fonction pure, `SectionTable = { id, title, columns: { key; label; width? }[], rows: Record<string,string>[] }`.
 
-## 8. Découpage en sprints
+- `info` : colonnes Champ / Valeur, lignes : libellé, état, statut, basée sur, tag, date de gel, commit (7 caractères),
+  champs du type version (`fieldValueToText`), composant, exporté le.
+- `components` : composant, version retenue, état.
+- `changes`, `tests`, `analysis`, `requirements` : colonnes des modules extraits, restreintes aux clés visibles dans
+  l'ordre, `getText` de chaque ligne ; **aucun filtre**.
+- Aucun accès réseau ni DOM : testable en unitaire.
+
+### 8.3 xlsx
+
+`'version:xlsx'` → `exportTablesXlsx(payload, dest)` : `new ExcelJS.Workbook()`, pour chaque feuille
+`addTableSheet(workbook, sheet)` (en-tête gras, volets figés, largeurs, hyperliens) ; noms d'onglets dédoublonnés.
+
+### 8.4 PDF
+
+`api.export.save(repoPath, 'version', 'pdf', undefined, printParams, suggestedName)`, `printParams = { repoPath, projectId,
+versionId, sections: 'info,changes,…', username, language }`. Route `/print/version` :
+
+- recharge `versions:get`, `versions:impact` (si besoin), `versions:requirements` (si besoin) et les préférences de colonnes ;
+- appelle **la même** `buildVersionSectionTables` ;
+- rend titre et identification, puis pour chaque section un `<h2>` et un `<table>` statique : `thead { display:
+  table-header-group }`, `tr { break-inside: avoid }`, badge de couverture rendu en texte, `word-break` sur les champs longs ;
+- `useNotifyPrintReady(true)` quand toutes les requêtes sont terminées.
+
+`PDF_LAYOUT_BY_KIND.version = { scale: 1, marginMm: PRINT_MARGIN_MM, landscape: true, pageNumbers: true }` : Electron
+`printToPDF({ landscape, displayHeaderFooter, headerTemplate: '<span></span>', footerTemplate })`, Playwright
+`page.pdf({ landscape, displayHeaderFooter, … })` ; le pied utilise les classes `pageNumber` / `totalPages` de Chromium.
+
+### 8.5 Retrait des exports de grille (D9)
+
+`DataGrid` a déjà `noExport` : posé sur `version-changes`, `version-tests`, `version-analysis` (grilles de la page version).
+Les grilles du Backlog, de la validation, des campagnes… gardent leur export.
+
+## 9. Décisions techniques
+
+- **Copie à la release plutôt que recalcul** : une donnée lue à la release, une fois ; la page n'a plus aucun lien avec
+  l'état courant pour une version figée.
+- **Une seule fonction de tables** (`buildVersionSectionTables`) pour Excel et PDF : parité par construction (critère 6).
+- **Colonnes extraites, pas dupliquées** : l'export suit l'écran quand une colonne change.
+- **Chargement paresseux** : la section « Exigences » ne lit rien fermée ; l'export la charge à la demande.
+- **Aucun tri, aucun filtre exporté** (D10).
+- **Indicateurs** : aucun agrégat calculé (GH79).
+
+## 10. Découpage en sprints
 
 | Sprint | Contenu | Vérification |
 |---|---|---|
-| **1 — Données** | types, `VersionRequirementsService` + util pure, `VERSION_NOT_FROZEN`, canal IPC + liste blanche web, client API, câblage conteneur, tests unitaires | niveau 2 (typecheck, lint, `pnpm test`) ; aucune UI |
-| **2 — Écran** | route, grille, colonnes partagées, préférences, bouton sur la page version, i18n, invalidation, e2e web de l'écran (U1–U13, U16–U18 hors export) | niveau 2 + `e2e-web/gh439-` |
-| **3 — Exports** | `ExportKind`, `infoSheet`, générateur, route imprimable, `PdfLayout` (paysage, pied), `GridToolbar` étendu, e2e export (U14, U15), mise à jour des SPEC, `GH439-sprint3.md` | niveau 2 ; PDF vérifié comme `s4-print.spec.ts` |
+| **1 — Données** | `verification` (types, `freezeVerification`, `buildVerification`), `VersionRequirementsService` + util, `VERSION_NOT_FROZEN`, canal IPC + liste blanche web + client API, câblage, tests unitaires | niveau 2 (typecheck, lint, `pnpm test`) ; aucune UI |
+| **2 — Page** | `SectionToggle` partagé, section « Informations », barre de titre, section « Exigences », colonnes extraites des trois grilles, `useSectionOpen(…, defaultOpen)`, i18n, mise à jour de `gh389-versions.spec.ts`, e2e web de la page (U1–U15, U22–U25 hors export) | niveau 2 + `e2e-web/gh439-version-page` |
+| **3 — Export** | `ExportButton` + `choices`, `buildVersionSectionTables`, `useVersionExport`, kind `version`, `exportTablesXlsx`, route `/print/version`, `PdfLayout`, `noExport` des trois grilles, e2e export (U16–U21), mises à jour des SPEC, `GH439-sprint3.md` | niveau 2 ; PDF vérifié comme `s4-print.spec.ts` |
 
-Dernier sprint : mise à jour de SPEC-REQ §11.5, SPEC-SYSTEM-VIEW (ligne dans le tableau des grilles), SPEC-WEB §11,
-SPEC-INDEX (colonne `MAJ`).
-
-## 9. Risques
+## 11. Risques
 
 | Risque | Parade |
 |---|---|
-| Volume (milliers d'exigences) : lecture du gel + saturation de la file de tâches Git (leçon GH335) | lectures par lots bornés, test au-delà du seuil (`GH439-tests.md` L1) |
-| PDF : tableau large coupé, lignes tronquées entre deux pages | paysage, `break-inside: avoid`, en-tête répété ; vérifié sur un jeu de 300 lignes avec champs richtext longs |
-| Texte exporté différent de l'écran | colonnes partagées entre grille, xlsx et route imprimable ; test de parité (`GH439-tests.md` P1) |
-| `CoverageBadge` exige des cellules de matrice | adaptateur au sprint 2 ; sinon texte seul + `title` |
-| Route nouvelle : `routeTree.gen.ts` | régénéré et commité dans ce ticket (il ajoute une route) |
+| Version released avant GH439 : colonne vide | ligne d'information explicite (D2b), cas U8 testé |
+| `verification` volumineuse dans le fichier de version (milliers d'exigences) | une ligne `{id, status, tests}` par exigence, IDs de test seuls ; test sur 1 500 exigences (taille et durée du passage) |
+| Passage released plus long (matrice + lecture du périmètre) | même coût que l'analyse d'impact déjà calculée au passage ; mesuré au sprint 1 |
+| Saturation de la file de tâches Git à la lecture d'un gros périmètre (leçon GH335) | `requirementsOf` lit via le `cat-file --batch-command` persistant (GH337), cache de contenu borné ; test au-delà du seuil |
+| Export : texte différent de l'écran | colonnes extraites + fonction de tables unique ; test de parité grille / xlsx / PDF |
+| PDF : tableau large, lignes coupées | paysage, `break-inside: avoid`, en-tête répété ; vérifié sur 300 lignes à champs richtext longs |
+| Régression de la page (en-tête déplacé, Composants sorti du bloc replié) | e2e de la page, `gh389-versions.spec.ts` adapté, test du retour de défilement (GH300) |
+| `ExportButton` : clic souris dans le popover (leçon GH416) | test au clic souris sur les cases et sur les formats |
+| Route nouvelle : `routeTree.gen.ts` | régénéré et commité dans ce ticket |

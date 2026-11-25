@@ -60,7 +60,8 @@ test('1.10 — un résultat saisi met à jour le dashboard ouvert sans action', 
   await s.page.getByText('Campagnes', { exact: true }).click()
   await s.page.waitForLoadState('networkidle')
 
-  const failures = s.page.locator('div.h-64').filter({ hasText: 'Entrées en échec' })
+  // GH435 : la carte n'a plus la classe `h-64` (hauteur réglable) — repère stable : le test id.
+  const failures = s.page.getByTestId('widget-card').filter({ hasText: 'Entrées en échec' })
   const rowsOfCampaign = failures.locator('tbody tr').filter({ hasText: campaign.id })
   await expect(rowsOfCampaign).toHaveCount(1)
 

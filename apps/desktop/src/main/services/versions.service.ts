@@ -4,7 +4,7 @@ import type {
   CreateVersionDto, FieldRename, FieldRenameResult, ObjectTypeDefinition, ProductVersion, ProjectSchema, UpdateVersionDto, VersionBacklogItem,
   VersionChange, VersionChangeRow, VersionComponentNode, VersionElementRef, VersionErrorCode, VersionPage,
   VersionProblem, VersionReleasePreview, VersionSummary, WorkspaceTreeNode,
-  ImpactAnalysisStatus, VersionAnalysis, VersionImpacted, VersionTestsToRun,
+  ImpactAnalysisStatus, VersionAnalysis, VersionFreeze, VersionImpacted, VersionTestsToRun, VersionVerification,
 } from '@polenta/types'
 import { ISSUE_IMPACT_LINK, IMPACT_ANALYSIS_STATUSES, initialStatus, renameFieldKeys, isUnknownStatus, isValidTagName, suggestVersionTag, versionState } from '@polenta/types'
 import type { GitService } from './git.service'
@@ -21,6 +21,8 @@ import { applyFieldsWrite } from './field-write.util'
 import type { ImpactSnapshot, TraceabilityService } from './traceability.service'
 import type { CampaignsService } from './campaigns.service'
 import { computeVersionAnalysis, computeVersionTests } from './version-analysis.util'
+import { inPerimeter } from './validation-rows.util'
+import { buildVerification } from './version-verification.util'
 import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 
 /** Erreur métier des versions : le message commence par le code (`TAG_EXISTS: …`), traduit par le renderer. */
@@ -57,11 +59,14 @@ export class VersionsService {
 
   private writeQueues = new Map<string, Promise<unknown>>()
   private impactSources?: {
-    traceability: Pick<TraceabilityService, 'loadWorkingTreeSnapshot' | 'buildImpactTreesFromSnapshot'>
+    traceability: Pick<TraceabilityService, 'loadWorkingTreeSnapshot' | 'buildImpactTreesFromSnapshot' | 'getMatrix'>
     campaigns: Pick<CampaignsService, 'list'>
   }
 
-  /** GH245 — moteur d'impact et campagnes (injectés après construction, comme `GraphService.setVersions`). */
+  /**
+   * GH245 — moteur d'impact et campagnes (injectés après construction, comme `GraphService.setVersions`) ;
+   * GH439 — la matrice de couverture sert aussi au gel de la vérification au passage released.
+   */
   setImpactSources(sources: NonNullable<VersionsService['impactSources']>): void {
     this.impactSources = sources
   }
@@ -502,8 +507,10 @@ export class VersionsService {
     }))
 
     const rows = await this.rowsOf(info, version, basedOnVersion, ws?.nodes ?? [], ws?.logicalTree ?? null, new Set(), true)
+    // GH439 — la couverture figée (une ligne par exigence) se lit par `versions:requirements`, pas dans la page.
+    const { verification: _frozenVerification, ...pageVersion } = version
     return {
-      version, state: versionState(vt.typeDef, version.status),
+      version: pageVersion, state: versionState(vt.typeDef, version.status),
       component: { ...info, readonly },
       typeDef: vt.typeDef,
       basedOn: basedOnVersion ? summary(basedOnVersion) : null,
@@ -782,6 +789,10 @@ export class VersionsService {
       // GH245 — analyse figée dans le même commit : lignes et racines, sans les arbres (volumineux et
       // porteurs de chemins locaux), calculée sur l'état du workspace au moment du passage.
       const analysis = this.impactSources ? freezeAnalysis((await this.liveAnalysis(repoPath, version, workspaceDir)).analysis) : undefined
+      const freeze = { tag: trimmed, sha: head, at: new Date().toISOString() }
+      // GH439 — couverture des exigences du périmètre figée dans le même commit ; une matrice illisible
+      // fait échouer le passage (rien n'est écrit) plutôt que de figer des exigences « non couvertes ».
+      const verification = this.impactSources ? await this.freezeVerification(repoPath, freeze, workspaceDir) : undefined
       // GH268 — `base` recalculée au gel : une autre version a pu livrer ces éléments depuis leur inclusion.
       const lastIncl = this.lastInclusions(vt.typeDef, (await this.list(repoPath)).filter(v => v.id !== id))
       const changes = await Promise.all((version.changes ?? []).map(async c => {
@@ -791,7 +802,7 @@ export class VersionsService {
         return { id: c.id, ...(base && { base }) }
       }))
       const released = await this.stamp(repoPath, version, {
-        ...version, ...(version.changes && { changes }), status: approval, freeze: { tag: trimmed, sha: head, at: new Date().toISOString() }, ...(analysis && { analysis }),
+        ...version, ...(version.changes && { changes }), status: approval, freeze, ...(analysis && { analysis }), ...(verification && { verification }),
       }, filePath)
       const content = yaml.dump(released, { lineWidth: 120 })
       // Tag posé sur le commit avant que la branche n'avance : un échec du tag laisse la version en cours.
@@ -808,6 +819,18 @@ export class VersionsService {
       await this.sync.queueTagPush(repoPath, trimmed).catch(err => console.warn(`[versions] tag ${trimmed} non mis en attente de push :`, err))
       return released
     })
+  }
+
+  /**
+   * GH439 — couverture des exigences du périmètre telles que le commit figé les contient (la même liste
+   * que la page lira à `freeze.sha`), lue sur l'état du workspace au moment du passage (précédent GH245).
+   */
+  private async freezeVerification(repoPath: string, freeze: VersionFreeze, workspaceDir?: string): Promise<VersionVerification> {
+    const src = this.requireImpactSources()
+    const schema = await this.schemaOf(repoPath, { freeze })
+    const requirements = inPerimeter(schema, await this.requirementsOf(repoPath, { freeze }))
+    const matrix = await src.traceability.getMatrix(repoPath, {}, workspaceDir)
+    return buildVerification(requirements, matrix, new Date(freeze.at))
   }
 
   // ── Contrôles ──────────────────────────────────────────────────────────────

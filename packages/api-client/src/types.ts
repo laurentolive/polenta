@@ -4,7 +4,7 @@ import type {
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget, RunRef,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
-  VersionReleasePreview, VersionSummary, VersionAnalysis, VersionTestsToRun, ImpactAnalysisStatus,
+  VersionReleasePreview, VersionSummary, VersionAnalysis, VersionTestsToRun, ImpactAnalysisStatus, VersionRequirementsPage,
 } from '@polenta/types'
 import type { Issue, RequirementReflectionsList, TransitionCheck, Validation, ValidationPage, ValidationVersionItem,
   MergeFileDetail,
@@ -956,6 +956,8 @@ export interface ApiClient {
     tree(rootRepoPath: string, workspaceDir?: string): Promise<VersionComponentNode[]>
     list(repoPath: string): Promise<VersionSummary[]>
     get(repoPath: string, id: string, workspaceDir?: string): Promise<VersionPage>
+    /** GH439 — exigences de la version, avec leur statut de vérification (figé à la release). */
+    requirements(repoPath: string, id: string, workspaceDir?: string): Promise<VersionRequirementsPage>
     backlog(repoPath: string): Promise<VersionBacklogItem[]>
     create(repoPath: string, dto: CreateVersionDto, workspaceDir?: string): Promise<ProductVersion>
     update(repoPath: string, id: string, dto: UpdateVersionDto, workspaceDir?: string): Promise<ProductVersion>

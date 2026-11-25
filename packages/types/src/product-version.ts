@@ -1,6 +1,7 @@
 import type { ObjectHistory } from './history'
 import type { ImpactAnalysisStatus, ImpactNode } from './impact-analysis'
 import type { ObjectTypeDefinition } from './schema'
+import type { CoverageStatus } from './traceability'
 
 // GH201 — objet version d'un composant (un repo) ou du produit (repo racine), specs/GH201.md.
 // Fichier `versions/<ID>.yaml` du repo ; type de catégorie `version` déclaré sur le nœud `root`.
@@ -44,6 +45,8 @@ export interface ProductVersion {
   impacted?: VersionImpacted[]
   /** GH245 — analyse d'impact figée au passage released. */
   analysis?: VersionAnalysis
+  /** GH439 — couverture des exigences du périmètre figée au passage released. */
+  verification?: VersionVerification
   fields: Record<string, unknown>
   history?: ObjectHistory
 }
@@ -96,6 +99,21 @@ export interface VersionAnalysis {
   frozen: boolean
   roots: VersionImpactRoot[]
   rows: VersionImpactRow[]
+}
+
+// ── GH439 — couverture figée des exigences d'une version ──────────────────────
+
+/** Couverture d'une exigence au passage released : statut de vérification et tests liés (IDs seuls). */
+export interface VersionVerificationRow {
+  id: string
+  status: CoverageStatus
+  tests: string[]
+}
+
+/** Posé au passage released, dans le commit du fichier de version ; lignes triées par ID. */
+export interface VersionVerification {
+  computedAt: string
+  rows: VersionVerificationRow[]
 }
 
 export interface VersionTestToRun {
@@ -218,7 +236,7 @@ export type VersionErrorCode =
   | 'NO_VERSION_TYPE' | 'LABEL_TAKEN' | 'LABEL_EMPTY' | 'VERSION_LOCKED'
   | 'NOT_IN_PROGRESS' | 'RELEASE_REQUIRED' | 'TAG_INVALID' | 'TAG_EXISTS' | 'COMPONENT_NOT_RELEASED'
   | 'DIRTY_CHANGES' | 'READONLY_REPO' | 'VERSION_NOT_FOUND' | 'STATUS_UNKNOWN' | 'VERSION_ABANDONED'
-  | 'NOT_OWN_ELEMENT' | 'VERSION_HAS_VALIDATION'
+  | 'NOT_OWN_ELEMENT' | 'VERSION_HAS_VALIDATION' | 'VERSION_NOT_FROZEN'
 
 export interface VersionProblem {
   code: VersionErrorCode
@@ -233,7 +251,7 @@ export interface VersionReleasePreview {
 export const VERSION_ERROR_CODES: readonly VersionErrorCode[] = [
   'NO_VERSION_TYPE', 'LABEL_TAKEN', 'LABEL_EMPTY', 'VERSION_LOCKED',
   'NOT_IN_PROGRESS', 'RELEASE_REQUIRED', 'TAG_INVALID', 'TAG_EXISTS', 'COMPONENT_NOT_RELEASED',
-  'DIRTY_CHANGES', 'READONLY_REPO', 'VERSION_NOT_FOUND', 'STATUS_UNKNOWN', 'VERSION_ABANDONED', 'NOT_OWN_ELEMENT', 'VERSION_HAS_VALIDATION',
+  'DIRTY_CHANGES', 'READONLY_REPO', 'VERSION_NOT_FOUND', 'STATUS_UNKNOWN', 'VERSION_ABANDONED', 'NOT_OWN_ELEMENT', 'VERSION_HAS_VALIDATION', 'VERSION_NOT_FROZEN',
 ]
 
 /** État d'une version selon les marques de son type. */

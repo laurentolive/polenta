@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { FileDiff, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import type { VersionChangeRow } from '@polenta/types'
-import { ElementLink } from '../element/ElementLink'
-import { PageLink } from '../element/PageLink'
 import { DataGrid } from '../grid/DataGrid'
-import type { GridColumn } from '../grid/gridTypes'
 import { useGridScrollKey } from '../grid/useGridScrollKey'
-
-const DEFAULTS = ['component', 'version', 'type', 'id', 'label', 'diff', 'actions']
-/** Identifiant de ligne : un même élément peut figurer dans la version et dans celle d'un composant, et
- *  deux repos peuvent avoir une version de même ID (composant = nom de montage, unique). */
-const rowKey = (r: VersionChangeRow) => `${r.component}:${r.versionId}:${r.id}`
+import { VERSION_CHANGE_DEFAULTS, buildVersionChangeColumns, versionChangeRowKey as rowKey } from './versionChangeColumns'
 
 /**
  * GH201 §5 — changements d'une version (les siens, puis ceux des versions des composants). GH389 §4 :
@@ -58,58 +51,9 @@ export function VersionChangesTable({ rows, repoPath, projectId, title, onRemove
   gestures.current = { openDiff, openVersion, onRemove }
   const removable = !!onRemove
 
-  const columns = useMemo<GridColumn<VersionChangeRow>[]>(() => [
-    { key: 'component', label: t('versions.columns.component'), getText: r => r.componentLabel },
-    {
-      key: 'version', label: t('versions.columns.version'),
-      getText: r => `${r.versionTitle} (${r.versionId})`,
-      render: r => (
-        <PageLink id={r.versionId} repoPath={r.repoPath} className="text-prim" onFallback={() => gestures.current.openVersion(r)}>
-          {r.versionTitle} <span className="text-ink-3">({r.versionId})</span>
-        </PageLink>
-      ),
-    },
-    {
-      key: 'type', label: t('versions.columns.type'),
-      getText: r => (r.category ? t(`versions.category.${r.category}`) : t('versions.page.deleted')),
-      render: r => (r.category ? t(`versions.category.${r.category}`) : <span className="italic text-ink-3">{t('versions.page.deleted')}</span>),
-    },
-    {
-      key: 'id', label: t('versions.columns.id'), locked: true,
-      getText: r => r.id,
-      render: r => (r.category ? <ElementLink id={r.id} className="font-mono text-prim" /> : <span className="font-mono text-ink-3">{r.id}</span>),
-      elementId: r => (r.category ? r.id : undefined),
-    },
-    {
-      key: 'label', label: t('versions.columns.label'),
-      getText: r => [r.title, !r.base && r.category ? t('versions.backlog.kind.new') : ''].filter(Boolean).join(' '),
-      render: r => <>{r.title}{!r.base && r.category && <span className="ml-2 text-[10px] text-status-info">{t('versions.backlog.kind.new')}</span>}</>,
-    },
-    {
-      key: 'diff', label: t('versions.columns.diff'), filterable: false,
-      getText: r => (r.filePath ? t('versions.seeChanges') : ''),
-      render: r => r.filePath && (
-        <button type="button" data-cell-link data-cell-dblclick-ignore onClick={e => { e.stopPropagation(); gestures.current.openDiff(r) }}
-          className="inline-flex items-center gap-1 text-prim hover:underline" data-testid={`version-diff-${r.id}`}>
-          <FileDiff size={12} />{t('versions.seeChanges')}
-        </button>
-      ),
-    },
-    // Toujours proposée (vide sur une version figée) : la liste de colonnes enregistrée, commune à
-    // toutes les versions, la garde d'une version à l'autre.
-    {
-      key: 'actions', label: t('versions.columns.actions'), filterable: false,
-      getText: () => '',
-      render: (r: VersionChangeRow) => removable && r.own && (
-        <button type="button" data-cell-dblclick-ignore onClick={e => { e.stopPropagation(); gestures.current.onRemove?.([r.id]) }}
-          className="btn-icon text-ink-3 hover:text-status-danger" title={t('versions.page.remove')} data-testid={`version-remove-${r.id}`}>
-          <X size={12} />
-        </button>
-      ),
-    },
-  ], [t, removable])
+  const columns = useMemo(() => buildVersionChangeColumns({ t, gestures, removable }), [t, removable])
 
-  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::version-changes', view: 'columns', defaults: DEFAULTS }), [repoPath])
+  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::version-changes', view: 'columns', defaults: VERSION_CHANGE_DEFAULTS }), [repoPath])
   const isOwn = useCallback((r: VersionChangeRow) => r.own, [])
   const selectable = removable && rows.some(r => r.own)
 

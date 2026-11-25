@@ -2665,7 +2665,28 @@
       "STATUS_UNKNOWN": "Unknown status: {{detail}}",
       "VERSION_ABANDONED": "Abandoned version: {{detail}}",
       "NOT_OWN_ELEMENT": "Element of another component: {{detail}}",
-      "VERSION_HAS_VALIDATION": "This version has a validation: {{detail}}"
+      "VERSION_HAS_VALIDATION": "This version has a validation: {{detail}}",
+      "VERSION_NOT_FROZEN": "Version abandoned before any release: there is no frozen state to read ({{detail}})"
+    },
+    "info": {
+      "title": "Information"
+    },
+    "requirements": {
+      "title": "Requirements",
+      "empty": "No requirement in this version.",
+      "info": {
+        "frozen": "State frozen at tag {{tag}} ({{when}}) — Verification frozen at release.",
+        "missing": "State frozen at tag {{tag}} — Verification not frozen for this version (released before it was introduced).",
+        "live": "Current state of the repo — Verification computed now, frozen when the version is released."
+      },
+      "columns": {
+        "title": "Title",
+        "status": "Status",
+        "type": "Type",
+        "revision": "Requirement version",
+        "verification": "Verification",
+        "tests": "Linked tests"
+      }
     },
     "noVersion": "No version.",
     "expand": "Show components",

@@ -86,17 +86,19 @@ test('E11 — page d’une version : en-tête repliable, changements, tests à e
   await openVersion(versionId)
   await expect(p.getByTestId('version-page')).toBeVisible()
 
-  // En-tête repliable : statut dans le sous-titre, état retrouvé sur une autre version.
-  await expect(p.getByTestId('version-header')).toBeVisible()
-  await p.getByTestId('version-header-toggle').click()
-  await expect(p.getByTestId('version-header')).toHaveCount(0)
+  // GH439 — plus d'en-tête repliable : ID et état restent dans la barre de titre, les informations sont
+  // une section comme les autres (même repli, état retrouvé sur une autre version).
+  await expect(p.getByTestId('version-info')).toBeVisible()
+  await expect(p.getByTestId('version-header-toggle')).toHaveCount(0)
+  await p.getByTestId('version-info-toggle').click()
+  await expect(p.getByTestId('version-info')).toHaveCount(0)
   await expect(p.getByTestId('version-state-short')).toBeVisible()
   await openVersion(releasedId)
-  await expect(p.getByTestId('version-header')).toHaveCount(0)
-  await p.getByTestId('version-header-toggle').click()
-  await expect(p.getByTestId('version-header')).toBeVisible()
+  await expect(p.getByTestId('version-info')).toHaveCount(0)
+  await p.getByTestId('version-info-toggle').click()
+  await expect(p.getByTestId('version-info')).toBeVisible()
   await openVersion(versionId)
-  await expect(p.getByTestId('version-header')).toBeVisible()
+  await expect(p.getByTestId('version-info')).toBeVisible()
 
   // Changements : contrat de grille, liens d'élément (élément et version), cases et « Retirer ».
   await expectGridContract('version-changes', 'id')

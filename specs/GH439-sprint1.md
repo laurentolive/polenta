@@ -46,6 +46,18 @@ Spec : `specs/GH439.md` · design : `specs/GH439-design.md` · scénarios : `spe
   fichier de version à **105 Ko**, aucune erreur de file de tâches Git (leçon GH335).
 - Suites voisines : `versions.gh201`, `versions.gh245`, `issues.gh244`, `validations.gh204`, `web-server`.
 
+## Revue (`/code-review medium 440`)
+
+- **Corrigé** : un schéma illisible faisait entrer les exigences terminales dans le périmètre (`inPerimeter(null, …)`
+  les garde toutes), donc dans la couverture figée. `VersionsService.perimeterOf` (schéma + exigences du périmètre)
+  remonte `VERSION_NOT_FOUND` ; utilisé par le gel et par la page (tests R4b, S10b).
+- **Assumé, documenté au dernier sprint** : la couverture lit le workspace, pas le commit (précédent GH245) — un lien
+  ou une exécution non commités au passage sont comptés ; annoncé à la validation de la spec.
+- **Reporté** : traduction de `VERSION_NOT_FROZEN`, `SectionToggle` / `useVersionRequirements` sans appelant (sprint 2),
+  entrée `verification` de CLAUDE.md (sprint 3).
+- Non retenu : double lecture du périmètre et de la matrice au passage (coût d'un passage mesuré : le volume à
+  1 500 exigences, écriture des fichiers comprise, tient en ~32 s).
+
 ## Comment tester à la main
 
 Rien à voir à l'écran à ce stade (pas d'UI). Le canal se vérifie depuis le sprint 2, dans la section « Exigences ».

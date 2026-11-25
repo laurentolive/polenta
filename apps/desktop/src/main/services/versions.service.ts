@@ -21,7 +21,7 @@ import { applyFieldsWrite } from './field-write.util'
 import type { ImpactSnapshot, TraceabilityService } from './traceability.service'
 import type { CampaignsService } from './campaigns.service'
 import { computeVersionAnalysis, computeVersionTests } from './version-analysis.util'
-import { inPerimeter } from './validation-rows.util'
+import { inPerimeter, type ValidationRequirement } from './validation-rows.util'
 import { buildVerification } from './version-verification.util'
 import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 
@@ -207,6 +207,16 @@ export class VersionsService {
       if (read && own(read.state)) out.push(read)
     }
     return out
+  }
+
+  /**
+   * GH439 — exigences du périmètre (hors statuts terminaux) dans l'état de la version, avec le schéma qui les
+   * décrit. Schéma illisible : l'erreur remonte — sans lui, les exigences terminales entreraient dans le périmètre.
+   */
+  async perimeterOf(repoPath: string, version: Pick<ProductVersion, 'freeze'>): Promise<{ schema: ProjectSchema; requirements: ValidationRequirement[] }> {
+    const schema = await this.schemaOf(repoPath, version)
+    if (!schema) throw new VersionError('VERSION_NOT_FOUND', `schéma illisible${version.freeze ? ` au commit figé ${version.freeze.sha}` : ''}`)
+    return { schema, requirements: inPerimeter(schema, await this.requirementsOf(repoPath, version)) }
   }
 
   /** GH204 — sous-composants d'une version : ceux de la structure, avec la version retenue. */
@@ -827,8 +837,7 @@ export class VersionsService {
    */
   private async freezeVerification(repoPath: string, freeze: VersionFreeze, workspaceDir?: string): Promise<VersionVerification> {
     const src = this.requireImpactSources()
-    const schema = await this.schemaOf(repoPath, { freeze })
-    const requirements = inPerimeter(schema, await this.requirementsOf(repoPath, { freeze }))
+    const { requirements } = await this.perimeterOf(repoPath, { freeze })
     const matrix = await src.traceability.getMatrix(repoPath, {}, workspaceDir)
     return buildVerification(requirements, matrix, new Date(freeze.at))
   }

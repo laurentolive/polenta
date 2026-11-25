@@ -2,7 +2,6 @@ import type { ProductVersion, ProjectSchema, VersionRequirementsPage } from '@po
 import { flattenSystemNodes, versionState } from '@polenta/types'
 import type { TraceabilityService } from './traceability.service'
 import { VersionError, type VersionsService } from './versions.service'
-import { inPerimeter } from './validation-rows.util'
 import { buildRequirementRows, frozenCoverage, liveCoverage, type RequirementCoverage } from './version-verification.util'
 
 /**
@@ -13,7 +12,7 @@ import { buildRequirementRows, frozenCoverage, liveCoverage, type RequirementCov
  */
 export class VersionRequirementsService {
   constructor(
-    private readonly versions: Pick<VersionsService, 'get' | 'versionType' | 'schemaOf' | 'requirementsOf'>,
+    private readonly versions: Pick<VersionsService, 'get' | 'versionType' | 'perimeterOf'>,
     private readonly traceability: Pick<TraceabilityService, 'getMatrix'>,
   ) {}
 
@@ -23,9 +22,8 @@ export class VersionRequirementsService {
     const state = versionState(typeDef, version.status)
     // Abandonnée avant tout passage released : aucun état figé à lire (les éléments ont pu changer depuis).
     if (state === 'abandoned' && !version.freeze) throw new VersionError('VERSION_NOT_FROZEN', versionId)
-    // Gel illisible (clone partiel…) : l'erreur remonte, une liste vide laisserait croire à une version vide.
-    const schema = await this.versions.schemaOf(repoPath, version)
-    const requirements = inPerimeter(schema, await this.versions.requirementsOf(repoPath, version))
+    // Gel ou schéma illisible (clone partiel…) : l'erreur remonte, une liste vide laisserait croire à une version vide.
+    const { schema, requirements } = await this.versions.perimeterOf(repoPath, version)
     const { verification, coverageOf } = await this.coverage(repoPath, version, workspaceDir)
     return {
       version: { id: version.id, title: version.title, state, freeze: version.freeze ?? null },

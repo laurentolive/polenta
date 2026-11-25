@@ -4,7 +4,7 @@ import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { TestRepo } from '../git/test-repo.test-util'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import type { CoverageStatus, ObjectLink, ObjectTypeDefinition, ProductVersion, ProjectSchema, Requirement, TraceabilityMatrix } from '@polenta/types'
 import type { AuthService } from './auth.service'
@@ -51,7 +51,7 @@ let gitSvc: GitService
 let versions: VersionsService
 let service: VersionRequirementsService
 let trace: TraceabilityService
-let matrixSpy: ReturnType<typeof vi.spyOn>
+let matrixSpy: MockInstance<TraceabilityService['getMatrix']>
 let currentSchema: ProjectSchema
 let frozenSchema: ProjectSchema
 
@@ -161,6 +161,18 @@ describe('passage released : couverture figée', () => {
     expect(file).toMatchObject({ status: 'en_cours' })
     expect(file!.freeze).toBeUndefined()
     expect(file!.verification).toBeUndefined()
+  })
+
+  it('R4b — schéma du gel illisible : le passage échoue (les exigences terminales ne doivent pas entrer dans le périmètre figé)', async () => {
+    await req('PR-0001'); await req('PR-0002', { status: 'obsolete' }); await commitAll('exigences')
+    const v = await versions.create(root, { title: '1.0' })
+    await commitAll('version')
+    const before = await head()
+    frozenSchema = null as unknown as ProjectSchema
+    expect(await code(versions.release(root, v.id, 'p-1.0'))).toBe('VERSION_NOT_FOUND')
+    expect(await head()).toBe(before)
+    expect(await gitSvc.resolveTagOid(root, 'p-1.0')).toBeNull()
+    expect((await versionFile(v.id))!.verification).toBeUndefined()
   })
 
   it('R5 — sans moteur de traçabilité : passage sans verification (comportement d\'avant)', async () => {
@@ -308,6 +320,13 @@ describe('lecture des exigences d\'une version', () => {
     const v = await released()
     const file = (await versionFile(v.id))!
     await gitSvc.writeYaml(root, `versions/${v.id}.yaml`, { ...file, freeze: { ...file.freeze!, sha: '0'.repeat(40) } })
+    expect(await code(service.page(root, v.id))).toBe('VERSION_NOT_FOUND')
+  })
+
+  it('S10b — schéma du gel illisible : erreur, pas de liste qui garderait les exigences terminales', async () => {
+    await req('PR-0001'); await req('PR-0002', { status: 'obsolete' }); await commitAll('exigences')
+    const v = await released()
+    frozenSchema = null as unknown as ProjectSchema
     expect(await code(service.page(root, v.id))).toBe('VERSION_NOT_FOUND')
   })
 

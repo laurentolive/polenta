@@ -16,6 +16,8 @@ export default tseslint.config(
       '**/coverage/**',
       '**/test-results/**',
       '**/playwright-report/**',
+      // Rapport HTML de Playwright (reporter de apps/desktop/playwright.config) : régénéré à chaque run e2e
+      'apps/desktop/e2e-web/.report/**',
       // Worktrees / outils d'agents copiés sous le repo
       '.claire/**',
       '.claude/**',

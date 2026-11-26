@@ -91,3 +91,34 @@ Spec : `specs/GH439.md` § 5 · design : `specs/GH439-design.md` § 8 · scénar
 4. **Gros projet** : ouvrir la section Exigences et exporter (temps et mémoire).
 5. **Anglais** : changer la langue, exporter en PDF : titres et en-têtes dans la langue de l'interface.
 6. **Desktop Electron** : les scénarios ci-dessus passent aussi sur l'application (les e2e tournent sur le client web).
+
+## Révision 3 — périmètre de la liste (2026-11-26, après la validation locale)
+
+Retour de l'humain en test : « les exigences listées doivent être uniquement celles disponibles dans la release » ; « tout est
+listé dès la première release ». La spec (D1) listait **toutes** les exigences non terminales du repo à l'état de la version ;
+la première release affichait donc tout le repo. Choix de l'humain : **contenu cumulé de la lignée**.
+
+- **Règle** : une exigence est dans la version si elle est incluse (`changes`) dans la version ou dans une version released
+  de sa lignée (`basedOn`) ; une version abandonnée de la lignée ne livre rien (comme le backlog) ; état lu au tag
+  (disque pour une version en cours) ; non terminale ; type déclaré par le schéma du repo. La validation (GH204) garde son
+  périmètre.
+- **Code** : `VersionsService.availableIds` (remontée de `basedOn`, garde anti-cycle) ; `perimeterOf` ne lit que ces
+  exigences (`requirementsOf(…, only)` : pas de lecture du repo entier) ; le gel de `verification` utilise le même
+  périmètre que la page (une ligne par exigence disponible).
+- **Tests** : S19–S25 (première release, lignée, version abandonnée, version en cours, terminale, élément non exigence ou
+  absent, cycle) ; les tests existants incluent leurs exigences ; e2e : la version figée n'affiche ni l'exigence jamais livrée ni les
+  exigences du projet de démo, la version en cours liste ce que sa lignée a livré puis ses propres inclusions.
+- **Revue** : une release recalculait sa liste depuis la lignée d'aujourd'hui ; abandonner ensuite une version de la lignée
+  l'aurait changée alors que sa couverture figée ne change pas. Le périmètre d'une release est maintenant celui de ses
+  lignes `verification` (test S26) ; la lignée n'est lue que pour une version en cours ou sans couverture figée.
+- **Limite connue** : une exigence livrée puis modifiée sans être réincluse s'affiche à son état **du tag** de la version
+  consultée (pas à son état « livré »). Un ticket peut lire l'état de la dernière version qui l'a incluse.
+- **Défaut trouvé par E13 et corrigé** : la grille « Exigences » gardait le même élément DOM d'une version à l'autre (même
+  route) ; au retour par Précédent, la mémoire du défilement (nœud + décalage, GH300) se calculait sur les lignes de la
+  version quittée et dérivait d'une ligne. La grille est maintenant remontée par version (`key={versionId}`), comme le
+  veut la convention de SPEC-SYSTEM-VIEW (« une grille de page qui change d'entité sur la même route est remontée »).
+  Les grilles Changements, Tests et Analyse de la page ont la même exposition (hors périmètre, jamais constatée).
+  Conséquence sur le test E13 : l'échantillonneur de frames comptait aussi les frames de la page **quittée** (sa grille,
+  neuve et donc en haut) ; avant la `key`, la grille gardait son DOM et se trouvait par hasard à la même position, ce
+  qui masquait le problème. L'échantillonnage est limité à la page de destination.
+- Leçon consignée : `tasks/lessons.md` (2026-11-26).

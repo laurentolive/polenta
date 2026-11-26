@@ -191,7 +191,9 @@ export class VersionsService {
   }
 
   /** GH204 — exigences du composant dans l'état de la version : figé si elle a un gel, disque sinon. */
-  async requirementsOf(repoPath: string, version: Pick<ProductVersion, 'freeze'>): Promise<Array<{ state: ElementState; fields: Record<string, unknown> }>> {
+  async requirementsOf(
+    repoPath: string, version: Pick<ProductVersion, 'freeze'>, only?: ReadonlySet<string>,
+  ): Promise<Array<{ state: ElementState; fields: Record<string, unknown> }>> {
     const schema = await this.schemaOf(repoPath, version)
     const own = (el: ElementState) => !schema || declaresRef(schema, el.objectTypeRef)
     const sha = version.freeze?.sha
@@ -203,6 +205,8 @@ export class VersionsService {
     const out: Array<{ state: ElementState; fields: Record<string, unknown> }> = []
     for (const filePath of files) {
       if (!filePath.endsWith('.yaml') || filePath.split('/').length !== 2) continue
+      // GH439 — `only` : seules ces exigences sont lues (le nom du fichier est l'ID).
+      if (only && !only.has(path.basename(filePath, '.yaml'))) continue
       const read = await this.tracking.readWithFields(repoPath, filePath, sha)
       if (read && own(read.state)) out.push(read)
     }
@@ -210,13 +214,41 @@ export class VersionsService {
   }
 
   /**
-   * GH439 — exigences du périmètre (hors statuts terminaux) dans l'état de la version, avec le schéma qui les
-   * décrit. Schéma illisible : l'erreur remonte — sans lui, les exigences terminales entreraient dans le périmètre.
+   * GH439 — IDs des éléments « disponibles » dans une version : inclus (`changes`) dans la version ou dans une version
+   * released de sa lignée (`basedOn`, de proche en proche). Une version abandonnée de la lignée ne livre rien (GH268,
+   * comme le backlog) ; la lignée se poursuit au-delà. Garde anti-cycle (fichier édité à la main).
    */
-  async perimeterOf(repoPath: string, version: Pick<ProductVersion, 'freeze'>): Promise<{ schema: ProjectSchema; requirements: ValidationRequirement[] }> {
+  async availableIds(repoPath: string, version: Pick<ProductVersion, 'id' | 'basedOn' | 'changes'>): Promise<Set<string>> {
+    const typeDef = (await this.versionType(repoPath))?.typeDef ?? null
+    const versions = new Map((await this.list(repoPath)).map(v => [v.id, v]))
+    const ids = new Set((version.changes ?? []).map(c => c.id))
+    const seen = new Set([version.id])
+    for (let cur = version.basedOn ? versions.get(version.basedOn) : undefined; cur && !seen.has(cur.id); cur = cur.basedOn ? versions.get(cur.basedOn) : undefined) {
+      seen.add(cur.id)
+      if (versionState(typeDef, cur.status) === 'abandoned') continue
+      for (const c of cur.changes ?? []) ids.add(c.id)
+    }
+    return ids
+  }
+
+  /**
+   * GH439 — exigences **disponibles dans la version** (livrées par sa lignée, `availableIds`), hors statuts terminaux,
+   * dans l'état de la version, avec le schéma qui les décrit. Schéma illisible : l'erreur remonte — sans lui, les
+   * exigences terminales entreraient dans le périmètre. Ce n'est pas le périmètre de la validation (GH204), qui
+   * prend toutes les exigences du repo.
+   */
+  async perimeterOf(
+    repoPath: string, version: Pick<ProductVersion, 'id' | 'basedOn' | 'changes' | 'freeze' | 'verification'>,
+  ): Promise<{ schema: ProjectSchema; requirements: ValidationRequirement[] }> {
     const schema = await this.schemaOf(repoPath, version)
     if (!schema) throw new VersionError('VERSION_NOT_FOUND', `schéma illisible${version.freeze ? ` au commit figé ${version.freeze.sha}` : ''}`)
-    return { schema, requirements: inPerimeter(schema, await this.requirementsOf(repoPath, version)) }
+    // Une version released a son périmètre figé avec sa couverture (lignes de `verification`) : une release ne change plus
+    // quand une version de sa lignée est abandonnée ensuite. Sans couverture figée (released avant GH439, version en
+    // cours), le périmètre se lit dans la lignée d'aujourd'hui.
+    const available = version.freeze && version.verification
+      ? new Set(version.verification.rows.map(r => r.id))
+      : await this.availableIds(repoPath, version)
+    return { schema, requirements: inPerimeter(schema, await this.requirementsOf(repoPath, version, available)) }
   }
 
   /** GH204 — sous-composants d'une version : ceux de la structure, avec la version retenue. */
@@ -802,7 +834,7 @@ export class VersionsService {
       const freeze = { tag: trimmed, sha: head, at: new Date().toISOString() }
       // GH439 — couverture des exigences du périmètre figée dans le même commit ; une matrice illisible
       // fait échouer le passage (rien n'est écrit) plutôt que de figer des exigences « non couvertes ».
-      const verification = this.impactSources ? await this.freezeVerification(repoPath, freeze, workspaceDir) : undefined
+      const verification = this.impactSources ? await this.freezeVerification(repoPath, { ...version, freeze }, workspaceDir) : undefined
       // GH268 — `base` recalculée au gel : une autre version a pu livrer ces éléments depuis leur inclusion.
       const lastIncl = this.lastInclusions(vt.typeDef, (await this.list(repoPath)).filter(v => v.id !== id))
       const changes = await Promise.all((version.changes ?? []).map(async c => {
@@ -832,14 +864,16 @@ export class VersionsService {
   }
 
   /**
-   * GH439 — couverture des exigences du périmètre telles que le commit figé les contient (la même liste
-   * que la page lira à `freeze.sha`), lue sur l'état du workspace au moment du passage (précédent GH245).
+   * GH439 — couverture des exigences disponibles dans la version, telles que le commit figé les contient (la même
+   * liste que la page lira à `freeze.sha`), lue sur l'état du workspace au moment du passage (précédent GH245).
    */
-  private async freezeVerification(repoPath: string, freeze: VersionFreeze, workspaceDir?: string): Promise<VersionVerification> {
+  private async freezeVerification(
+    repoPath: string, version: Pick<ProductVersion, 'id' | 'basedOn' | 'changes'> & { freeze: VersionFreeze }, workspaceDir?: string,
+  ): Promise<VersionVerification> {
     const src = this.requireImpactSources()
-    const { requirements } = await this.perimeterOf(repoPath, { freeze })
+    const { requirements } = await this.perimeterOf(repoPath, version)
     const matrix = await src.traceability.getMatrix(repoPath, {}, workspaceDir)
-    return buildVerification(requirements, matrix, new Date(freeze.at))
+    return buildVerification(requirements, matrix, new Date(version.freeze.at))
   }
 
   // ── Contrôles ──────────────────────────────────────────────────────────────

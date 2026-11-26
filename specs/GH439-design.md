@@ -1,4 +1,8 @@
-# GH439 — Design technique (révision 2)
+# GH439 — Design technique (révision 3)
+
+> Révision 3 (2026-11-26) : périmètre de la liste = contenu cumulé de la lignée (`VersionsService.availableRequirementIds`,
+> § 5, § 4) ; le reste est inchangé. Une version released dont la couverture est figée lit son périmètre dans les lignes de
+> `verification` (immuable) ; la lignée n'est lue que pour une version en cours ou sans couverture figée.
 
 Spec : `specs/GH439.md`. Scénarios : `specs/GH439-tests.md`.
 
@@ -97,8 +101,9 @@ const verification = this.impactSources ? await this.freezeVerification(repoPath
 
 `freezeVerification(repoPath, head, workspaceDir)` :
 
-1. `schema = schemaAt(head)` ; `reqs = inPerimeter(schema, await requirementsOf(repoPath, { freeze: { sha: head } }))` — **la
-   même fonction que la lecture**, donc la même liste que celle que la page affichera à `freeze.sha`.
+1. `{ requirements } = await perimeterOf(repoPath, { ...version, freeze })` — **la même fonction que la lecture**, donc
+   la même liste que celle que la page affichera à `freeze.sha` : exigences **disponibles dans la version** (incluses dans
+   la version ou sa lignée), non terminales, lues à `freeze.sha` avec le schéma de ce commit.
 2. `matrix = await impactSources.traceability.getMatrix(repoPath, {}, workspaceDir)` (état du workspace au passage,
    comme l'analyse d'impact — précédent GH245 : « calculée sur l'état du workspace au moment du passage »).
 3. `buildVerification(reqs, matrix, new Date())` (pure) : une ligne par exigence du périmètre `{ id, status, tests: [IDs] }`,
@@ -145,8 +150,10 @@ interface VersionRequirementsPage {
 Algorithme de `page` :
 
 1. `version = versions.get(...)` ; `state = versionState(...)`. `abandoned && !freeze` → `VersionError('VERSION_NOT_FROZEN')`.
-2. `schema = schemaOf`, `all = requirementsOf` (commit absent → `VERSION_NOT_FOUND`, remonte : pas de liste vide),
-   `reqs = inPerimeter(schema, all)`.
+2. `{ schema, requirements } = versions.perimeterOf(repoPath, version)` : `requirementsOf` lit les exigences du repo à
+   l'état de la version (commit absent → `VERSION_NOT_FOUND`, remonte : pas de liste vide), `availableRequirementIds`
+   en retient celles **livrées par la lignée** (incluses dans la version ou une version released de `basedOn`, une
+   version abandonnée ne livre rien, garde anti-cycle), `inPerimeter` écarte les terminales ; schéma illisible : erreur.
 3. `version.freeze` :
    - `version.verification` présent → `verification: 'frozen'`, couverture par ID depuis `rows` ;
    - absent → `'missing'`, `coverageStatus: null` partout (U8).

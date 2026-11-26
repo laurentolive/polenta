@@ -111,12 +111,14 @@ test.beforeAll(async () => {
   firstId = ids[0]
   lastId = ids[COUNT - 1]
   await commit('GH439 export — exigences')
-  frozenId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439X figée' }, ws())).id
-  await s.invoke('versions:include', repo(), frozenId, [firstId], ws())
+  // `basedOn: null` : lignée à elle (par défaut, la dernière released du projet de démo, dont les exigences seraient listées aussi).
+  frozenId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439X figée', basedOn: null }, ws())).id
+  // Les 300 exigences sont livrées par la version : seules celles-là sont listées et exportées (GH439 rév. 3).
+  await s.invoke('versions:include', repo(), frozenId, ids, ws())
   await commit('GH439 export — version figée')
   await s.invoke('versions:release', repo(), frozenId, 'gh439x-fige', ws())
-  currentId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439X en cours' }, ws())).id
-  abandonedFrozenId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439X abandonnée figée' }, ws())).id
+  currentId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439X en cours', basedOn: frozenId }, ws())).id
+  abandonedFrozenId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439X abandonnée figée', basedOn: null }, ws())).id
   await s.invoke('versions:include', repo(), abandonedFrozenId, [lastId], ws())
   await commit('GH439 export — version à abandonner')
   await s.invoke('versions:release', repo(), abandonedFrozenId, 'gh439x-aband', ws())
@@ -164,7 +166,7 @@ test('X4, X5, X8 — Excel « Informations » + « Exigences » : deux feuilles,
   expect(sheets[0].name).toMatch(/Informations?/)
   expect(sheets[1].name).toMatch(REQ_SHEET)
   // X5 — la section repliée est exportée avec ses lignes.
-  expect(sheets[1].rows.length).toBeGreaterThan(COUNT)
+  expect(sheets[1].rows.length).toBe(COUNT)
   const ids = sheets[1].rows.map(r => r[0])
   expect(ids).toContain(firstId)
   expect(ids).toContain(lastId)

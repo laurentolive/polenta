@@ -75,12 +75,23 @@ const head = () => new TestRepo(root).resolve('HEAD')
 const git = async (...args: string[]) => (await execFileAsync('git', ['-C', root, ...args])).stdout
 const versionFile = (id: string) => gitSvc.readYaml<ProductVersion>(root, `versions/${id}.yaml`)
 
-/** Version released dont le périmètre est celui de la base committée ; `matrix` : couverture lue au passage. */
-async function released(title = '1.0', tag = 'p-1.0', matrix?: TraceabilityMatrix): Promise<ProductVersion> {
+/** IDs des exigences du repo (`PR-…`) présentes sur le disque. */
+const requirementIds = async () => (await fsP.readdir(path.join(root, 'requirements')).catch(() => [] as string[]))
+  .filter(f => /^PR-\d+\.yaml$/.test(f)).map(f => f.replace('.yaml', '')).sort()
+
+/**
+ * Version released. Elle inclut `include` (défaut : toutes les exigences `PR-…` du repo) : seules les exigences
+ * incluses dans la version ou dans sa lignée sont listées (GH439 rév. 3). `matrix` : couverture lue au passage.
+ * `basedOn` : dernière version released du repo, comme à la création d'une version.
+ */
+async function released(title = '1.0', tag = 'p-1.0', matrix?: TraceabilityMatrix, include?: string[]): Promise<ProductVersion> {
   if (matrix) matrixSpy.mockResolvedValue(matrix)
   const v = await versions.create(root, { title })
+  const ids = include ?? await requirementIds()
+  if (ids.length > 0) await versions.include(root, v.id, ids)
   return versions.release(root, v.id, tag)
 }
+const ids = (page: { rows: Array<{ requirementId: string }> }) => page.rows.map(r => r.requirementId)
 
 beforeEach(async () => {
   ws = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh439-'))
@@ -141,6 +152,7 @@ describe('passage released : couverture figée', () => {
     await links([['PT-0001', 'PR-0001', 'verification']])
     await commitAll('exigences et liens')
     const v = await versions.create(root, { title: '1.0' })
+    await versions.include(root, v.id, ['PR-0001', 'PR-0002'])
     const done = await versions.release(root, v.id, 'p-1.0')
     expect(done.verification!.rows).toEqual([
       { id: 'PR-0001', status: 'covered', tests: ['PT-0001'] },
@@ -267,6 +279,7 @@ describe('lecture des exigences d\'une version', () => {
   it('S5 — version en cours : exigences du disque, couverture à l\'instant', async () => {
     await req('PR-0001'); await req('PR-0002')
     const v = await versions.create(root, { title: '1.0' })
+    await versions.include(root, v.id, ['PR-0001', 'PR-0002'])
     matrixSpy.mockResolvedValue(matrixOf([['PR-0001', 'covered', ['PT-0001']]]))
     const page = await service.page(root, v.id)
     expect(page.verification).toBe('live')
@@ -290,12 +303,16 @@ describe('lecture des exigences d\'une version', () => {
     expect(matrixSpy).not.toHaveBeenCalled()
   })
 
-  it('S7 — fichier d\'un type non déclaré par le schéma : absent', async () => {
+  it('S7 — fichier d\'un type non déclaré par le schéma : absent, même listé à la main dans `changes`', async () => {
     await req('PR-0001')
     await req('SW-0001', { objectTypeRef: 'firmware::exigence' })
     await commitAll('exigences')
-    const v = await released()
-    expect((await service.page(root, v.id)).rows.map(r => r.requirementId)).toEqual(['PR-0001'])
+    const v = await versions.create(root, { title: '1.0' })
+    await versions.include(root, v.id, ['PR-0001'])
+    expect(await code(versions.include(root, v.id, ['SW-0001']))).toBe('NOT_OWN_ELEMENT')
+    const file = (await versionFile(v.id))!
+    await gitSvc.writeYaml(root, `versions/${v.id}.yaml`, { ...file, changes: [...file.changes!, { id: 'SW-0001' }] })
+    expect(ids(await service.page(root, v.id))).toEqual(['PR-0001'])
   })
 
   it('S8 — version abandonnée sans gel : VERSION_NOT_FROZEN', async () => {
@@ -364,13 +381,105 @@ describe('lecture des exigences d\'une version', () => {
     expect(await fsP.readFile(path.join(root, 'versions', `${v.id}.yaml`), 'utf8')).toBe(file)
   })
 
-  it('S16 — exigence du gel sans ligne figée : couverture absente (« — »), pas not_covered', async () => {
+  it("S16 — le périmètre d'une release est celui de ses lignes `verification` : sans ligne, l'exigence n'est pas listée", async () => {
     await req('PR-0001'); await req('PR-0002'); await commitAll('exigences')
     const v = await released()
     const file = (await versionFile(v.id))!
     await gitSvc.writeYaml(root, `versions/${v.id}.yaml`, { ...file, verification: { ...file.verification!, rows: file.verification!.rows.filter(r => r.id !== 'PR-0002') } })
     const rows = (await service.page(root, v.id)).rows
-    expect(rows.map(r => `${r.requirementId}:${r.coverageStatus}`)).toEqual(['PR-0001:not_covered', 'PR-0002:null'])
+    expect(rows.map(r => `${r.requirementId}:${r.coverageStatus}`)).toEqual(['PR-0001:not_covered'])
+  })
+})
+
+describe('périmètre : contenu cumulé de la lignée (GH439 rév. 3)', () => {
+  it('S19 — première release : seulement ses changements, pas le reste du repo', async () => {
+    for (const id of ['PR-0001', 'PR-0002', 'PR-0004', 'PR-0005']) await req(id)
+    await commitAll('exigences')
+    const v = await released('1.0', 'p-1.0', undefined, ['PR-0001', 'PR-0002'])
+    expect(ids(await service.page(root, v.id))).toEqual(['PR-0001', 'PR-0002'])   // PR-0004, PR-0005 : jamais livrées
+    // La couverture figée ne porte que sur ces exigences.
+    expect((await versionFile(v.id))!.verification!.rows.map(r => r.id)).toEqual(['PR-0001', 'PR-0002'])
+  })
+
+  it('S20 — 1.1 basée sur la 1.0 : ce que la 1.0 a livré et ses propres changements ; la 1.0 reste inchangée', async () => {
+    for (const id of ['PR-0001', 'PR-0002', 'PR-0003', 'PR-0004']) await req(id)
+    await commitAll('exigences')
+    const v10 = await released('1.0', 'p-1.0', undefined, ['PR-0001', 'PR-0002'])
+    const v11 = await released('1.1', 'p-1.1', undefined, ['PR-0003'])
+    expect((await versionFile(v11.id))!.basedOn).toBe(v10.id)
+    expect(ids(await service.page(root, v11.id))).toEqual(['PR-0001', 'PR-0002', 'PR-0003'])
+    expect(ids(await service.page(root, v10.id))).toEqual(['PR-0001', 'PR-0002'])
+  })
+
+  it('S21 — une version abandonnée de la lignée ne livre rien ; la lignée se poursuit au-delà', async () => {
+    for (const id of ['PR-0001', 'PR-0002', 'PR-0003']) await req(id)
+    await commitAll('exigences')
+    await released('1.0', 'p-1.0', undefined, ['PR-0001'])
+    const v11 = await released('1.1', 'p-1.1', undefined, ['PR-0002'])
+    // 1.2 se base sur la 1.1 (released à sa création), qui est abandonnée ensuite.
+    const v12 = await versions.create(root, { title: '1.2' })
+    expect((await versionFile(v12.id))!.basedOn).toBe(v11.id)
+    await versions.include(root, v12.id, ['PR-0003'])
+    await versions.update(root, v11.id, { status: 'abandonnee' })
+    expect(ids(await service.page(root, v12.id))).toEqual(['PR-0001', 'PR-0003'])   // PR-0002 : livrée par la 1.1 abandonnée
+    // La version abandonnée garde sa propre liste (page lue au gel).
+    expect(ids(await service.page(root, v11.id))).toEqual(['PR-0001', 'PR-0002'])
+  })
+
+  it('S26 — une release ne change pas quand une version de sa lignée est abandonnée ensuite', async () => {
+    for (const id of ['PR-0001', 'PR-0002', 'PR-0003']) await req(id)
+    await commitAll('exigences')
+    await released('1.0', 'p-1.0', undefined, ['PR-0001'])
+    const v11 = await released('1.1', 'p-1.1', undefined, ['PR-0002'])
+    const v12 = await released('1.2', 'p-1.2', undefined, ['PR-0003'])
+    expect(ids(await service.page(root, v12.id))).toEqual(['PR-0001', 'PR-0002', 'PR-0003'])
+    await versions.update(root, v11.id, { status: 'abandonnee' })
+    // Périmètre figé avec la couverture : la 1.2 garde ce qu'elle a livré, comme sa couverture figée.
+    expect(ids(await service.page(root, v12.id))).toEqual(['PR-0001', 'PR-0002', 'PR-0003'])
+    expect((await versionFile(v12.id))!.verification!.rows.map(r => r.id)).toEqual(['PR-0001', 'PR-0002', 'PR-0003'])
+  })
+
+  it('S22 — version en cours basée sur la 1.0 : ce que la 1.0 a livré, puis ses changements au fil de l\'eau', async () => {
+    for (const id of ['PR-0001', 'PR-0002', 'PR-0005']) await req(id)
+    await commitAll('exigences')
+    await released('1.0', 'p-1.0', undefined, ['PR-0001', 'PR-0002'])
+    const cur = await versions.create(root, { title: '1.1' })
+    expect(ids(await service.page(root, cur.id))).toEqual(['PR-0001', 'PR-0002'])
+    await versions.include(root, cur.id, ['PR-0005'])
+    const page = await service.page(root, cur.id)
+    expect(ids(page)).toEqual(['PR-0001', 'PR-0002', 'PR-0005'])
+    expect(page.verification).toBe('live')
+  })
+
+  it('S23 — exigence incluse mais terminale à l\'état lu : absente', async () => {
+    await req('PR-0001'); await req('PR-0002', { status: 'obsolete' })
+    await commitAll('exigences')
+    const v = await released('1.0', 'p-1.0', undefined, ['PR-0001', 'PR-0002'])
+    expect(ids(await service.page(root, v.id))).toEqual(['PR-0001'])
+  })
+
+  it('S24 — élément inclus qui n\'est pas une exigence, ou absent à l\'état lu : ni ligne, ni erreur', async () => {
+    await req('PR-0001'); await test('PT-0001')
+    await commitAll('éléments')
+    const v = await versions.create(root, { title: '1.0' })
+    await versions.include(root, v.id, ['PR-0001', 'PT-0001'])
+    const file = (await versionFile(v.id))!
+    await gitSvc.writeYaml(root, `versions/${v.id}.yaml`, { ...file, changes: [...file.changes!, { id: 'PR-0999' }] })
+    expect(ids(await service.page(root, v.id))).toEqual(['PR-0001'])
+  })
+
+  it('S25 — cycle dans basedOn (fichiers édités à la main) : la lecture termine, chaque version comptée une fois', async () => {
+    await req('PR-0001'); await req('PR-0002')
+    await commitAll('exigences')
+    const a = await versions.create(root, { title: 'A' })
+    const b = await versions.create(root, { title: 'B' })
+    await versions.include(root, a.id, ['PR-0001'])
+    await versions.include(root, b.id, ['PR-0002'])
+    for (const [from, to] of [[a, b], [b, a]] as const) {
+      const file = (await versionFile(from.id))!
+      await gitSvc.writeYaml(root, `versions/${from.id}.yaml`, { ...file, basedOn: to.id })
+    }
+    expect(ids(await service.page(root, a.id))).toEqual(['PR-0001', 'PR-0002'])
   })
 })
 

@@ -113,7 +113,7 @@ describe('terminal — askpass de la session (GH337 §6)', () => {
     expect(shellEnvValues.some(v => v.includes(PAT))).toBe(false)
     expect(shellEnvValues.some(v => v === ACCOUNT.username)).toBe(false)
     expect(env().POLENTA_ASKPASS_NONCE).toMatch(/^[0-9a-f]{64}$/)
-    expect(env().GIT_ASKPASS).toMatch(/^"[^"]*askpass\.sh"$/)
+    expect(env().GIT_ASKPASS).toMatch(/^[^"]*askpass\.sh$/) // GH448 — jamais cité
     // Le shell reste interactif : pas de SSH_ASKPASS, et ELECTRON_RUN_AS_NODE n'est pas posé
     // pour le terminal (le shim le pose pour son seul processus).
     expect(env().SSH_ASKPASS).toBeUndefined()

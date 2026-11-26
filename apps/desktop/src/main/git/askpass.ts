@@ -177,10 +177,10 @@ export async function openAskpassSession(resolve: CredentialResolver, kind: 'ope
   const env: Record<string, string> = {
     POLENTA_ASKPASS_PIPE: where,
     POLENTA_ASKPASS_NONCE: nonce,
-    // GH337 revue — git lance GIT_ASKPASS via le shell (`sh -c`) : le chemin doit être cité (espace dans le
-    // profil Windows, p. ex. « Jean Dupont »). ssh, lui, exécute SSH_ASKPASS sans shell : pas de guillemets.
-    // POLENTA_ASKPASS_JS n'est jamais interprété par un shell (le shim le cite lui-même « "$POLENTA_ASKPASS_JS" »).
-    GIT_ASKPASS: shellQuote(path.join(dir, 'askpass.sh')),
+    // GH448 — git exécute GIT_ASKPASS directement, sans shell (comme ssh pour SSH_ASKPASS) : chemin brut,
+    // jamais cité — des guillemets feraient partie du nom de fichier (« cannot spawn … Permission denied »).
+    // Un chemin avec espace (profil « Jean Dupont ») passe tel quel. POLENTA_ASKPASS_JS est cité par le shim.
+    GIT_ASKPASS: path.join(dir, 'askpass.sh'),
     POLENTA_NODE: process.execPath,
     POLENTA_ASKPASS_JS: path.join(dir, 'askpass.js'),
   }
@@ -189,14 +189,6 @@ export async function openAskpassSession(resolve: CredentialResolver, kind: 'ope
     env,
     revoke: () => { tokens.delete(nonce) },
   }
-}
-
-/**
- * Cite une valeur pour un shell POSIX (`sh -c`) : entre guillemets doubles, avec `\`, `"`, `$` et
- * `` ` `` échappés. Sert à `GIT_ASKPASS`, que git exécute via le shell (chemin avec espace accepté).
- */
-export function shellQuote(value: string): string {
-  return `"${value.replace(/(["\\$`])/g, '\\$1')}"`
 }
 
 /** Nombre de jetons encore valides (tests, diagnostic). */

@@ -2671,6 +2671,20 @@
     "info": {
       "title": "Informations"
     },
+    "export": {
+      "sections": "Sections à exporter",
+      "loading": "Préparation de l'export…",
+      "noSection": "Aucune section sélectionnée.",
+      "info": {
+        "field": "Champ",
+        "value": "Valeur",
+        "state": "État",
+        "frozenAt": "Figée le",
+        "commit": "Commit",
+        "component": "Composant",
+        "exportedAt": "Exporté le"
+      }
+    },
     "requirements": {
       "title": "Exigences",
       "empty": "Aucune exigence dans cette version.",

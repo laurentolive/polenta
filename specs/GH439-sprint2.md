@@ -48,3 +48,11 @@ Spec : `specs/GH439.md` § 2, § 4 · design : `specs/GH439-design.md` § 6, § 
 Ouvrir une version released : section **Exigences** (fermée) → l'ouvrir : état au tag, colonne Vérification figée.
 Modifier une exigence ou lier un test après la release, rouvrir : rien ne change. Sur une version en cours : la
 vérification suit les liens et les exécutions. Replier « Informations » : l'état est retrouvé sur les autres versions.
+
+## Revue (`/code-review medium 440`)
+
+- Aucun défaut nouveau sur le renderer. Les remarques portent sur le sprint 1 : couverture lue sur le workspace (assumé,
+  documenté au sprint 3), libellés de statut fusionnés entre types d'exigence (même comportement que la page de validation),
+  `verification` encore renvoyée par `versions:update` / `versions:release` (seule la page `versions:get` la retire, comme
+  prévu au design ; sans effet sur l'écran), lecture du périmètre et de la matrice non atomique pour une version en cours
+  (corrigée à la relecture suivante, `staleTime` 0).

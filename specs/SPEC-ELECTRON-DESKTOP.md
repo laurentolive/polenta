@@ -1452,7 +1452,7 @@ repo de la validation : un test d'un autre composant s'affiche « Exécutions da
 | `/diff?projectId&repoPath&filepath&commitSha?` | Vue diff d'un fichier : working tree vs `HEAD`, ou commit vs son parent (`commitSha`) — bascule Raw / Rendu (GH178, cf. §19.8b) ; Raw côte à côte / en ligne, Rendu = vue générique (GH222) | Version |
 | `/version-diff?projectId` | Comparaison d'un fichier entre deux refs choisies dans le panneau Version — même vue de diff Raw / Rendu (GH178) | Version |
 | `/versions?projectId` | **Produit** (GH201) — accueil du sous-panneau Produit du panneau Version | Version |
-| `/version/$versionId?projectId&repoPath` | **Page d'une version** (GH201, SPEC-REQ §11) : label, statut, version précédente, champs, composants, changements (diff, Retirer, Ajouter), passage released | Version |
+| `/version/$versionId?projectId&repoPath` | **Page d'une version** (GH201, SPEC-REQ §11) : six sections repliables — Informations (label, statut, version précédente, champs), Composants, Changements (diff, Retirer, Ajouter), Analyse d'impact, Tests à exécuter, Exigences (GH439, §11.5) — passage released, Exporter | Version |
 | `/versions/backlog?projectId&repoPath` | **Backlog** d'un composant (GH201) : changements jamais inclus dans une version, inclusion dans une version en cours choisie | Version |
 | `/merge-resolve?id&projectId` | **Résolution des conflits** d'un merge (GH37) — session `id` (`merge-resolution:*`), ouverte dans son propre onglet « Conflits — <repo> » depuis Publier, la vue graphe ou Rafraîchir ; en-tête propre (pas de `ViewHeader`, donc pas de bouton Publier pendant la résolution) | — |
 | `/branch/new` | Formulaire nouvelle branche | Version |
@@ -1615,7 +1615,11 @@ Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Sour
 >   d'éléments plus atteints listés dessous ; analyse figée sans arbres : tableau des lignes) et
 >   « Tests à exécuter » (`VersionTestsSection` : liste cochable, « Créer une campagne » /
 >   « Ajouter à … » en raccourcis) ; « Composants » et « Changements » repliables aussi, état mémorisé
->   par poste (`polenta:versionSections`). Changements et backlog : sélection multiple, MAJ + clic
+>   par poste (`polenta:versionSections`). GH439 : plus de bouton de repli dans la barre de titre ; « Informations »
+  (`VersionInfoSection`, ancien en-tête) et « Exigences » (`VersionRequirementsSection`, fermée par défaut,
+  `defaultOpen` de `useSectionOpen`) rejoignent les autres sections (`SectionToggle`) ; l'alerte des composants retirés
+  de la structure reste visible section fermée ; colonnes des trois grilles extraites (`versionChangeColumns`,
+  `versionTestColumns`, `versionAnalysisColumns`), partagées avec l'export. Changements et backlog : sélection multiple, MAJ + clic
 >   pour une plage (`useRangeSelection`), « Retirer la sélection » / « Inclure la sélection ».
 > - **Contenu piloté par la route** : `/version-diff` → sélecteur de comparaison ; `/baseline` →
 >   liste des baselines (`BaselineListPanel` : filtre tag/message, dépliage sur place des tags
@@ -2087,7 +2091,13 @@ Toutes les vues principales (routes + `SystemView`) partagent un unique composan
   Pour les kinds/formats acceptant un gabarit client (GH34, `renderer/lib/exportTemplates.ts`), le
   popover affiche au-dessus des formats une liste « Gabarit Word » — cf. §19.15a. GH389 : kind
   `table` (xlsx, `TableExportPayload`, générateur `table.xlsx`) — export de ce qu'affiche une grille
-  commune, depuis sa barre d'outils (SPEC-SYSTEM-VIEW § Grilles communes).
+  commune, depuis sa barre d'outils (SPEC-SYSTEM-VIEW § Grilles communes). GH439 : kind `version` — export global de la
+  page d'une version, bouton de la barre de titre (`VersionExportButton`, prop `choices` de `ExportButton` : une case
+  par section, sélection transmise à `getPayload` / `getPrintParams`, mémorisée par poste) ; xlsx
+  (`TablesExportPayload`, générateur `exportTablesXlsx` : une feuille par section, noms uniques ≤ 31 caractères) et PDF
+  (route `/print/version`, A4 paysage, échelle 1, en-tête de tableau répété, pied « page n / N » :
+  `PDF_LAYOUT_BY_KIND.version`, `landscape` / `pageNumbers`) ; les deux relisent leurs données par
+  `loadVersionSectionTables` et `buildVersionSectionTables` (parité par construction).
 
 #### 19.15a Export à partir d'un gabarit client (GH34)
 

@@ -382,7 +382,9 @@ quand elle la propose, c'est à l'identique (icône, geste, texte). **Aucun tri*
 - **Export** (xlsx, `ExportButton` kind `table`) : ce qui est affiché — lignes filtrées dans l'ordre,
   colonnes visibles dans l'ordre avec leur titre, texte affiché (liens = ID séparés par « , » ; une
   valeur `link` reste un hyperlien), colonnes figées figées, largeurs approchées ; nom de feuille /
-  fichier = titre de la grille. Lignes dépliées et lignes de groupe non exportées.
+  fichier = titre de la grille. Lignes dépliées et lignes de groupe non exportées. Une grille peut n'avoir
+  **aucun** bouton Exporter (`noExport`) quand sa page porte un export global : page d'une version (GH439 — toutes
+  les lignes, colonnes visibles dans l'ordre, sans filtre).
 - **Défilement** : mémoire GH300 par onglet + page + grille (`useGridScrollKey`) ; retour par
   l'onglet, Précédent / Suivant ou la barre d'activité sans peindre d'abord le haut. Une grille de
   page qui change d'entité sur la même route est remontée (`key`).
@@ -392,7 +394,8 @@ quand elle la propose, c'est à l'identique (icône, geste, texte). **Aucun tri*
 | Validation | Page d'une validation | Vues enregistrées, édition décision / commentaire, lot (`specs/GH204.md` §7, SPEC-REQ §13) |
 | Historique des exécutions | Section « Exécutions » | Groupes du panneau 👁, étapes en ligne dépliée, tri retiré |
 | Exécutions d'un type de test | Vue Exécutions (GH400) | Même grille ; 👁 de la vue (onglets Tableau / Document / Popup), filtres tenus par la vue, colonne forcée par le lien d'une campagne |
-| Changements, tests à exécuter, analyse figée | Page d'une version | Cases ; analyse : statut / commentaire éditables (SPEC-REQ §11.3) |
+| Changements, tests à exécuter, analyse figée | Page d'une version | Cases ; analyse : statut / commentaire éditables (SPEC-REQ §11.3) ; **sans bouton Exporter** : l'export est celui de la page (GH439, SPEC-REQ §11.5) |
+| Exigences d'une version | Page d'une version (section fermée par défaut) | Lecture seule, vérification figée à la release, ni Exporter ni vues d'équipe (GH439, SPEC-REQ §11.5) |
 | Backlog | Backlog d'un composant | Cases, inclusion (SPEC-REQ §11.4) |
 | Entrées d'une campagne | Page d'une campagne | Pastilles de statut en barre d'outils, actions en dernière colonne, paramètres / duplicata en ligne dépliée (SPEC-TESTS §4) |
 | Report depuis une campagne | Sélecteur de tests | Cases, filtre texte de l'écran, entrée indisponible sans case |

@@ -15,6 +15,7 @@ import { STATE_BADGE, useInvalidateVersions, useSectionOpen, useVersionImpact, u
 import { VersionAnalysisSection } from '../components/versions/VersionAnalysisSection'
 import { VersionTestsSection } from '../components/versions/VersionTestsSection'
 import { VersionInfoSection } from '../components/versions/VersionInfoSection'
+import { VersionExportButton } from '../components/versions/VersionExportButton'
 import { VersionRequirementsSection } from '../components/versions/VersionRequirementsSection'
 import { SectionToggle } from '../components/versions/SectionToggle'
 
@@ -88,6 +89,7 @@ function VersionPage() {
         )}
         actions={
           <>
+            <VersionExportButton page={page} repoPath={repoPath} projectId={projectId} versionId={versionId} />
             {page.component.readonly && <span title={t('versions.readonly')}><Lock size={13} className="text-status-warning" /></span>}
             {page.tagPending && <span className="text-xs text-status-warning" title={t('versions.tagPendingHelp')} data-testid="version-tag-pending">{t('versions.tagPending', { tag: version.freeze?.tag })}</span>}
             {editable && (

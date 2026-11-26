@@ -152,6 +152,7 @@ function ImpactRowsGrid({ rows, readOnly, titleOf, repoPath, title, onSetImpact 
         onCellEdit={readOnly ? undefined : onCellEdit}
         rowClassName={versionImpactRowClass}
         scrollMemoryKey={scrollKey}
+        noExport
       />
     </div>
   )

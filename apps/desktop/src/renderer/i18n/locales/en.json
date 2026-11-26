@@ -2671,6 +2671,20 @@
     "info": {
       "title": "Information"
     },
+    "export": {
+      "sections": "Sections to export",
+      "loading": "Preparing the export…",
+      "noSection": "No section selected.",
+      "info": {
+        "field": "Field",
+        "value": "Value",
+        "state": "State",
+        "frozenAt": "Frozen on",
+        "commit": "Commit",
+        "component": "Component",
+        "exportedAt": "Exported on"
+      }
+    },
     "requirements": {
       "title": "Requirements",
       "empty": "No requirement in this version.",

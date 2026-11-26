@@ -114,6 +114,7 @@ export function VersionTestsSection({ data, repoPath, projectId, versionLabel }:
                 prefs={prefs}
                 selection={{ mode: 'checkbox', selected, onChange: setSelected }}
                 scrollMemoryKey={scrollKey}
+                noExport
               />
             </div>
           )}

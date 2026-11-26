@@ -70,6 +70,7 @@ export function VersionChangesTable({ rows, repoPath, projectId, title, onRemove
         prefs={prefs}
         selection={selectable ? { mode: 'checkbox', selected, onChange: setSelected, isSelectable: isOwn } : undefined}
         scrollMemoryKey={scrollKey}
+        noExport
         toolbarStart={onRemove && selectedIds.length > 0 && (
           <>
             <span className="text-xs text-ink-2">{t('versions.page.selected', { count: selectedIds.length })}</span>

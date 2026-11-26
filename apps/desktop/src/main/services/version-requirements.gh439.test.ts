@@ -381,13 +381,13 @@ describe('lecture des exigences d\'une version', () => {
     expect(await fsP.readFile(path.join(root, 'versions', `${v.id}.yaml`), 'utf8')).toBe(file)
   })
 
-  it('S16 — exigence du gel sans ligne figée : couverture absente (« — »), pas not_covered', async () => {
+  it("S16 — le périmètre d'une release est celui de ses lignes `verification` : sans ligne, l'exigence n'est pas listée", async () => {
     await req('PR-0001'); await req('PR-0002'); await commitAll('exigences')
     const v = await released()
     const file = (await versionFile(v.id))!
     await gitSvc.writeYaml(root, `versions/${v.id}.yaml`, { ...file, verification: { ...file.verification!, rows: file.verification!.rows.filter(r => r.id !== 'PR-0002') } })
     const rows = (await service.page(root, v.id)).rows
-    expect(rows.map(r => `${r.requirementId}:${r.coverageStatus}`)).toEqual(['PR-0001:not_covered', 'PR-0002:null'])
+    expect(rows.map(r => `${r.requirementId}:${r.coverageStatus}`)).toEqual(['PR-0001:not_covered'])
   })
 })
 
@@ -424,6 +424,19 @@ describe('périmètre : contenu cumulé de la lignée (GH439 rév. 3)', () => {
     expect(ids(await service.page(root, v12.id))).toEqual(['PR-0001', 'PR-0003'])   // PR-0002 : livrée par la 1.1 abandonnée
     // La version abandonnée garde sa propre liste (page lue au gel).
     expect(ids(await service.page(root, v11.id))).toEqual(['PR-0001', 'PR-0002'])
+  })
+
+  it('S26 — une release ne change pas quand une version de sa lignée est abandonnée ensuite', async () => {
+    for (const id of ['PR-0001', 'PR-0002', 'PR-0003']) await req(id)
+    await commitAll('exigences')
+    await released('1.0', 'p-1.0', undefined, ['PR-0001'])
+    const v11 = await released('1.1', 'p-1.1', undefined, ['PR-0002'])
+    const v12 = await released('1.2', 'p-1.2', undefined, ['PR-0003'])
+    expect(ids(await service.page(root, v12.id))).toEqual(['PR-0001', 'PR-0002', 'PR-0003'])
+    await versions.update(root, v11.id, { status: 'abandonnee' })
+    // Périmètre figé avec la couverture : la 1.2 garde ce qu'elle a livré, comme sa couverture figée.
+    expect(ids(await service.page(root, v12.id))).toEqual(['PR-0001', 'PR-0002', 'PR-0003'])
+    expect((await versionFile(v12.id))!.verification!.rows.map(r => r.id)).toEqual(['PR-0001', 'PR-0002', 'PR-0003'])
   })
 
   it('S22 — version en cours basée sur la 1.0 : ce que la 1.0 a livré, puis ses changements au fil de l\'eau', async () => {

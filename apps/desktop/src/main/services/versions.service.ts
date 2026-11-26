@@ -238,11 +238,16 @@ export class VersionsService {
    * prend toutes les exigences du repo.
    */
   async perimeterOf(
-    repoPath: string, version: Pick<ProductVersion, 'id' | 'basedOn' | 'changes' | 'freeze'>,
+    repoPath: string, version: Pick<ProductVersion, 'id' | 'basedOn' | 'changes' | 'freeze' | 'verification'>,
   ): Promise<{ schema: ProjectSchema; requirements: ValidationRequirement[] }> {
     const schema = await this.schemaOf(repoPath, version)
     if (!schema) throw new VersionError('VERSION_NOT_FOUND', `schéma illisible${version.freeze ? ` au commit figé ${version.freeze.sha}` : ''}`)
-    const available = await this.availableIds(repoPath, version)
+    // Une version released a son périmètre figé avec sa couverture (lignes de `verification`) : une release ne change plus
+    // quand une version de sa lignée est abandonnée ensuite. Sans couverture figée (released avant GH439, version en
+    // cours), le périmètre se lit dans la lignée d'aujourd'hui.
+    const available = version.freeze && version.verification
+      ? new Set(version.verification.rows.map(r => r.id))
+      : await this.availableIds(repoPath, version)
     return { schema, requirements: inPerimeter(schema, await this.requirementsOf(repoPath, version, available)) }
   }
 

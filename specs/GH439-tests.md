@@ -47,7 +47,8 @@ Une version released `V1` figée sur un commit contenant R1, R2, R3 (R3 `obsolet
 | S13 | Ordre | `R2` avant `R10` (tri numérique) | § 2.3 |
 | S14 | Composant en lecture seule | page lue | U22 |
 | S15 | Aucune écriture : `git status --porcelain` vide, dates de modification inchangées après la lecture | rien d'écrit | critère 8 |
-| S16 | Exigence présente au gel mais sans ligne dans `verification` | `coverageStatus: null` (« — »), pas `not_covered` | spec § 3.2 |
+| S16 | Release dont une ligne de `verification` est retirée (fichier édité à la main) | l'exigence n'est plus listée : le périmètre d'une release est celui de ses lignes | spec § 3.1, § 3.2 |
+| S26 | 1.2 released sur la 1.1 ; la 1.1 est abandonnée ensuite | la liste de la 1.2 est inchangée | U30 |
 | S17 | **Volume** : 1 500 exigences figées | termine, ordre correct, aucune erreur de file de tâches | risque |
 | S18 | `buildRequirementRows` (pure) : périmètre, tri, couverture absente | conforme | S1, S13 |
 | S19 | Première release qui inclut R1, R2 ; le repo contient aussi R4 jamais incluse | liste R1, R2 — pas R4 | U26 |

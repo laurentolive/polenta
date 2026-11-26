@@ -108,6 +108,9 @@ la première release affichait donc tout le repo. Choix de l'humain : **contenu 
 - **Tests** : S19–S25 (première release, lignée, version abandonnée, version en cours, terminale, élément non exigence ou
   absent, cycle) ; les tests existants incluent leurs exigences ; e2e : la version figée n'affiche ni l'exigence jamais livrée ni les
   exigences du projet de démo, la version en cours liste ce que sa lignée a livré puis ses propres inclusions.
+- **Revue** : une release recalculait sa liste depuis la lignée d'aujourd'hui ; abandonner ensuite une version de la lignée
+  l'aurait changée alors que sa couverture figée ne change pas. Le périmètre d'une release est maintenant celui de ses
+  lignes `verification` (test S26) ; la lignée n'est lue que pour une version en cours ou sans couverture figée.
 - **Limite connue** : une exigence livrée puis modifiée sans être réincluse s'affiche à son état **du tag** de la version
   consultée (pas à son état « livré »). Un ticket peut lire l'état de la dernière version qui l'a incluse.
 - **Défaut trouvé par E13 et corrigé** : la grille « Exigences » gardait le même élément DOM d'une version à l'autre (même
@@ -115,4 +118,7 @@ la première release affichait donc tout le repo. Choix de l'humain : **contenu 
   version quittée et dérivait d'une ligne. La grille est maintenant remontée par version (`key={versionId}`), comme le
   veut la convention de SPEC-SYSTEM-VIEW (« une grille de page qui change d'entité sur la même route est remontée »).
   Les grilles Changements, Tests et Analyse de la page ont la même exposition (hors périmètre, jamais constatée).
+  Conséquence sur le test E13 : l'échantillonneur de frames comptait aussi les frames de la page **quittée** (sa grille,
+  neuve et donc en haut) ; avant la `key`, la grille gardait son DOM et se trouvait par hasard à la même position, ce
+  qui masquait le problème. L'échantillonnage est limité à la page de destination.
 - Leçon consignée : `tasks/lessons.md` (2026-11-26).

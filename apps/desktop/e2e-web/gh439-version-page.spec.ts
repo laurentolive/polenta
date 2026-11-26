@@ -343,14 +343,15 @@ async function scrollGrid(fraction: number): Promise<Visible> {
   await s.page.waitForTimeout(400)
   return position()
 }
-async function startSampling() {
+/** Échantillonne chaque frame de la grille de la page `versionId` seulement (les frames de la page quittée ne comptent pas). */
+async function startSampling(versionId: string) {
   await s.page.evaluate(`(() => {
     const readVisible = ${readVisible.toString()}
     window.__gh439 = []
     const start = performance.now()
     const tick = () => {
       const el = document.querySelector('[data-testid="version-requirements"] [data-view-scroll]')
-      if (location.pathname.includes('/version/') && el && el.querySelector('[data-node-id]')) window.__gh439.push(readVisible(el))
+      if (location.pathname.endsWith('/${versionId}') && el && el.querySelector('[data-node-id]')) window.__gh439.push(readVisible(el))
       if (performance.now() - start < 2500) requestAnimationFrame(tick)
     }
     requestAnimationFrame(tick)
@@ -373,7 +374,7 @@ test('E13 — Exigences : position reprise par Précédent, sans peindre le haut
   expect(p.node).not.toBe('')
   await openVersion(currentId)
   await expect(s.page.getByTestId('version-page')).toBeVisible()
-  await startSampling()
+  await startSampling(releasedId)
   await s.page.goBack()
   await expectRestored(p)
 })
@@ -387,7 +388,7 @@ test('E13 — Exigences : position reprise au retour sur l\'onglet, sans peindre
   await s.page.getByTitle('Nouvel onglet (Ctrl+T)').click()
   await expect(tabs()).toHaveCount(count + 1)
   await s.openView('Exigences')
-  await startSampling()
+  await startSampling(releasedId)
   await tabs().nth(start).click()
   await expectRestored(p)
 })
@@ -398,7 +399,7 @@ test('E13 — Exigences : position reprise par la barre d\'activité, sans peind
   const p = await scrollGrid(0.8)
   await s.openView('Exigences')
   await expect.poll(() => new URL(s.page.url()).pathname).not.toContain('/version/')
-  await startSampling()
+  await startSampling(releasedId)
   await s.openView('Version')
   await expect.poll(() => new URL(s.page.url()).pathname).toContain('/version/')
   await expectRestored(p)

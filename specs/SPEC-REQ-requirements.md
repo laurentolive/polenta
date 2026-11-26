@@ -889,7 +889,9 @@ Détail : `specs/GH439.md`.
   une version abandonnée de la lignée ne livre rien, comme au backlog) : la première release ne liste que ses propres
   changements, une exigence jamais livrée (backlog) n'y est pas. **État lu** : à `freeze.sha` avec le schéma de ce
   commit (version released, ou abandonnée avec gel), sur le disque pour une version en cours ; un fichier d'un type non
-  déclaré par le schéma du repo, les composants et dépendances n'en font pas partie. La validation (§13) garde son
+  déclaré par le schéma du repo, les composants et dépendances n'en font pas partie. Une release garde la
+  liste qu'elle a figée (les lignes de `verification`) : abandonner une version de sa lignée ensuite ne la change pas ; une
+  version en cours, ou released avant GH439, lit la lignée d'aujourd'hui. La validation (§13) garde son
   propre périmètre (toutes les exigences non terminales à `freeze.sha`). Version abandonnée sans gel : pas de section (`VERSION_NOT_FROZEN`).
   Gel ou schéma illisible : erreur, jamais une liste vide ni une liste qui garderait les exigences terminales.
 - **Grille commune** en lecture seule (SPEC-SYSTEM-VIEW § Grilles communes ; `grid::version-requirements`, sans bouton

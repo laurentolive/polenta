@@ -1,7 +1,8 @@
 # GH439 — Design technique (révision 3)
 
 > Révision 3 (2026-11-26) : périmètre de la liste = contenu cumulé de la lignée (`VersionsService.availableRequirementIds`,
-> § 5, § 4) ; le reste est inchangé.
+> § 5, § 4) ; le reste est inchangé. Une version released dont la couverture est figée lit son périmètre dans les lignes de
+> `verification` (immuable) ; la lignée n'est lue que pour une version en cours ou sans couverture figée.
 
 Spec : `specs/GH439.md`. Scénarios : `specs/GH439-tests.md`.
 

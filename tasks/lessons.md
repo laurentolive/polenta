@@ -59,3 +59,7 @@ Format :
 ## 2026-11-23 — Cellule modifiable non signalée
 - Erreur : GH428, dans une grille mêlant saisie et lecture seule, la seule différence était un anneau au survol. L'utilisateur ne voyait pas ce qui se saisissait.
 - Règle : dans une grille mixte, marquer chaque type de cellule (saisie, lecture seule) et le légender. Le test vérifie ce marquage, pas seulement la possibilité de modifier.
+
+## 2026-11-26 — Périmètre d'une liste validé en abstrait, sans exemple
+- Erreur : GH439, la spec décrivait la liste des exigences d'une version comme « toutes les exigences non terminales du repo à l'état de la version ». L'humain a validé, puis a vu la première release afficher tout le repo (53 lignes dont rien n'avait été livré) et demandé « uniquement celles disponibles dans la release ».
+- Règle : pour une liste « de ce que contient X », mettre dans la spec un exemple chiffré (X livre R1, R2 ; le repo contient aussi R4 → la liste montre R1, R2) et le faire valider avec la décision ; recommander le périmètre le plus étroit qui répond au besoin, pas le plus large.

@@ -25,6 +25,8 @@ let abandonedId = ''
 let reqA = ''
 let reqB = ''
 let reqObsolete = ''
+let reqC = ''
+let extraIds: string[] = []
 let testA = ''
 let testB = ''
 
@@ -76,19 +78,28 @@ test.beforeAll(async () => {
   reqA = await create('GH439 couverte')
   reqB = await create('GH439 non couverte')
   reqObsolete = await create('GH439 obsolète', 'obsolete')
+  reqC = await create('GH439 jamais livrée')
   testA = (await s.invoke<{ id: string }>('tests:create', repo(), { objectTypeRef: 'root::gh439_test', title: 'GH439 test A', fields: {}, steps: [] }, ws())).id
   testB = (await s.invoke<{ id: string }>('tests:create', repo(), { objectTypeRef: 'root::gh439_test', title: 'GH439 test B', fields: {}, steps: [] }, ws())).id
   await s.invoke('requirements:link-create', repo(), { type: 'verification', sourceId: testA, targetId: reqA }, ws())
+  // 60 exigences de plus, livrées par la version figée : assez de lignes pour faire défiler la grille (E13).
+  extraIds = Array.from({ length: 60 }, (_, i) => `GH439R-${String(101 + i).padStart(4, '0')}`)
+  for (const id of extraIds) {
+    fs.writeFileSync(path.join(repo(), 'requirements', `${id}.yaml`),
+      yaml.dump({ id, projectId: '', branchId: '', objectTypeRef: 'root::gh439_req', title: `GH439 lot ${id}`, status: 'draft', version: 1, fields: { priority: 'low' } }))
+  }
   await commit('GH439 préparation')
 
-  // Version released : couverture figée (reqA couverte, reqB non couverte, reqObsolete hors périmètre).
-  releasedId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439 figée' }, ws())).id
-  await s.invoke('versions:include', repo(), releasedId, [reqA], ws())
+  // Version released : couverture figée (reqA couverte, reqB et le lot non couverts, reqObsolete terminale donc absente).
+  // reqC n'est dans aucune version. Par défaut une version se base sur la dernière released du projet (ici la 1.0 de la démo, dont les
+  // exigences sont livrées : la lignée est cumulée) : `basedOn: null` pour une lignée à elle, que les cas suivants chaînent.
+  releasedId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439 figée', basedOn: null }, ws())).id
+  await s.invoke('versions:include', repo(), releasedId, [reqA, reqB, reqObsolete, ...extraIds], ws())
   await commit('GH439 version')
   await s.invoke('versions:release', repo(), releasedId, 'gh439-fige', ws())
 
   // Version released avant GH439 : même version, `verification` retirée du fichier.
-  legacyId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439 ancienne' }, ws())).id
+  legacyId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439 ancienne', basedOn: releasedId }, ws())).id
   await s.invoke('versions:include', repo(), legacyId, [reqB], ws())
   await commit('GH439 version ancienne')
   await s.invoke('versions:release', repo(), legacyId, 'gh439-ancienne', ws())
@@ -98,8 +109,8 @@ test.beforeAll(async () => {
   fs.writeFileSync(legacyFile, yaml.dump(legacy, { lineWidth: 120 }))
 
   // Version en cours et version abandonnée avant tout passage released.
-  currentId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439 en cours' }, ws())).id
-  abandonedId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439 abandonnée' }, ws())).id
+  currentId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439 en cours', basedOn: legacyId }, ws())).id
+  abandonedId = (await s.invoke<{ id: string }>('versions:create', repo(), { title: 'GH439 abandonnée', basedOn: null }, ws())).id
   const page = await s.invoke<VersionPageLike>('versions:get', repo(), abandonedId, ws())
   await s.invoke('versions:update', repo(), abandonedId, { status: page.typeDef.statuses!.find(x => x.isTerminal)!.name }, ws())
 })
@@ -165,7 +176,11 @@ test('E5 — Exigences d\'une version released : état et vérification figés, 
   await expect(p.getByTestId('version-requirements-info')).toContainText('gh439-fige')
   await expect(rowOf(reqA)).toBeVisible()
   await expect(rowOf(reqB)).toBeVisible()
-  await expect(rowOf(reqObsolete)).toHaveCount(0)   // statut terminal : hors périmètre
+  await expect(rowOf(reqObsolete)).toHaveCount(0)   // incluse mais de statut terminal : absente
+  // Seulement ce que la version livre : ni l'exigence jamais livrée, ni les exigences du projet de démo.
+  await expect(rowOf(reqC)).toHaveCount(0)
+  await expect(rowOf('CC-0001')).toHaveCount(0)
+  await expect(p.getByTestId('version-requirements-count')).toHaveText(`${2 + extraIds.length} / ${2 + extraIds.length}`)
   await expect(rowOf(reqA).locator('td[data-col="coverageStatus"]')).toHaveText(readStatusLabels().covered)
   await expect(rowOf(reqB).locator('td[data-col="coverageStatus"]')).toHaveText(readStatusLabels().notCovered)
   await expect(rowOf(reqA).locator(`td[data-col="id"] [data-element-link="${reqA}"]`)).toBeVisible()
@@ -197,6 +212,16 @@ test('E7 — version en cours : état courant, couverture à l\'instant', async 
   await expect(rowOf(reqB).locator('td[data-col="title"]')).toHaveText('GH439 non couverte — modifiée')
   await expect(rowOf(reqB).locator('td[data-col="coverageStatus"]')).toHaveText(readStatusLabels().covered)
   await expect(rowOf(reqObsolete)).toHaveCount(0)
+  // Sans changement propre : ce que la lignée (version précédente) a livré, pas le reste du repo.
+  await expect(rowOf(reqA)).toBeVisible()
+  await expect(rowOf(reqC)).toHaveCount(0)
+  await expect(rowOf('CC-0001')).toHaveCount(0)
+  // Une exigence incluse dans la version en cours apparaît (état courant du disque).
+  await s.invoke('versions:include', repo(), currentId, [reqC], ws())
+  await openVersion(currentId)
+  await openRequirements()
+  await expect(rowOf(reqC)).toBeVisible()
+  await expect(rowOf(reqC).locator('td[data-col="coverageStatus"]')).toHaveText(readStatusLabels().notCovered)
 })
 
 test('E8 — version released avant GH439 : « — » et mention dédiée', async () => {
@@ -224,6 +249,13 @@ test('E9 — 👁 : colonnes choisies et ordre retrouvés après rechargement', 
   await openRequirements()
   await expect(p.getByTestId('version-requirements-header-tests')).toBeVisible()
   await expect(p.getByTestId('version-requirements-header-status')).toHaveCount(0)
+  // Remise en l'état : les colonnes par défaut pour les scénarios suivants.
+  await p.getByTestId('version-requirements-columns').click()
+  await p.getByTestId('version-requirements-column-status').click()
+  await p.getByTestId('version-requirements-column-tests').click()
+  await p.getByTestId('column-picker-close').click()
+  await expect(p.getByTestId('version-requirements-header-status')).toBeVisible()
+  await expect(p.getByTestId('version-requirements-header-tests')).toHaveCount(0)
 })
 
 test('E10 — filtre « Vérification » : lignes et compteur', async () => {
@@ -288,13 +320,13 @@ test('E17 — Informations : saisie du libellé d\'une version en cours, section
 
 // ── E13 — mémoire du défilement de la grille « Exigences » (leçon GH300 : chaque frame, plusieurs chemins) ──
 
-interface Visible { node: string; offset: number }
+interface Visible { node: string; offset: number; scrollTop?: number }
 function readVisible(el: HTMLElement): Visible {
   const area = el.getBoundingClientRect()
   for (const row of el.querySelectorAll<HTMLElement>('[data-node-id]')) {
     const r = row.getBoundingClientRect()
     if (r.height === 0 || r.bottom <= area.top) continue
-    return { node: row.dataset.nodeId!, offset: Math.round(r.top - area.top) }
+    return { node: row.dataset.nodeId!, offset: Math.round(r.top - area.top), scrollTop: Math.round(el.scrollTop) }
   }
   return { node: '', offset: 0 }
 }
@@ -303,6 +335,10 @@ const position = () => scroller().evaluate(readVisible)
 const same = (a: Visible, b: Visible) => a.node === b.node && Math.abs(a.offset - b.offset) <= 2
 
 async function scrollGrid(fraction: number): Promise<Visible> {
+  // La grille rend d'abord un lot de lignes puis les suivantes : défiler une fois toutes rendues, sinon la fraction
+  // porte sur une hauteur provisoire et la position mesurée n'est pas celle qu'on retrouvera.
+  const total = Number((await s.page.getByTestId('version-requirements-count').innerText()).split('/')[1])
+  await expect.poll(() => grid().locator('tr[data-node-id]').count()).toBe(total)
   await scroller().evaluate((el, f) => { el.scrollTop = (el.scrollHeight - el.clientHeight) * f }, fraction)
   await s.page.waitForTimeout(400)
   return position()
@@ -321,7 +357,7 @@ async function startSampling() {
   })()`)
 }
 async function expectRestored(expected: Visible) {
-  await expect.poll(async () => { const p = await position(); return same(p, expected) ? 'ok' : JSON.stringify(p) }).toBe('ok')
+  await expect.poll(async () => { const p = await position(); return same(p, expected) ? 'ok' : JSON.stringify({ obtenu: p, attendu: expected }) }).toBe('ok')
   await s.page.waitForTimeout(2600)
   const samples = await s.page.evaluate(() => (window as unknown as { __gh439: Visible[] }).__gh439)
   expect(samples.length).toBeGreaterThan(0)

@@ -54,7 +54,10 @@ export function VersionRequirementsSection({ repoPath, projectId, versionId, ver
                 ? <p className="text-xs text-ink-3 italic" data-testid="version-requirements-empty">{t('versions.requirements.empty')}</p>
                 : (
                   <div className="flex flex-col max-h-[60vh] min-h-0" data-testid="version-requirements">
+                    {/* `key` : une autre version est une autre liste sur la même route — la grille est remontée (sinon la
+                        restauration du défilement se calcule sur les lignes de la version quittée). */}
                     <DataGrid
+                      key={versionId}
                       gridId="version-requirements"
                       title={`${t('versions.requirements.title')} ${versionLabel}`}
                       rows={data.rows}

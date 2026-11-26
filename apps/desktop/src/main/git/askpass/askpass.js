@@ -3,7 +3,7 @@
 'use strict'
 const net = require('net')
 
-const prompt = process.argv[2] || ''
+const promptText = process.argv[2] || ''
 const endpoint = process.env.POLENTA_ASKPASS_PIPE
 const nonce = process.env.POLENTA_ASKPASS_NONCE
 
@@ -17,7 +17,7 @@ if (!endpoint || !nonce) {
   const sock = net.connect(endpoint)
   let buf = ''
   sock.setEncoding('utf8')
-  sock.on('connect', () => sock.write(JSON.stringify({ nonce, prompt }) + '\n'))
+  sock.on('connect', () => sock.write(JSON.stringify({ nonce, prompt: promptText }) + '\n'))
   sock.on('data', chunk => { buf += chunk })
   sock.on('end', () => {
     let value = ''

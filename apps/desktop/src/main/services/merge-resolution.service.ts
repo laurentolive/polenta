@@ -1,4 +1,3 @@
-import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { createHash } from 'crypto'

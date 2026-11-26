@@ -139,7 +139,9 @@ export interface ExportTemplateListResult {
 // élimine ce risque en gardant l'association 1:1 telle que résolue par `resolveCampaignRuns()`.
 export interface CampaignExportPayload {
   campaign: TestCampaign
-  entries: { run: CampaignTestRun; test: TestCase }[]
+  /** `requirements` (GH442) : exigences affichées de l'entrée, comme dans la grille de la campagne.
+   *  Absent : repli sur `run.requirementId` (`entryRequirementIds`). */
+  entries: { run: CampaignTestRun; test: TestCase; requirements?: string[] }[]
 }
 
 // `query-result` (T43 sprint 3) : le `QueryResult` d'une requête ad hoc n'est pas forcément

@@ -38,10 +38,15 @@ export class CampaignExecutionService {
       if (!runsByTest.has(testCaseId)) runsByTest.set(testCaseId, this.tests.findRuns(repoPath, testCaseId).catch(() => []))
       return (await runsByTest.get(testCaseId)!).find(r => r.id === runId)
     }
+    // GH442 — colonne Exigence : mêmes exigences que la grille de la campagne.
+    const requirements = await this.campaigns.entryRequirements(repoPath, campaignId, workspaceDir)
     const entries: ExecutionSheetEntry[] = await Promise.all(campaign.runs.map(async run => {
       const test = effective.get(run.entryId)?.test
       const prefill = run.status !== 'pending' && run.runId ? await runOf(run.testCaseId, run.runId) : undefined
-      return { run, test, typeDef: typeDefs.get(run.entryId), ...(prefill && { prefill }), ...(test && { fingerprint: testFingerprint(test) }) }
+      return {
+        run, test, typeDef: typeDefs.get(run.entryId), requirements: requirements[run.entryId],
+        ...(prefill && { prefill }), ...(test && { fingerprint: testFingerprint(test) }),
+      }
     }))
 
     const tested = await this.testedConfig?.context(repoPath, campaignId, workspaceDir)

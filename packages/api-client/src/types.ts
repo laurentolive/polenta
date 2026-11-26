@@ -18,6 +18,7 @@ import type { Issue, RequirementReflectionsList, TransitionCheck, Validation, Va
   FlaggedElement,
   Parameter,
   ParamResolutionPreview,
+  CampaignEntryRequirements,
   ReqInstanceSelection,
   CarriedEntrySelection,
   ParameterDeleteResult,
@@ -988,6 +989,8 @@ export interface ApiClient {
     duplicateTest(repoPath: string, campaignId: string, testCaseId: string, paramValues: Record<string, string>, workspaceDir?: string, requirementId?: string): Promise<TestCampaign>
     /** T171 — résolution prévisionnelle des paramètres de tests à ajouter (sans écriture). */
     previewParams(repoPath: string, source: { campaignId?: string }, testCaseIds: string[], workspaceDir?: string): Promise<ParamResolutionPreview[]>
+    /** GH442 — exigences affichées de chaque entrée : celle de l'instance, sinon celles que le test couvre. */
+    entryRequirements(repoPath: string, campaignId: string, workspaceDir?: string): Promise<CampaignEntryRequirements>
     updateRunParams(repoPath: string, campaignId: string, entryId: string, paramValues: Record<string, string>): Promise<TestCampaign>
     /** GH428 — valeurs des champs d'exécution « renseigné en campagne » de l'entrée. */
     updateRunInputs(repoPath: string, campaignId: string, entryId: string, inputs: Record<string, string>): Promise<TestCampaign>

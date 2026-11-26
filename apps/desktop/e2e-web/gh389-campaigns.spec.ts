@@ -159,6 +159,11 @@ test('E11 — report depuis une campagne : grille à cases en modale, liens, Éc
   await p.getByRole('button', { name: 'Ajouter (1)' }).click()
   await expect(p.getByRole('tab', { name: 'Depuis une campagne' })).toHaveCount(0)
   await expect(p.getByTestId('campaign-entries-count')).toHaveText('41 / 41')
+  // GH442 — « Reportée depuis » n'est plus visible par défaut : affichée par 👁 Colonnes.
+  await expect(p.getByTestId('campaign-entries-header-carried')).toHaveCount(0)
+  await p.getByTestId('campaign-entries-columns').click()
+  await p.getByTestId('campaign-entries-column-carried').click()
+  await p.keyboard.press('Escape')
   await expect(p.getByTestId('campaign-entries').locator(`td[data-col="carried"] [data-element-link="${source.id}"]`)).toHaveCount(1)
 })
 

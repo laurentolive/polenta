@@ -24,7 +24,7 @@ créé dans le sens exigence → test), `B` (non itérant, aucun lien), `C` (it�
 | # | Scénario | Attendu |
 |---|---|---|
 | E1 | Page d'une campagne (A, B, C, D) | colonne Exigence : A → `R1`, `R2` en liens d'élément ; B vide ; instances de C → une exigence chacune ; D vide |
-| E2 | Infobulle de la cellule | A : « Exigences couvertes par le test » ; instance de C : « Exigence de l'instance » |
+| E2 | Source de la cellule (intégrée à E1) | A : `data-requirement-source="covered"` ; instance de C : `instance` ; aucun `title` natif sur la cellule |
 | E3 | Filtre de la colonne par `R2` | A seul |
 | E4 | Lien `B → R5` créé ailleurs, retour sur la page campagne | B affiche `R5` sans recharger l'application |
 | E5 | Exports du cahier (xlsx) et du classeur d'exécution (xlsx) | même texte que la grille ligne à ligne |

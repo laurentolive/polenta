@@ -1,8 +1,8 @@
 import ExcelJS from 'exceljs'
 import {
   EXECUTION_SHEET_COLUMNS, EXECUTION_SHEET_FORMAT_VERSION, EXECUTION_SHEET_HEADER_ROW,
-  EXECUTION_SHEET_LABELS, EXECUTION_SHEET_META_NAME, executionFieldColumnId, flattenTestedRepos, formatRequiredWhenText,
-  readLinkValues, selectableVersions, substituteRunParams, testedChoiceFromConfig, testedColumnId,
+  EXECUTION_SHEET_LABELS, EXECUTION_SHEET_META_NAME, entryRequirementIds, executionFieldColumnId, flattenTestedRepos, formatRequiredWhenText,
+  readLinkValues, requirementIdsText, selectableVersions, substituteRunParams, testedChoiceFromConfig, testedColumnId,
 } from '@polenta/types'
 import type {
   CampaignTestRun, ExecutionSheetColumn, ExecutionSheetFieldColumn, ExecutionSheetLabels, ExecutionSheetLocale, ExecutionSheetTestedColumn,
@@ -37,7 +37,8 @@ export type ExecutionSheetRow =
       entryId: string
       text: string
       expected: string
-      requirementId: string
+      /** GH442 — exigences affichées de l'instance (texte de la grille) ; lecture seule, l'import n'y lit rien. */
+      requirements: string
       params: string
       currentStatus: string
       /** GH196 — colonnes de champ saisissables sur cette ligne (champs d'exécution du type). */
@@ -84,6 +85,8 @@ export interface ExecutionSheetEntry {
   typeDef?: Pick<ObjectTypeDefinition, 'runFields' | 'stepFields'> | null
   /** GH196 — run du résultat déjà saisi (instance exécutée) : valeurs recopiées dans le classeur. */
   prefill?: TestRun
+  /** GH442 — exigences affichées de l'entrée (`campaigns.entryRequirements`) ; absent : exigence de l'instance seule. */
+  requirements?: string[]
 }
 
 /** Instant ISO → `Date` dont les composantes UTC sont l'heure locale (relue telle quelle à l'import). */
@@ -127,7 +130,7 @@ export function buildExecutionSheetModel(input: {
   const fieldColumns = fieldColumnsOf(input.entries)
   const testedColumns = testedColumnsOf(input.tested, labels)
 
-  for (const { run, test, fingerprint, typeDef, prefill } of input.entries) {
+  for (const { run, test, fingerprint, typeDef, prefill, requirements } of input.entries) {
     const plain = (md: string | null | undefined) => (md ? markdownToPlainText(md).trim() : '')
     const idsOf = (list: 'runFields' | 'stepFields') => (test ? (typeDef?.[list] ?? []).map(f => executionFieldColumnId(list, f.name)) : [])
     const steps = [...(test?.steps ?? [])].sort((a, b) => a.order - b.order)
@@ -146,7 +149,7 @@ export function buildExecutionSheetModel(input: {
       entryId: run.entryId,
       text: test ? `${test.id} — ${test.title}` : `${run.testCaseId} — ${labels.testNotFound}`,
       expected: conditions,
-      requirementId: run.requirementId ?? '',
+      requirements: requirementIdsText(requirements ?? entryRequirementIds(run)),
       params: formatParams(run),
       currentStatus: labels.runStatuses[run.status] ?? run.status,
       fieldIds: idsOf('runFields'),
@@ -363,7 +366,7 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
     const values: Partial<Record<ExecutionSheetColumn, string | number>> = r.kind === 'instance'
       ? {
           key: r.key, instance: r.entryId, text: r.text, expected: r.expected,
-          requirement: r.requirementId, params: r.params, currentStatus: r.currentStatus,
+          requirement: r.requirements, params: r.params, currentStatus: r.currentStatus,
         }
       : { key: r.key, step: r.order, text: r.text, expected: r.expected }
 

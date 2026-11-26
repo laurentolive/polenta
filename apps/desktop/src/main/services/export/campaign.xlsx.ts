@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs'
+import { entryRequirementIds, requirementIdsText } from '@polenta/types'
 import type { CampaignExportPayload } from '@polenta/types'
 
 /** Cahier de campagne — export xlsx (T43 sprint 2). Pas d'équivalent xlsx pour le rapport de
@@ -14,17 +15,18 @@ export async function exportCampaignPlanXlsx(
   titleRow.font = { bold: true, size: 13 }
   sheet.addRow([])
 
-  // T179 — une ligne par instance ; « Exigence » : exigence pour laquelle l'instance a été générée.
+  // T179 — une ligne par instance ; GH442 — « Exigence » : comme la grille de la campagne (exigence de
+  // l'instance, sinon exigences couvertes par le test).
   const headerRow = sheet.addRow(['ID', 'Titre', 'Exigence', 'Type', 'Statut'])
   headerRow.font = { bold: true }
   sheet.getColumn(1).width = 16
   sheet.getColumn(2).width = 50
-  sheet.getColumn(3).width = 16
+  sheet.getColumn(3).width = 24
   sheet.getColumn(4).width = 24
   sheet.getColumn(5).width = 14
 
-  for (const { run, test: t } of payload.entries) {
-    sheet.addRow([t.id, t.title, run.requirementId ?? '', t.objectTypeRef, t.status])
+  for (const { run, test: t, requirements } of payload.entries) {
+    sheet.addRow([t.id, t.title, requirementIdsText(requirements ?? entryRequirementIds(run)), t.objectTypeRef, t.status])
   }
 
   await workbook.xlsx.writeFile(destPath)

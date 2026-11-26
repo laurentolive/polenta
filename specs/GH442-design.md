@@ -29,9 +29,9 @@ On la réutilise telle quelle ; rien de nouveau côté définition du lien.
 | `main/services/export/campaign.xlsx.ts`, `campaign.docx.ts` | `entryRequirementIds(run, entry.requirements)` dans la colonne / le titre d'instance |
 | `renderer/lib/useEntryRequirements.ts` (nouveau) | `useQuery(['campaign-entry-requirements', repoPath, campaignId, workspaceDir])` → `api.campaigns.entryRequirements` |
 | `renderer/routes/campaign.$campaignId.tsx` | appelle le hook ; le passe à la grille ; ajoute `requirements` aux entrées des payloads plan et rapport ; ajoute `workspaceDir` à `getPrintParams` |
-| `renderer/components/campaign/CampaignEntriesGrid.tsx` | prop `entryRequirements` ; colonne `requirement` : `getText` = IDs joints par « , », `render` = liens d'élément, `title` = infobulle (Q5) ; `DEFAULTS` sans `carried` (Q7) |
+| `renderer/components/campaign/CampaignEntriesGrid.tsx` | prop `entryRequirements` ; colonne `requirement` : `getText` = IDs joints par « , », `render` = liens d'élément, `data-requirement-source` (Q5, pas de `title`) ; `DEFAULTS` sans `carried` (Q7) |
 | `renderer/routes/print.campaign-plan.tsx`, `print.campaign-report.tsx` | rechargent déjà campagne et tests par `campaignId` : ajoutent `workspaceDir` à `validateSearch` et la même requête que la grille |
-| `renderer/i18n/locales/{fr,en}.json` | `campaignPage.requirementIterated`, `campaignPage.requirementsCovered` |
+| `renderer/lib/useEntryRequirements.ts` | → `renderer/hooks/useEntryRequirements.ts` (dossier des hooks) ; `renderer/lib/campaignTests.ts` : `requirementSuffix` (impressions) |
 
 ## Décisions techniques
 

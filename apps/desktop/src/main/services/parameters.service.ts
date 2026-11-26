@@ -199,6 +199,24 @@ export class ParametersService {
     return out
   }
 
+  /**
+   * GH442 — exigences non terminales liées à chaque test (lien de couverture, deux sens, tri naturel),
+   * à l'état courant et sur tous les repos du workspace : même définition que les instances T179.
+   * Une seule lecture des exigences et des liens pour tous les tests. Sans service d'exigences : vide.
+   */
+  async coveredRequirementIds(
+    campaignRepo: string,
+    testIds: string[],
+    opts: { workspaceDir?: string } = {},
+  ): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>()
+    if (!this.reqRefs || testIds.length === 0) return out
+    const ctx = await this.workspaceCtx(campaignRepo, opts.workspaceDir)
+    const source = await this.reqRefs.loadSource(ctx.repoPaths)
+    for (const id of new Set(testIds)) out.set(id, this.reqRefs.linkedRequirements(source, id).map(r => r.req.id))
+    return out
+  }
+
   /** Bases de tous les repos du workspace (repo ouvert en premier). */
   async list(repoPath: string, workspaceDir?: string): Promise<RepoParameters[]> {
     const ctx = await this.workspaceCtx(repoPath, workspaceDir)

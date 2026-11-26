@@ -48,3 +48,8 @@ export function impactAnalysisExportBaseName(changeId: string): string {
 export function dashboardExportBaseName(dashboardTitle: string): string {
   return `dashboard-${sanitize(dashboardTitle)}`
 }
+
+/** `{composant}-version-{label}` — page d'une version (GH439). */
+export function versionExportBaseName(componentLabel: string, versionLabel: string): string {
+  return `${sanitize(componentLabel)}-version-${sanitize(versionLabel)}`
+}

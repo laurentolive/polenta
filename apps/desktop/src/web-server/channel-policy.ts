@@ -75,7 +75,7 @@ export const WEB_EXPOSED: ReadonlySet<string> = new Set([
   'tests:update',
   'transitions:preview',
   // GH252 — versions, analyse d'impact, validation.
-  'versions:analysis', 'versions:backlog', 'versions:copy', 'versions:create', 'versions:delete', 'versions:get', 'versions:impact', 'versions:include', 'versions:list', 'versions:release', 'versions:release-preview', 'versions:remove-changes', 'versions:set-impact', 'versions:tests', 'versions:tree', 'versions:update',
+  'versions:analysis', 'versions:backlog', 'versions:copy', 'versions:create', 'versions:delete', 'versions:get', 'versions:impact', 'versions:include', 'versions:list', 'versions:release', 'versions:release-preview', 'versions:remove-changes', 'versions:requirements', 'versions:set-impact', 'versions:tests', 'versions:tree', 'versions:update',
   'validations:cancel', 'validations:confirm', 'validations:create', 'validations:decide', 'validations:delete', 'validations:page', 'validations:reject', 'validations:sign', 'validations:update', 'validations:versions',
   'issues:add-decision',
   'reflections:list',
@@ -170,7 +170,7 @@ export const ROOT_ARGS: Record<string, number[]> = {
   'validations:versions': [0], 'validations:page': [0, 2], 'validations:create': [0, 2], 'validations:update': [0, 3],
   'validations:decide': [0, 3], 'validations:confirm': [0, 3], 'validations:reject': [0, 3], 'validations:sign': [0, 2],
   'validations:cancel': [0, 2], 'validations:delete': [0, 2],
-  'versions:tree': [0, 1], 'versions:list': [0], 'versions:get': [0, 2], 'versions:backlog': [0],
+  'versions:tree': [0, 1], 'versions:list': [0], 'versions:get': [0, 2], 'versions:requirements': [0, 2], 'versions:backlog': [0],
   'versions:create': [0, 2], 'versions:update': [0, 3], 'versions:include': [0, 3],
   'versions:remove-changes': [0, 3], 'versions:release-preview': [0, 2], 'versions:release': [0, 3],
   'versions:copy': [0, 2], 'versions:delete': [0, 2],

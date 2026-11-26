@@ -19,6 +19,8 @@ export type ExportKind =
   | 'table'
   /** GH400 — Document de la vue Exécutions (docx, pdf). */
   | 'executions'
+  /** GH439 — page d'une version : sections choisies (xlsx : un onglet par section ; pdf : A4 paysage). */
+  | 'version'
 
 export type ExportResult =
   | { status: 'ok'; filePath: string }
@@ -72,6 +74,14 @@ export interface TableExportPayload {
   hyperlinks?: Record<string, Record<string, string>>
   /** Colonnes figées (depuis la gauche) dans le classeur. */
   freezeColCount?: number
+}
+
+/**
+ * GH439 — export xlsx de plusieurs tables dans un même classeur (page d'une version) : une feuille par
+ * section choisie, dans l'ordre de la page, chacune au format d'une grille (`TableExportPayload`).
+ */
+export interface TablesExportPayload {
+  sheets: TableExportPayload[]
 }
 
 /**

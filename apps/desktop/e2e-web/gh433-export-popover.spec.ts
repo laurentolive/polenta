@@ -42,8 +42,11 @@ async function expectReachable(button: Locator) {
   expect(reachable, 'le pointeur atteint-il le bouton ?').toBe(true)
 }
 
-/** Bouton « Exporter » de la grille des tests à exécuter (barre d'outils de la page d'une version). */
-const exportButton = (p: Page) => p.getByTestId('version-tests-toolbar').getByRole('button', { name: /Exporter|Export/ })
+/**
+ * Bouton « Exporter » de la barre de titre de la page d'une version. GH439 : il remplace celui de chaque grille de la
+ * page ; la fenêtre porte en plus les cases de choix des sections (les popovers restent rendus hors de la page).
+ */
+const exportButton = (p: Page) => p.getByTestId('export-button')
 
 test.beforeAll(async () => {
   test.setTimeout(300_000)

@@ -3,16 +3,13 @@ import { useSelectedRepo } from '../../contexts/SelectedRepoContext'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 import type { ImpactAnalysisStatus, ImpactNode, VersionAnalysis, VersionImpactRoot, VersionImpactRow } from '@polenta/types'
-import { IMPACT_ANALYSIS_STATUSES } from '@polenta/types'
-import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
 import { CLOSED_STATUSES, ImpactTreeView } from '../impact/ImpactTrees'
 import { RequirementEditModal } from '../impact/RequirementEditModal'
 import { TestCaseEditModal } from '../impact/TestCaseEditModal'
-import { ElementLink } from '../element/ElementLink'
 import { DataGrid } from '../grid/DataGrid'
-import type { GridColumn } from '../grid/gridTypes'
 import { useGridScrollKey } from '../grid/useGridScrollKey'
 import { useSectionOpen } from './useVersions'
+import { VERSION_ANALYSIS_DEFAULTS, buildVersionAnalysisColumns, versionImpactRowClass, versionImpactRowId } from './versionAnalysisColumns'
 
 /** Au-delà, les racines sont repliées à l'ouverture. */
 const EXPANDED_ROOTS_MAX = 5
@@ -114,10 +111,6 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
   )
 }
 
-const IMPACT_DEFAULTS = ['id', 'label', 'status', 'comment', 'source']
-const impactRowId = (r: VersionImpactRow) => r.id
-const impactRowClass = (r: VersionImpactRow) => (r.reached ? undefined : 'opacity-60')
-const pathText = (src: VersionImpactRow['sources'][number]) => [src.rootId, ...src.path.map(p => p.id)].join(' → ')
 
 /**
  * Lignes de l'analyse en tableau (GH389 §4) : ID en lien d'élément, statut (liste) et commentaire
@@ -133,40 +126,8 @@ function ImpactRowsGrid({ rows, readOnly, titleOf, repoPath, title, onSetImpact 
 }) {
   const { t } = useTranslation()
   const scrollKey = useGridScrollKey('version-analysis')
-  const columns = useMemo<GridColumn<VersionImpactRow>[]>(() => [
-    {
-      key: 'id', label: t('versions.columns.id'), locked: true, getText: r => r.id,
-      render: r => (r.elementType ? <ElementLink id={r.id} className="font-mono text-prim" /> : <span className="font-mono text-ink-3">{r.id}</span>),
-      elementId: r => (r.elementType ? r.id : undefined),
-    },
-    {
-      key: 'label', label: t('versions.columns.label'),
-      getText: r => [r.title ?? '', r.reached ? '' : t('versions.analysis.notReached')].filter(Boolean).join(' '),
-      render: r => <>{r.title}{!r.reached && <span className="ml-2 text-[10px] text-ink-3 italic">{t('versions.analysis.notReached')}</span>}</>,
-    },
-    {
-      key: 'status', label: t('versions.analysis.status'),
-      getText: r => t(STATUS_LABEL_KEY[r.status]),
-      render: r => <span className={CLOSED_STATUSES.has(r.status) ? 'text-status-success' : 'text-ink-2'}>{t(STATUS_LABEL_KEY[r.status])}</span>,
-      editValue: r => r.status,
-      editor: { kind: 'enum', options: IMPACT_ANALYSIS_STATUSES.map(st => ({ value: st, label: t(STATUS_LABEL_KEY[st]) })) },
-    },
-    { key: 'comment', label: t('versions.analysis.comment'), getText: r => r.comment ?? '', editor: { kind: 'text' } },
-    {
-      key: 'source', label: t('versions.analysis.source'),
-      getText: r => r.sources.map(pathText).join(' ; '),
-      render: r => {
-        const [first, ...others] = r.sources
-        return first && (
-          <span className="font-mono text-[11px] text-ink-3"
-            title={r.sources.map(src => [src.rootId, ...src.path.map(p => p.id)].map(id => `${id} ${titleOf.get(id) ?? ''}`.trim()).join(' → ')).join('\n')}>
-            {pathText(first)}{others.length > 0 && <span className="ml-1 text-ink-2">+{others.length}</span>}
-          </span>
-        )
-      },
-    },
-  ], [t, titleOf])
-  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::version-analysis', view: 'columns', defaults: IMPACT_DEFAULTS }), [repoPath])
+  const columns = useMemo(() => buildVersionAnalysisColumns({ t, titleOf }), [t, titleOf])
+  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::version-analysis', view: 'columns', defaults: VERSION_ANALYSIS_DEFAULTS }), [repoPath])
   const byId = useMemo(() => new Map(rows.map(r => [r.id, r])), [rows])
   // Une ligne après l'autre : chaque écriture relit et réécrit le même fichier de version. Un échec
   // est affiché par la page (message d'erreur de la version).
@@ -185,12 +146,13 @@ function ImpactRowsGrid({ rows, readOnly, titleOf, repoPath, title, onSetImpact 
         gridId="version-analysis"
         title={title}
         rows={rows}
-        getRowId={impactRowId}
+        getRowId={versionImpactRowId}
         columns={columns}
         prefs={prefs}
         onCellEdit={readOnly ? undefined : onCellEdit}
-        rowClassName={impactRowClass}
+        rowClassName={versionImpactRowClass}
         scrollMemoryKey={scrollKey}
+        noExport
       />
     </div>
   )

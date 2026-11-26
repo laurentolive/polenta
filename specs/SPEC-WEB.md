@@ -248,6 +248,8 @@ la version web »).
 - Versions, analyse d'impact et validation (GH252) : disponibles sur le web, canaux `versions:*`, `validations:*` et
   `issues:add-decision` exposés. Release et signature se font depuis le navigateur, avec le compte de la session. Le tag est posé
   dans le clone de l'utilisateur et poussé à son prochain push.
+- Exigences d'une version et export de la page (GH439) : disponibles sur le web, canal `versions:requirements` exposé
+  (chemins aux positions `[0, 2]`) ; Excel et PDF (Chromium headless, A4 paysage) comme sur le desktop.
 - Écarts assumés avec le desktop : terminal Git Bash (GH238, décision du 2026-11-03) ; zoom de l'interface (GH237,
   `capabilities.appZoom`) : le zoom du navigateur en tient lieu (GH252).
 

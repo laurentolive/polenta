@@ -4,11 +4,11 @@ import { electronPdfLayout, PDF_LAYOUT_BY_KIND, playwrightPdfLayout, PRINT_ROUTE
 
 // GH435 — échelle et marges de l'export PDF d'un dashboard (specs/GH435-tests.md U15).
 
-const OTHER_KINDS = (Object.keys(PRINT_ROUTE_BY_KIND) as Array<keyof typeof PRINT_ROUTE_BY_KIND>).filter(k => k !== 'dashboard')
+const OTHER_KINDS = (Object.keys(PRINT_ROUTE_BY_KIND) as Array<keyof typeof PRINT_ROUTE_BY_KIND>).filter(k => k !== 'dashboard' && k !== 'version')
 
 describe('U15 — mise en page PDF par type d\'export', () => {
-  it('seul le dashboard a une échelle et des marges propres', () => {
-    expect(Object.keys(PDF_LAYOUT_BY_KIND)).toEqual(['dashboard'])
+  it("seuls le dashboard et, depuis GH439, la page d'une version ont une mise en page propre", () => {
+    expect(Object.keys(PDF_LAYOUT_BY_KIND)).toEqual(['dashboard', 'version'])
     expect(PDF_LAYOUT_BY_KIND.dashboard).toEqual({ scale: PRINT_SCALE, marginMm: PRINT_MARGIN_MM })
   })
 

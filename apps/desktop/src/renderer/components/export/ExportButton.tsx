@@ -30,11 +30,29 @@ interface ExportButtonProps {
    *  Excel et Word (`visibleFieldsExcel`/`visibleFieldsWord` de `SystemView.tsx`). `templated`
    *  (GH34) : un gabarit client est choisi — la vue peut joindre des données que seul le gabarit
    *  utilise (ex. arbre complet avec dossiers). */
-  getPayload?: (format: 'xlsx' | 'docx', options: { templated: boolean }) => unknown | Promise<unknown>
-  /** pdf : paramètres transmis à la route imprimable `/print/<kind>`, qui recharge ses propres données. */
-  getPrintParams?: () => Record<string, string>
+  getPayload?: (format: 'xlsx' | 'docx', options: { templated: boolean; selected?: string[] }) => unknown | Promise<unknown>
+  /** pdf : paramètres transmis à la route imprimable `/print/<kind>`, qui recharge ses propres données.
+   *  `selected` : clés cochées quand `choices` est fourni (GH439). */
+  getPrintParams?: (selected?: string[]) => Record<string, string> | Promise<Record<string, string>>
   /** Libellé du bouton (défaut : "Exporter") — à préciser quand une vue en affiche plusieurs. */
   label?: string
+  /** GH439 — export global d'une page : la fenêtre propose des cases à cocher (une par section), toutes cochées
+   *  par défaut ; la sélection, transmise à `getPayload` / `getPrintParams`, est mémorisée par poste
+   *  (`storageKey`, les clés **décochées**, pour qu'une section nouvelle soit cochée d'office). Aucune case
+   *  cochée : les formats sont désactivés. */
+  choices?: { items: { key: string; label: string }[]; storageKey: string; title: string }
+}
+
+/** Clés décochées mémorisées par poste ; stockage indisponible : tout est coché. */
+function readUnchecked(storageKey: string | undefined): string[] {
+  if (!storageKey) return []
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]')
+    return Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string') : []
+  } catch { return [] }
+}
+function writeUnchecked(storageKey: string, keys: string[]): void {
+  try { localStorage.setItem(storageKey, JSON.stringify(keys)) } catch { /* stockage indisponible : choix non mémorisé */ }
 }
 
 /** Position d'un popover de ExportButton : coordonnées du bouton, en position fixe (GH433). */
@@ -42,12 +60,21 @@ interface PopoverAnchor { top: number; right: number }
 
 /** Bouton "Exporter" partagé, inséré dans le slot `actions` d'un `ViewHeader` — popover listant
  *  les formats disponibles pour la vue (cf. specs/T43-design.md, mapping formats/type). */
-export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, getPayload, getPrintParams, label }: ExportButtonProps) {
+export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, getPayload, getPrintParams, label, choices }: ExportButtonProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedPath, setSavedPath] = useState<string | null>(null)
   const templates = useExportTemplates(kind, formats, repoPath, open)
+  // GH439 — sections cochées, dans l'ordre des cases ; absent : export d'un seul bloc.
+  const [unchecked, setUnchecked] = useState<string[]>(() => readUnchecked(choices?.storageKey))
+  const selected = choices ? choices.items.map(i => i.key).filter(k => !unchecked.includes(k)) : undefined
+  const toggleChoice = (key: string) => setUnchecked(prev => {
+    const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    if (choices) writeUnchecked(choices.storageKey, next)
+    return next
+  })
+  const nothingSelected = !!selected && selected.length === 0
 
   // GH433 — popovers rendus dans document.body (portail) et positionnés en position:fixed depuis le bouton :
   // la vue hôte (page à défilement, rognage horizontal) ne les coupe plus. Position relevée au clic, puis
@@ -78,11 +105,11 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
       const suggestedName = `${baseName}.${FORMAT_META[format].extension}`
       if (format === 'pdf') {
         if (!getPrintParams) throw new Error(t('exportButton.pdfNotAvailable'))
-        return api.export.save(repoPath, kind, format, undefined, getPrintParams(), suggestedName)
+        return api.export.save(repoPath, kind, format, undefined, await getPrintParams(selected), suggestedName)
       }
       if (!getPayload) throw new Error(t('exportButton.formatNotAvailable', { format: FORMAT_META[format].label }))
       const templateRelPath = templates.selection[format as TemplateExportFormat] || undefined
-      const payload = await getPayload(format, { templated: !!templateRelPath })
+      const payload = await getPayload(format, { templated: !!templateRelPath, selected })
       return api.export.save(repoPath, kind, format, payload, undefined, suggestedName, templateRelPath)
     },
     onSuccess: (result) => {
@@ -106,6 +133,7 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
         onClick={() => { measure(); setOpen(o => !o) }}
         className="btn-secondary-sm flex items-center gap-1.5"
         title={label ?? t('exportButton.export')}
+        data-testid="export-button"
       >
         <Download size={13} />
         {label ?? t('exportButton.export')}
@@ -131,6 +159,17 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
                     onChange={value => templates.select(f.format, value)}
                   />
                 ))}
+                {choices && (
+                  <fieldset className="flex flex-col gap-1 text-xs text-ink-2" data-testid="export-choices">
+                    <legend className="mb-1 text-ink-3">{choices.title}</legend>
+                    {choices.items.map(item => (
+                      <label key={item.key} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={!unchecked.includes(item.key)} onChange={() => toggleChoice(item.key)} data-testid={`export-choice-${item.key}`} />
+                        {item.label}
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
                 <div className="flex gap-1">
                   {formats.map(format => {
                     const meta = FORMAT_META[format]
@@ -142,8 +181,9 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
                         onClick={() => exportMutation.mutate(format)}
                         // Pas d'export tant que la liste des gabarits de ce format n'est pas chargée :
                         // la présélection (défaut du projet ou Standard) n'est pas encore connue.
-                        disabled={exportMutation.isPending || templates.formats.some(f => f.format === format && f.loading)}
+                        disabled={exportMutation.isPending || nothingSelected || templates.formats.some(f => f.format === format && f.loading)}
                         className="flex flex-col items-center gap-1 px-3 py-2 rounded hover:bg-hover text-xs text-ink-2 disabled:opacity-50"
+                        data-testid={`export-format-${format}`}
                       >
                         <Icon size={18} />
                         {meta.label}

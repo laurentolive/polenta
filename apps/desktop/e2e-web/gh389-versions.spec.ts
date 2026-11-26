@@ -36,11 +36,15 @@ async function navigate(p: Page, url: string) {
 const openVersion = (id: string) => navigate(s.page, s.projectUrl(`/version/${id}`, { repoPath: repo() }))
 const openBacklog = () => navigate(s.page, s.projectUrl('/versions/backlog', { repoPath: repo() }))
 
-/** Barre d'outils commune d'une grille : 👁, ↕▯, Exporter, compteur ; icône de filtre sur une colonne. */
-async function expectGridContract(gridId: string, filterCol: string) {
+/**
+ * Barre d'outils commune d'une grille : 👁, ↕▯, Exporter, compteur ; icône de filtre sur une colonne.
+ * GH439 : les grilles de la page d'une version n'ont plus de bouton Exporter (l'export est celui de la page).
+ */
+async function expectGridContract(gridId: string, filterCol: string, { withExport = true }: { withExport?: boolean } = {}) {
   const toolbar = s.page.getByTestId(`${gridId}-toolbar`)
   await expect(toolbar.getByTestId(`${gridId}-columns`)).toBeVisible()
-  await expect(toolbar.getByRole('button', { name: /Exporter|Export/ })).toBeVisible()
+  if (withExport) await expect(toolbar.getByRole('button', { name: /Exporter|Export/ })).toBeVisible()
+  else await expect(toolbar.getByRole('button', { name: /Exporter|Export/ })).toHaveCount(0)
   await expect(s.page.getByTestId(`${gridId}-count`)).toHaveText(/^\d+ \/ \d+$/)
   await expect(s.page.getByTestId(`${gridId}-header-${filterCol}`).locator('[data-column-filter-icon]')).toBeVisible()
 }
@@ -86,20 +90,22 @@ test('E11 — page d’une version : en-tête repliable, changements, tests à e
   await openVersion(versionId)
   await expect(p.getByTestId('version-page')).toBeVisible()
 
-  // En-tête repliable : statut dans le sous-titre, état retrouvé sur une autre version.
-  await expect(p.getByTestId('version-header')).toBeVisible()
-  await p.getByTestId('version-header-toggle').click()
-  await expect(p.getByTestId('version-header')).toHaveCount(0)
+  // GH439 — plus d'en-tête repliable : ID et état restent dans la barre de titre, les informations sont
+  // une section comme les autres (même repli, état retrouvé sur une autre version).
+  await expect(p.getByTestId('version-info')).toBeVisible()
+  await expect(p.getByTestId('version-header-toggle')).toHaveCount(0)
+  await p.getByTestId('version-info-toggle').click()
+  await expect(p.getByTestId('version-info')).toHaveCount(0)
   await expect(p.getByTestId('version-state-short')).toBeVisible()
   await openVersion(releasedId)
-  await expect(p.getByTestId('version-header')).toHaveCount(0)
-  await p.getByTestId('version-header-toggle').click()
-  await expect(p.getByTestId('version-header')).toBeVisible()
+  await expect(p.getByTestId('version-info')).toHaveCount(0)
+  await p.getByTestId('version-info-toggle').click()
+  await expect(p.getByTestId('version-info')).toBeVisible()
   await openVersion(versionId)
-  await expect(p.getByTestId('version-header')).toBeVisible()
+  await expect(p.getByTestId('version-info')).toBeVisible()
 
   // Changements : contrat de grille, liens d'élément (élément et version), cases et « Retirer ».
-  await expectGridContract('version-changes', 'id')
+  await expectGridContract('version-changes', 'id', { withExport: false })
   const changes = p.getByTestId('version-changes')
   const rowOf = (id: string) => changes.locator(`tr[data-node-id$=":${versionId}:${id}"]`)
   await expect(rowOf(backlogIds[0]).locator(`td[data-col="id"] [data-element-link="${backlogIds[0]}"]`)).toBeVisible()
@@ -128,7 +134,7 @@ test('E11 — page d’une version : en-tête repliable, changements, tests à e
   await openVersion(releasedId)
   const tests = p.getByTestId('version-tests-list')
   await expect(tests).toBeVisible()
-  await expectGridContract('version-tests', 'id')
+  await expectGridContract('version-tests', 'id', { withExport: false })
   await expect(tests.locator(`tr[data-node-id="${testId}"] [data-element-link="${testId}"]`)).toBeVisible()
   await expect(tests.locator(`[data-testid="version-tests-check-${testId}"]`)).toBeVisible()
   await expect(p.getByTestId('version-campaign-create')).toBeEnabled()
@@ -139,7 +145,7 @@ test('E11 — page d’une version : en-tête repliable, changements, tests à e
   // Analyse figée : tableau en lecture seule, ID en lien d'élément, aucune cellule ne s'ouvre.
   const analysis = p.getByTestId('version-impact-rows')
   await expect(analysis).toBeVisible()
-  await expectGridContract('version-analysis', 'status')
+  await expectGridContract('version-analysis', 'status', { withExport: false })
   const impactRow = analysis.locator('tr[data-node-id]').first()
   await expect(impactRow.locator('td[data-col="id"] [data-element-link]')).toHaveCount(1)
   await impactRow.locator('td[data-col="status"]').dblclick()

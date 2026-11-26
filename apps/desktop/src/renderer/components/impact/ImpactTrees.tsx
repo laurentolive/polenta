@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ChangedRequirement, ImpactAnalysisStatus, ImpactNode, Requirement, RequirementChangeType } from '@polenta/types'
 import { api } from '../../api'
 import { IMPACT_ANALYSIS_STATUSES, stripRichTextColorTags } from '@polenta/types'
-import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
+import { CLOSED_STATUSES, STATUS_LABEL_KEY } from '../../lib/impactStatus'
 import { wordDiff, diffValueText } from '../../lib/wordDiff'
 import { RevalidationFlag } from '../system/RevalidationFlag'
 import { RepoBadge } from './RepoBadge'
@@ -34,9 +34,7 @@ export const CHANGE_TYPE_COLOR: Record<RequirementChangeType, string> = {
 /** Ordre des statuts d'impact : liste partagée (GH245). */
 export const STATUS_ORDER: readonly ImpactAnalysisStatus[] = IMPACT_ANALYSIS_STATUSES
 
-// Statuts "clos" pour l'indicateur de complétude (point 6 de la spec) — ne contraint pas les
-// transitions, sert uniquement à compter ouverts/clos.
-export const CLOSED_STATUSES = new Set<ImpactAnalysisStatus>(['pas_d_impact_reel', 'impact_teste', 'modification_verifiee'])
+export { CLOSED_STATUSES }
 
 // ── Parcours de l'arbre ──────────────────────────────────────────────────────
 

@@ -30,6 +30,7 @@ import type { SchemaService } from '../services/schema.service'
 import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
 import type { VersionsService } from '../services/versions.service'
+import type { VersionRequirementsService } from '../services/version-requirements.service'
 import type { IssuesService } from '../services/issues.service'
 import type { ValidationsService } from '../services/validations.service'
 import type { ExecutionHistoryService } from '../services/execution-history.service'
@@ -126,6 +127,8 @@ export interface Container {
   elementMove: ElementMoveService
   campaigns: CampaignsService
   versions: VersionsService
+  /** GH439 — exigences d'une version et leur statut de vérification. */
+  versionRequirements: VersionRequirementsService
   issues: IssuesService
   validations: ValidationsService
   /** GH210 — reflets Design et Validation des vues exigence. */
@@ -672,6 +675,9 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('versions:get', (_e, repoPath: string, id: string, workspaceDir?: string) =>
     c.versions.page(repoPath, id, workspaceDir ?? undefined))
   r.handle('versions:backlog', (_e, repoPath: string) => c.versions.backlog(repoPath))
+  // GH439 — exigences d'une version, avec leur statut de vérification (figé à la release).
+  r.handle('versions:requirements', (_e, repoPath: string, id: string, workspaceDir?: string) =>
+    c.versionRequirements.page(repoPath, id, workspaceDir ?? undefined))
   // GH203 — vues enregistrées du ⚙️ (personnelles et d'équipe).
   r.handle('views:list', (_e, repoPath: string, username: string, typeKey: string, workspaceDir?: string) =>
     c.savedViews.list(repoPath, username, typeKey, workspaceDir))

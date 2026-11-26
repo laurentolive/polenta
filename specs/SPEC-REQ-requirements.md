@@ -805,7 +805,7 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 - Fichier `versions/<ID>.yaml` (IDs GH20, `history` GH77) ; champs système `basedOn` (version
   précédente du repo), `components` (versions des dépendances `polenta-repo.yaml`, par nom de
   montage), `changes` (`{ id, base?: { sha, version } }`), `freeze` (`{ tag, sha, at }`, au passage
-  released). `history.changes` (GH202) : une entrée `{ value: [IDs triés], at, by }` par écriture qui change la liste, toujours
+  released), `analysis` (§11.4) et `verification` (§11.5), posés au passage released. `history.changes` (GH202) : une entrée `{ value: [IDs triés], at, by }` par écriture qui change la liste, toujours
   active, une seule par seconde ; une exécution y fait référence (`changesAt`, SPEC-TESTS §3.2). Le label est le `title`, unique parmi les versions non abandonnées du repo. Les composants
   locaux (nœuds enfants) n'ont pas de versions propres. Le dossier historique `versions/<REQ>/vN.yaml`
   (instantanés d'exigence) est distinct.
@@ -824,7 +824,8 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 - **Passage released** (action dédiée, jamais par un simple changement de statut) : refus si le tag
   est invalide ou existe, si une version de `components` n'est pas released, si un élément inclus a
   des modifications non commitées, ou si le repo est en lecture seule. Sinon `freeze.sha` = HEAD,
-  commit du **seul** fichier de version (`[version] <ID> <label> released`), **tag annoté** posé sur ce
+  commit du **seul** fichier de version (`[version] <ID> <label> released`, qui porte aussi l'analyse
+  d'impact et la couverture figées, §11.4, §11.5), **tag annoté** posé sur ce
   commit avant que la branche n'avance (tag proposé `<repo>-<label>`, modifiable), tag mis en attente
   et poussé au prochain push du repo (`<gitdir>/polenta-pending-tags`).
 - Une version released est verrouillée (champs, `changes`, `components`) ; seul l'abandon reste.
@@ -846,8 +847,10 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
   ligne par ligne ou par sélection multiple (un seul enregistrement).
 - **Page** : changements de la version, puis ceux des versions de chaque dépendance entre celle de
   `basedOn` (exclue, si elle est un ancêtre) et celle retenue ; « Voir les modifications » = diff
-  générique `base` → `freeze.sha` (ou disque si en cours). GH389 : en-tête repliable (bouton de la
-  barre de titre, état par poste) ; changements, tests à exécuter, analyse figée et backlog sont des
+  générique `base` → `freeze.sha` (ou disque si en cours). GH439 : plus d'en-tête repliable — ID et état
+  restent dans la barre de titre, les informations sont la section « Informations » ; les six sections
+  (Informations, Composants, Changements, Analyse d'impact, Tests à exécuter, Exigences) se replient par le même
+  en-tête, état par poste. GH389 : changements, tests à exécuter, analyse figée et backlog sont des
   grilles communes (SPEC-SYSTEM-VIEW § Grilles communes) à cases (retrait, inclusion, création de
   campagne inchangés), bornées en hauteur et qui défilent seules ; analyse en tableau : statut et
   commentaire édités dans la cellule tant que la version est en cours, ID en lien d'élément.
@@ -874,6 +877,45 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 - **Aucun lien version ↔ campagne** dans le modèle : « Créer une campagne » et « Ajouter à … » sont des
   raccourcis (création / sélecteur pré-remplis avec les tests cochés). C'est une exécution qui fait
   référence à une version (GH202, SPEC-TESTS §3.2).
+
+### 11.5 Exigences d'une version et couverture figée (GH439)
+
+Question du client : « dans une version produit, qu'est-ce qui est implémenté, quelle est la liste des exigences ? ».
+Détail : `specs/GH439.md`.
+
+- **Section « Exigences »** de la page d'une version (fermée par défaut, **lue à l'ouverture seulement**,
+  `versions:requirements`) : les exigences **du repo** **disponibles dans la version**, hors statut terminal — celles
+  incluses (`changes`) dans la version ou dans une version **released** de sa lignée (`basedOn`, de proche en proche ;
+  une version abandonnée de la lignée ne livre rien, comme au backlog) : la première release ne liste que ses propres
+  changements, une exigence jamais livrée (backlog) n'y est pas. **État lu** : à `freeze.sha` avec le schéma de ce
+  commit (version released, ou abandonnée avec gel), sur le disque pour une version en cours ; un fichier d'un type non
+  déclaré par le schéma du repo, les composants et dépendances n'en font pas partie. Une release garde la
+  liste qu'elle a figée (les lignes de `verification`) : abandonner une version de sa lignée ensuite ne la change pas ; une
+  version en cours, ou released avant GH439, lit la lignée d'aujourd'hui. La validation (§13) garde son
+  propre périmètre (toutes les exigences non terminales à `freeze.sha`). Version abandonnée sans gel : pas de section (`VERSION_NOT_FROZEN`).
+  Gel ou schéma illisible : erreur, jamais une liste vide ni une liste qui garderait les exigences terminales.
+- **Grille commune** en lecture seule (SPEC-SYSTEM-VIEW § Grilles communes ; `grid::version-requirements`, sans bouton
+  Exporter ni vues d'équipe) : ID (lien d'élément), titre, statut (libellé du schéma du gel), type, champs du schéma
+  (`defaultVisible`, sinon les trois premiers), révision, **Vérification**, tests liés. Entrée / double-clic : ouvre
+  l'exigence. Ligne d'information : figé au tag (Vérification figée à la release) / non figée (version released avant
+  GH439) / état courant (version en cours).
+- **Vérification figée** : au passage released, la couverture de chaque exigence du périmètre (`not_covered`,
+  `covered`, `validated`, `failing`, `needs_revalidation`, SPEC-TRACEABILITY §2) est copiée dans le champ système
+  **`verification`** (`{ computedAt, rows: [{ id, status, tests: [IDs] }] }`, triées par ID), **dans le même commit**
+  que le fichier de version. Calculée sur l'état du **workspace** au moment du passage (comme l'analyse d'impact) :
+  un lien ou une exécution non commités à cet instant sont comptés sans figurer dans le commit figé. Matrice
+  illisible : le passage échoue (rien n'est écrit). Posé par l'application, jamais à la main, jamais copié par
+  « Copier ». Une version released **lit** sa copie — aucun calcul, aucune dépendance aux liens, tests et exécutions
+  d'aujourd'hui ; avant GH439 elle n'en a pas (« — », jamais recalculée). Version en cours : couverture à l'instant.
+  `versions:get` ne renvoie pas `verification` (une ligne par exigence) ; seul `versions:requirements` la lit.
+- **Indicateur** : la couverture sert une fonction de Polenta (SPEC-TRACEABILITY §2) ; aucun agrégat (« % couvertes »)
+  n'est calculé (GH79 — script de projet). `verification` n'est pas exposée au graphe de données ni au MCP (hors périmètre).
+- **Export de la page** : bouton **Exporter** de la barre de titre, fenêtre à cases à cocher (une par section affichée,
+  toutes cochées, sélection mémorisée par poste) ; Excel (une feuille par section, `ExportKind` `version`,
+  `TablesExportPayload`) et PDF (route `/print/version`, A4 paysage, en-tête de tableau répété, pied « page n / N ») ;
+  un tableau par section avec les colonnes **visibles dans l'ordre de l'écran** et **toutes** les lignes (ni filtre ni
+  tri) ; une section repliée s'exporte ; « Analyse d'impact » et « Tests » ne sont pas proposées pour une version
+  abandonnée. Les grilles de la page n'ont plus leur propre Exporter.
 
 ## 12. Issues (GH244)
 

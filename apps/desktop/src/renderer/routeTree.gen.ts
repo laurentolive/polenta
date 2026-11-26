@@ -44,6 +44,7 @@ import { Route as TestNewRouteImport } from './routes/test.new'
 import { Route as TestTestIdRouteImport } from './routes/test.$testId'
 import { Route as ReqNewRouteImport } from './routes/req.new'
 import { Route as ReqReqIdRouteImport } from './routes/req.$reqId'
+import { Route as PrintVersionRouteImport } from './routes/print.version'
 import { Route as PrintTestsRouteImport } from './routes/print.tests'
 import { Route as PrintRequirementsRouteImport } from './routes/print.requirements'
 import { Route as PrintQueryResultRouteImport } from './routes/print.query-result'
@@ -232,6 +233,11 @@ const ReqReqIdRoute = ReqReqIdRouteImport.update({
   path: '/req/$reqId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrintVersionRoute = PrintVersionRouteImport.update({
+  id: '/print/version',
+  path: '/print/version',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrintTestsRoute = PrintTestsRouteImport.update({
   id: '/print/tests',
   path: '/print/tests',
@@ -334,6 +340,7 @@ export interface FileRoutesByFullPath {
   '/print/query-result': typeof PrintQueryResultRoute
   '/print/requirements': typeof PrintRequirementsRoute
   '/print/tests': typeof PrintTestsRoute
+  '/print/version': typeof PrintVersionRoute
   '/req/$reqId': typeof ReqReqIdRoute
   '/req/new': typeof ReqNewRoute
   '/test/$testId': typeof TestTestIdRoute
@@ -383,6 +390,7 @@ export interface FileRoutesByTo {
   '/print/query-result': typeof PrintQueryResultRoute
   '/print/requirements': typeof PrintRequirementsRoute
   '/print/tests': typeof PrintTestsRoute
+  '/print/version': typeof PrintVersionRoute
   '/req/$reqId': typeof ReqReqIdRoute
   '/req/new': typeof ReqNewRoute
   '/test/$testId': typeof TestTestIdRoute
@@ -433,6 +441,7 @@ export interface FileRoutesById {
   '/print/query-result': typeof PrintQueryResultRoute
   '/print/requirements': typeof PrintRequirementsRoute
   '/print/tests': typeof PrintTestsRoute
+  '/print/version': typeof PrintVersionRoute
   '/req/$reqId': typeof ReqReqIdRoute
   '/req/new': typeof ReqNewRoute
   '/test/$testId': typeof TestTestIdRoute
@@ -484,6 +493,7 @@ export interface FileRouteTypes {
     | '/print/query-result'
     | '/print/requirements'
     | '/print/tests'
+    | '/print/version'
     | '/req/$reqId'
     | '/req/new'
     | '/test/$testId'
@@ -533,6 +543,7 @@ export interface FileRouteTypes {
     | '/print/query-result'
     | '/print/requirements'
     | '/print/tests'
+    | '/print/version'
     | '/req/$reqId'
     | '/req/new'
     | '/test/$testId'
@@ -582,6 +593,7 @@ export interface FileRouteTypes {
     | '/print/query-result'
     | '/print/requirements'
     | '/print/tests'
+    | '/print/version'
     | '/req/$reqId'
     | '/req/new'
     | '/test/$testId'
@@ -632,6 +644,7 @@ export interface RootRouteChildren {
   PrintQueryResultRoute: typeof PrintQueryResultRoute
   PrintRequirementsRoute: typeof PrintRequirementsRoute
   PrintTestsRoute: typeof PrintTestsRoute
+  PrintVersionRoute: typeof PrintVersionRoute
   ReqReqIdRoute: typeof ReqReqIdRoute
   ReqNewRoute: typeof ReqNewRoute
   TestTestIdRoute: typeof TestTestIdRoute
@@ -890,6 +903,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReqReqIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/print/version': {
+      id: '/print/version'
+      path: '/print/version'
+      fullPath: '/print/version'
+      preLoaderRoute: typeof PrintVersionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/print/tests': {
       id: '/print/tests'
       path: '/print/tests'
@@ -1016,6 +1036,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrintQueryResultRoute: PrintQueryResultRoute,
   PrintRequirementsRoute: PrintRequirementsRoute,
   PrintTestsRoute: PrintTestsRoute,
+  PrintVersionRoute: PrintVersionRoute,
   ReqReqIdRoute: ReqReqIdRoute,
   ReqNewRoute: ReqNewRoute,
   TestTestIdRoute: TestTestIdRoute,

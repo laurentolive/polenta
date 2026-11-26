@@ -14,15 +14,10 @@ const numeric = (a: string, b: string) => a.localeCompare(b, undefined, { numeri
 export function buildVerification(
   requirements: ValidationRequirement[], matrix: Pick<TraceabilityMatrix, 'requirements'>, now: Date,
 ): VersionVerification {
-  const covered = new Map(matrix.requirements.map(r => [r.requirement.id, r]))
-  const rows = requirements.map(({ state }): VersionVerificationRow => {
-    const row = covered.get(state.id)
-    return {
-      id: state.id,
-      status: row?.coverageStatus ?? 'not_covered',
-      tests: [...new Set((row?.cells ?? []).map(c => c.testCaseId))].sort(numeric),
-    }
-  }).sort(byId)
+  // Même lecture de la matrice que la page d'une version en cours : la valeur figée et l'affichage à l'instant
+  // ne peuvent pas diverger sur les mêmes données.
+  const coverageOf = liveCoverage(matrix)
+  const rows = requirements.map(({ state }): VersionVerificationRow => ({ id: state.id, ...coverageOf(state.id) })).sort(byId)
   return { computedAt: now.toISOString(), rows }
 }
 

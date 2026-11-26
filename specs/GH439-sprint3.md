@@ -62,7 +62,24 @@ Spec : `specs/GH439.md` § 5 · design : `specs/GH439-design.md` § 8 · scénar
 - Tests unitaires ajoutés : tables de sections 13 (T1–T10), classeur multi-feuilles 3, mise en page PDF 4.
 - e2e web (build web à jour) : `gh439-version-export` 6/6, `gh439-version-page` 15/15, `gh389-versions` (adapté),
   `gh433-export-popover` (adapté) 2/2, `gh252-versions` 5/5, `gh389-excel-export`.
-- Suite unitaire complète : voir le message de commit. Suite e2e complète : **à lancer après le « Validé »** (niveau 3).
+- Suite unitaire complète (apps/desktop) : **2 414 / 2 415** — le seul échec, `sync.service.gh414` › R2 (23,4 s pour une
+  limite de 20 s), passe seul en 1,3 s : l'intermittence déjà suivie par #432 (commentaire ajouté). La veille, même
+  signature sur `repo-conformity.gh336`.
+- Suite e2e complète : **à lancer après le « Validé »** (niveau 3).
+
+## Revue (`/code-review medium 440`)
+
+- **Corrigé** : noms de feuille Excel avec apostrophe en tête ou en queue (refusés par Excel, y compris après la coupe à
+  31 caractères) ; `buildVerification` réutilise `liveCoverage` (la valeur figée et l'affichage d'une version en cours
+  lisent la matrice par le même code).
+- **Assumé** : la couverture lit le workspace, pas le commit (précédent GH245), documenté en SPEC-REQ §11.5 ; l'ancienne
+  préférence de repli de l'en-tête n'est pas migrée (spec § 2.2).
+- **Limite connue** : la route imprimable ne signale pas d'erreur de lecture au moteur (comme les autres routes
+  `print.*`) : l'export PDF attend alors le délai du moteur au lieu d'afficher la cause ; l'export Excel affiche l'erreur.
+
+## Suite
+
+- #441 : exposer `verification` au graphe de données et au MCP (hors périmètre, D8).
 
 ## Comment tester à la main (ce que les tests ne couvrent pas)
 

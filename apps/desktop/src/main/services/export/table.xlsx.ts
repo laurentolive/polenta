@@ -41,7 +41,8 @@ export async function buildTablesWorkbook(payload: TablesExportPayload): Promise
 }
 
 function uniqueSheetName(requested: string, used: Set<string>): string {
-  const base = (requested.replace(SHEET_FORBIDDEN, ' ').replace(/\s+/g, ' ').trim().slice(0, SHEET_MAX).trim()) || 'Sheet1'
+  // Excel refuse aussi une apostrophe en tête ou en queue de nom (après la coupe à 31 caractères).
+  const base = (requested.replace(SHEET_FORBIDDEN, ' ').replace(/\s+/g, ' ').trim().slice(0, SHEET_MAX).replace(/^[\s']+|[\s']+$/g, '')) || 'Sheet1'
   let name = base
   for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base.slice(0, SHEET_MAX - String(n).length - 1)} ${n}`
   used.add(name.toLowerCase())

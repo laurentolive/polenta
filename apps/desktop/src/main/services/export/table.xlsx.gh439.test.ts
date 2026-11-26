@@ -41,6 +41,15 @@ describe('exportTablesXlsx', () => {
     expect(names.every(n => n.length <= 31)).toBe(true)
   })
 
+  it('apostrophe en tête ou en queue de nom (refusée par Excel), y compris après la coupe à 31 caractères : retirée', async () => {
+    const wb = await buildTablesWorkbook({
+      // 3e nom : l'apostrophe est le 31e caractère, donc la dernière après la coupe.
+      sheets: [sheet("'Informations'", []), sheet("Analyse d'impact de la version, très détaillée", []), sheet("012345678901234567890123456789'abc", [])],
+    })
+    expect(wb.worksheets.map(w => w.name)).toEqual(['Informations', "Analyse d'impact de la version,", '012345678901234567890123456789'])
+    for (const w of wb.worksheets) expect(w.name).not.toMatch(/^'|'$/)
+  })
+
   it('section vide : feuille avec son en-tête et aucune ligne', async () => {
     const wb = await buildTablesWorkbook({ sheets: [sheet('Exigences', [])] })
     const ws = wb.getWorksheet('Exigences')!

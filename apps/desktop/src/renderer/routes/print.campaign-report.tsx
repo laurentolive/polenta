@@ -2,8 +2,10 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
-import { resolveCampaignRuns } from '../lib/campaignTests'
+import { requirementSuffix, resolveCampaignRuns } from '../lib/campaignTests'
 import { useNotifyPrintReady } from '../lib/useNotifyPrintReady'
+import { useEntryRequirements } from '../hooks/useEntryRequirements'
+import { entryRequirementIds } from '@polenta/types'
 import { RUN_STATUS_LABEL_KEY } from '../lib/runStatus'
 
 /** Route imprimable — rapport de campagne (T43 sprint 2), statut d'exécution par test. */
@@ -12,12 +14,13 @@ export const Route = createFileRoute('/print/campaign-report')({
   validateSearch: (s: Record<string, unknown>) => ({
     repoPath: (s['repoPath'] as string) ?? '',
     campaignId: (s['campaignId'] as string) ?? '',
+    workspaceDir: (s['workspaceDir'] as string) ?? '',
   }),
 })
 
 function PrintCampaignReportPage() {
   const { t } = useTranslation()
-  const { repoPath, campaignId } = Route.useSearch()
+  const { repoPath, campaignId, workspaceDir } = Route.useSearch()
 
   const { data: campaign, isSuccess: campaignLoaded } = useQuery({
     queryKey: ['print-campaign', repoPath, campaignId],
@@ -30,7 +33,10 @@ function PrintCampaignReportPage() {
     enabled: !!repoPath,
   })
 
-  useNotifyPrintReady(campaignLoaded && testsLoaded)
+  // GH442 — mêmes exigences que la grille (une erreur de lecture n'empêche pas l'impression : repli sur l'instance).
+  const { data: requirements, isSuccess: reqLoaded, isError: reqFailed } = useEntryRequirements(repoPath, campaign, workspaceDir || undefined)
+
+  useNotifyPrintReady(campaignLoaded && testsLoaded && (reqLoaded || reqFailed))
 
   if (!campaign || !tests) return <div className="p-10 bg-print-bg min-h-screen" />
 
@@ -45,7 +51,7 @@ function PrintCampaignReportPage() {
           const status = run.status
           return (
             <section key={run.entryId} className="break-inside-avoid border-b border-print-border pb-3">
-              <div className="font-mono text-xs text-print-ink-2">{tc.id}{run.requirementId && ` · ${run.requirementId}`}</div>
+              <div className="font-mono text-xs text-print-ink-2">{tc.id}{requirementSuffix(requirements?.[run.entryId] ?? entryRequirementIds(run))}</div>
               <h2 className="text-base font-medium">{tc.title}</h2>
               <p className="text-xs font-medium mt-1">{t('printCampaignReportPage.result', { label: t(RUN_STATUS_LABEL_KEY[status]) })}</p>
               {run.executedAt && (

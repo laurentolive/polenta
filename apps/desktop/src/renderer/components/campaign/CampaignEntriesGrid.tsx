@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Copy, Eye, Lock, Pencil, Play, Trash2 } from 'lucide-react'
-import type { CampaignTestRun, ExecutionHistoryRow, ParamResolutionPreview, ProjectSchema, TestCampaign, TestCase, TestRunStatus } from '@polenta/types'
-import { fieldValueToText } from '@polenta/types'
+import type { CampaignEntryRequirements, CampaignTestRun, ExecutionHistoryRow, ParamResolutionPreview, ProjectSchema, TestCampaign, TestCase, TestRunStatus } from '@polenta/types'
+import { entryRequirementIds, fieldValueToText, requirementIdsText } from '@polenta/types'
 import { ElementLink } from '../element/ElementLink'
 import { DataGrid, type CellEditFailure } from '../grid/DataGrid'
 import type { GridColumn, GridEditor } from '../grid/gridTypes'
@@ -17,13 +17,16 @@ import { RUN_STATUS_CLASS, RUN_STATUS_LABEL_KEY } from '../../lib/runStatus'
 
 /** Ordre d'affichage des pastilles ; valeurs = statuts d'entrée de `TEST_RUN_STATUS_LABELS`. */
 const RUN_STATUSES: TestRunStatus[] = ['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE', 'pending']
-const DEFAULTS = ['test', 'title', 'requirement', 'carried', 'params', 'status', 'actions']
+// GH442 — « Reportée depuis » (`carried`) existe mais n'est pas visible par défaut (👁 Colonnes).
+const DEFAULTS = ['test', 'title', 'requirement', 'params', 'status', 'actions']
 
 type ReqPreview = NonNullable<ParamResolutionPreview['requirements']>[number]
 
 /** Une entrée de la campagne, avec ce qu'il faut pour l'afficher et l'éditer. */
 interface EntryRow {
   run: CampaignTestRun
+  /** GH442 — exigences affichées : celle de l'instance (test itérant), sinon celles que le test couvre. */
+  requirements: string[]
   /** Test figé de l'entrée (`testSnapshot`), ou test actuel en repli. */
   tc: TestCase | undefined
   /** Références à saisir de cette instance (les valeurs lues dans la base sont figées). */
@@ -50,7 +53,7 @@ const paramsText = (run: CampaignTestRun) =>
  * saisie des paramètres et duplicata dans la ligne dépliée.
  */
 export function CampaignEntriesGrid({
-  campaign, isActive, repoPath, testMap, paramPreviews, schema, isApproved, statusFilter, onStatusFilter,
+  campaign, isActive, repoPath, testMap, paramPreviews, entryRequirements, schema, isApproved, statusFilter, onStatusFilter,
   onView, onExecute, onRemove, removing, onSaveParams, savingParams, onDuplicate, duplicating,
   runHistory, onSaveRunInputs,
 }: {
@@ -59,6 +62,9 @@ export function CampaignEntriesGrid({
   repoPath: string
   testMap: Map<string, TestCase>
   paramPreviews: Map<string, ParamResolutionPreview>
+  /** GH442 — exigences affichées de chaque entrée (`api.campaigns.entryRequirements`) ; pas encore
+   *  chargées : repli sur l'exigence de l'instance seule. */
+  entryRequirements: CampaignEntryRequirements | undefined
   schema: ProjectSchema | undefined
   isApproved: (tc: TestCase) => boolean
   statusFilter: TestRunStatus | undefined
@@ -97,12 +103,13 @@ export function CampaignEntriesGrid({
       : undefined
     return {
       run, tc, liveTc, liveManualKeys, liveReq,
+      requirements: entryRequirements?.[run.entryId] ?? entryRequirementIds(run),
       manualKeys: tc ? manualKeysForRun(run, tc) : [],
       // T179 — exigence plus liée : pas de duplicata possible pour elle.
       canDuplicate: isActive && liveManualKeys.length > 0 && (!run.requirementId || !!liveReq),
       unapproved: unapprovedTestOf(run, liveTc, isActive, isApproved),
     }
-  }), [campaign.runs, testMap, paramPreviews, isActive, isApproved])
+  }), [campaign.runs, testMap, paramPreviews, entryRequirements, isActive, isApproved])
 
   const openForm = useCallback((entryId: string, mode: OpenForm['mode'], initial: Record<string, string>) => {
     setOpen(prev => (prev?.entryId === entryId && prev.mode === mode ? null : { entryId, mode }))
@@ -196,10 +203,21 @@ export function CampaignEntriesGrid({
         ),
       },
       {
+        // GH442 — exigence de l'instance (test itérant) ou exigences couvertes par le test. Pas de `title` :
+        // il recouvrirait la popup d'aperçu des liens (GH250) ; la source est dans `data-requirement-source`.
         key: 'requirement', label: t('campaignPage.columns.requirement'),
-        getText: r => r.run.requirementId ?? '',
-        render: r => r.run.requirementId && <ElementLink id={r.run.requirementId} className="font-mono text-prim" />,
-        elementId: r => r.run.requirementId,
+        getText: r => requirementIdsText(r.requirements),
+        render: r => r.requirements.length > 0 && (
+          <span data-requirement-source={r.run.requirementId ? 'instance' : 'covered'}>
+            {r.requirements.map((id, i) => (
+              <Fragment key={id}>
+                <ElementLink id={id} className="font-mono text-prim" />
+                {i < r.requirements.length - 1 && ', '}
+              </Fragment>
+            ))}
+          </span>
+        ),
+        elementId: r => r.requirements[0],
       },
       {
         // GH64 — instance reportée depuis une autre campagne.

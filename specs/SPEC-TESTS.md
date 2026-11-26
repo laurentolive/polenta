@@ -675,6 +675,17 @@ liée) ; « Dupliquer » une instance sans exigence crée une seule instance. La
 campagne affiche l'ID de l'exigence de chaque instance (lien vers sa fiche, cherchée dans les repos
 du workspace).
 
+**Colonne « Exigence » des entrées (GH442)** : une seule règle, calculée par le main
+(`CampaignsService.entryRequirements`, canal `campaigns:entry-requirements`) — l'exigence de
+l'instance (`requirementId`, test itérant) si elle existe, **sinon** les exigences non terminales
+que le test couvre (liens de couverture, deux sens, tri naturel des IDs, tous les repos du
+workspace), lues à l'**état courant** : rien n'est figé dans l'entrée, un lien ajouté ou retiré se
+voit au retour sur la page. Même texte (IDs séparés par « , ») dans la grille, son filtre et son
+export, le cahier (xlsx, docx, pdf), le rapport (docx, pdf) et le classeur d'exécution (colonne en
+lecture seule : l'import identifie les entrées par `entryId`). Les modèles d'export utilisateur
+gardent `requirementId` brut. La colonne « Reportée depuis » n'est pas visible par défaut (👁
+Colonnes) ; une préférence de colonnes déjà enregistrée est conservée.
+
 **Retirer un test (T99)** : `removeEntries()` retire une ou plusieurs instances (`entryId`) d'une
 campagne (refusé si `completed`/`abandoned`, même garde que `addTests()`) — ne retire que
 l'instance ciblée : si un test paramétré est inclus plusieurs fois (T97 sprint 2), les autres

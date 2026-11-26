@@ -115,6 +115,21 @@ export function carryKey(
   return JSON.stringify([testCaseId, requirementId ?? '', values])
 }
 
+/**
+ * GH442 — exigences affichées pour une entrée de campagne : celle de l'instance quand elle en a une
+ * (test itérant, T179), sinon les exigences que le test couvre (`covered`, liens de couverture non
+ * terminaux, calculés par le main). Règle unique de la grille, des exports et du classeur.
+ */
+export function entryRequirementIds(run: Pick<CampaignTestRun, 'requirementId'>, covered: readonly string[] = []): string[] {
+  return run.requirementId ? [run.requirementId] : [...covered]
+}
+
+/** GH442 — exigences affichées de chaque entrée d'une campagne, par `entryId`. */
+export type CampaignEntryRequirements = Record<string, string[]>
+
+/** GH442 — texte d'une cellule « Exigence » : IDs séparés par une virgule (grille, exports). */
+export const requirementIdsText = (ids: readonly string[]): string => ids.join(', ')
+
 export type UnresolvedParamReason = 'tag_not_found' | 'missing' | 'empty' | 'unknown_node' | 'no_linked_requirement'
 
 export interface UnresolvedParam {

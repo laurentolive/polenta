@@ -20,6 +20,11 @@ export const Route = createFileRoute('/diff')({
   }),
 })
 
+// GH455 — le diff du répertoire de travail suit le fichier sur disque : relu à la cadence du statut de
+// synchro (3 s) au lieu d'être servi depuis le cache (staleTime global de 60 s). Un diff de commit, figé,
+// reste en cache.
+const WORKING_TREE_DIFF = { staleTime: 0, refetchInterval: 3000 } as const
+
 function DiffPage() {
   const { projectId, repoPath: searchRepoPath, filepath, commitSha, element, baseSha, toSha } = Route.useSearch()
   const navigate = useNavigate()
@@ -39,6 +44,7 @@ function DiffPage() {
     queryKey: ['sync:diff-element', repoPath, filepath, baseSha, toSha],
     queryFn: () => api.sync.diffElement(repoPath, filepath, baseSha ?? null, toSha ?? null),
     enabled: !!repoPath && !!element && !!filepath,
+    ...(toSha ? {} : WORKING_TREE_DIFF),
   })
 
   // Historical commit diff
@@ -53,6 +59,7 @@ function DiffPage() {
     queryKey: ['sync:diff', repoPath, filepath],
     queryFn: () => api.sync.diff(repoPath, filepath),
     enabled: !!repoPath && !commitSha && !element && !!filepath,
+    ...WORKING_TREE_DIFF,
   })
 
   const diffData = element ? elementDiffData : commitSha ? commitDiffData : workingDiffData

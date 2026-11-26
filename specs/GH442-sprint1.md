@@ -54,6 +54,10 @@ Spec : `specs/GH442.md` · design : `specs/GH442-design.md` · scénarios : `spe
   fichiers échouent alors sur « Git embarqué introuvable », sans rapport avec le ticket.
 - e2e (`build:web`, puis `e2e-web/gh442-campaign-requirements`, `gh389-campaigns`, `gh64-carry-over`) :
   12 passés, relancés après les correctifs de revue.
+- Après `git merge main` (GH439, GH448, GH450 et workflow en file) : typecheck 0 erreur ; `pnpm lint` : les 3
+  erreurs de #437 seulement, aucune dans les fichiers du ticket ; unitaires : 252 fichiers passés, 2444
+  tests passés, 2 échecs de délai (20 s) en suite complète — `repo-conformity.gh340` (suivi par #432) et
+  `sync.service.gh414` R4 — qui passent tous deux seuls ; sans rapport avec la diff (ni campagnes ni exports).
 - Non lancés : suite e2e complète (niveau 3, au push du lot) ; test du repli d'erreur du classeur
   (service construit avec de nombreuses dépendances, couvert par lecture) ; PDF à l'œil.
 

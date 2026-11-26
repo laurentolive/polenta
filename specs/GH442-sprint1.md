@@ -35,6 +35,28 @@ Spec : `specs/GH442.md` · design : `specs/GH442-design.md` · scénarios : `spe
   E7 (préférence conservée) repose sur `useGridPrefs` (liste enregistrée prioritaire sur les défauts),
   non modifié.
 
+## Revue de code (`/code-review medium 443`) et suites
+
+- Lecture des exigences impossible : le classeur d'exécution et les exports cahier / rapport ne
+  s'arrêtent plus, l'exigence de l'instance reste affichée (le classeur journalise l'erreur).
+- Hook : plus de relecture au retour de focus de la fenêtre (montage seulement) ; la valeur précédente
+  n'est gardée que pour la même campagne (des `entryId` identiques existent d'une campagne à l'autre).
+- `elementId` de la colonne : le geste Entrée clique d'abord le premier lien de la cellule, `elementId`
+  n'est que son repli, sur la première exigence — inchangé.
+- Ligne SPEC-INDEX §4.1–4.2 : description et mots-clés complétés.
+
+## Vérifications (niveau 2)
+
+- `pnpm typecheck` : 0 erreur ; eslint sur les fichiers modifiés : 0 avertissement.
+- Tests unitaires du desktop (`npx vitest run`, git embarqué fourni par `POLENTA_GIT_DIR`) : 249 fichiers,
+  2385 tests passés, 5 ignorés (avant les correctifs de revue ; les trois fichiers modifiés ensuite sont
+  couverts par typecheck et e2e). `pnpm test` via turbo supprime `POLENTA_GIT_DIR` dans un worktree : 59
+  fichiers échouent alors sur « Git embarqué introuvable », sans rapport avec le ticket.
+- e2e (`build:web`, puis `e2e-web/gh442-campaign-requirements`, `gh389-campaigns`, `gh64-carry-over`) :
+  12 passés, relancés après les correctifs de revue.
+- Non lancés : suite e2e complète (niveau 3, au push du lot) ; test du repli d'erreur du classeur
+  (service construit avec de nombreuses dépendances, couvert par lecture) ; PDF à l'œil.
+
 ## Mises à jour SPEC
 
 - `SPEC-TESTS.md` §4.2 : paragraphe « Colonne “Exigence” des entrées (GH442) » (règle, état courant,

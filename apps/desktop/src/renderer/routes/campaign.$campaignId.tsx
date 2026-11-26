@@ -131,9 +131,11 @@ function CampaignDetailPage() {
   )
   // GH442 — colonne « Exigence » : exigence de l'instance, sinon exigences couvertes par le test.
   const { data: entryRequirements } = useEntryRequirements(repoPath, campaign, workspaceDir || undefined)
-  // Exports : exigences relues au clic (liens modifiés depuis l'affichage), même calcul que la grille.
+  // Exports : exigences relues au clic (liens modifiés depuis l'affichage), même calcul que la grille. Colonne
+  // secondaire : une lecture impossible ne bloque pas l'export, l'exigence de l'instance reste affichée.
   const exportEntries = async () => {
     const requirements = await api.campaigns.entryRequirements(repoPath, campaignId, workspaceDir || undefined)
+      .catch((): Record<string, string[]> => ({}))
     return resolveCampaignRuns(campaign!, tests).map(e => ({ ...e, requirements: requirements[e.run.entryId] }))
   }
 

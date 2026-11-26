@@ -15,6 +15,12 @@ export function useEntryRequirements(repoPath: string, campaign: TestCampaign | 
     queryFn: () => api.campaigns.entryRequirements(repoPath, campaign!.id, workspaceDir),
     enabled: !!repoPath && !!campaign,
     staleTime: 0,
-    placeholderData: previous => previous,
+    // Pas de relecture à chaque retour de focus de la fenêtre : chaque lecture parcourt exigences et liens
+    // de tout le workspace ; le retour sur la page suffit (montage).
+    refetchOnWindowFocus: false,
+    // Valeur précédente gardée seulement pour la même campagne : des `entryId` identiques existent d'une
+    // campagne à l'autre, la grille ne doit pas afficher brièvement les exigences de l'autre.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === repoPath && previousQuery.queryKey[2] === campaign?.id ? previous : undefined,
   })
 }

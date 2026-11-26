@@ -9,6 +9,8 @@
   arrêt — l'agent ne s'arrête que sur une vraie question (§ Règles communes)
 - L'humain teste dans son dossier principal, sur `main` local où le ticket vient d'être mergé —
   jamais besoin de rouvrir le worktree du ticket
+- **Plusieurs tickets peuvent attendre sur `main` local** (mergés, pas poussés), chacun avec sa
+  validation. `main` n'est poussé qu'une fois, **quand tous sont validés** (§ Validation finale)
 - Le chat sert uniquement aux questions et validations — jamais aux livrables
 
 ## Méthode de travail
@@ -50,15 +52,15 @@ indiqué, pas plus souvent.**
 |--------|-------|------|
 | **1 — Ciblé** | Pendant le développement | `pnpm typecheck`, `pnpm lint`, et les tests touchés : `npx vitest run <fichier>` ou `npx vitest run --changed <branche de base>` |
 | **2 — Ticket** | Fin de sprint ; fin du correctif d'un bug | `pnpm test` complet et specs e2e du ticket : `pnpm build:web` puis `npx playwright test e2e-web/gh{N}-` (ou les specs voisines si le ticket n'en a pas). Toujours le chemin : le filtre porte sur le chemin complet, un `gh{N}` nu sélectionne toute la suite dans le worktree `…-GH{N}` |
-| **3 — Complet** | **Uniquement au merge sur `main`** : après le « Validé » de l'humain, juste avant le push (§ Validation finale) | Suite e2e complète (`pnpm --filter @polenta/desktop test:e2e:web`), en arrière-plan |
+| **3 — Complet** | **Uniquement au merge sur `main`** : après le « Validé » du **dernier** ticket en attente de push, juste avant le push, **une seule fois pour le lot** (§ Validation finale) | Suite e2e complète (`pnpm --filter @polenta/desktop test:e2e:web`), en arrière-plan |
 
-- **Niveau 3 requis** si le ticket modifie le renderer, les services du main ou le serveur web. Pour
-  un bug : seulement si le correctif touche du code transverse (IPC, schéma, stockage, composants
-  communs). Un ticket de milestone ne le lance pas : la branche de milestone le passe une fois, à la
-  validation de son merge dans `main`.
+- **Niveau 3 requis** si au moins un ticket du lot à pousser modifie le renderer, les services du
+  main ou le serveur web. Pour un bug : seulement si le correctif touche du code transverse (IPC,
+  schéma, stockage, composants communs). Un ticket de milestone ne le lance pas : la branche de
+  milestone le passe une fois, à la validation de son merge dans `main`.
 - **Après un échec** : corriger, puis `npx playwright test --last-failed` — jamais la suite entière.
 - **Correction demandée à la validation finale** : niveau 2, jamais le niveau 3 (il attend le
-  « Validé »).
+  « Validé » du dernier ticket du lot).
 - **Échec sans rapport avec le ticket** : vérifier sur `main` avant de le déclarer préexistant, puis
   ouvrir une issue s'il n'y en a pas déjà une.
 - **Documentation seule** (`specs/`, `*.md`) : aucun test.
@@ -78,7 +80,8 @@ Chaque ticket a son propre worktree git, isolé du dossier principal :
   mon-projet-GH47/      ← worktree Agent GH47
 ```
 
-Le worktree est créé par l'Agent Spec et supprimé après merge.
+Le worktree est créé par l'Agent Spec et supprimé au push de `main` qui livre le ticket (pas au
+merge local : tant que le ticket attend le push, on peut devoir y corriger).
 
 ## Tickets = issues GitHub
 
@@ -101,7 +104,8 @@ Dans la suite, `{N}` désigne le numéro d'issue et `GH{N}` l'identifiant de tic
 | `status:designing`    | Agent Design                                        |
 | `status:coding`       | Agent Dev (le sprint en cours est noté en commentaire) |
 | `status:debugging`    | Workflow Bug                                        |
-| `status:validation`   | spec présentée, ou ticket mergé sur `main` local et en attente de validation avant push |
+| `status:validation`   | spec présentée, ou ticket mergé sur `main` local et en attente du « Validé » de l'humain |
+| `status:validated`    | ticket mergé sur `main` local, « Validé » par l'humain, en attente du push (il part quand tous les tickets de la file sont validés) |
 | `status:blocked`      | dépend d'un autre ticket (le citer : `dépend de #M`) |
 
 Terminé = issue **fermée** (`gh issue close`), jamais seulement un label.
@@ -112,8 +116,11 @@ gh issue view {N} --comments                                   # lire le ticket
 gh issue edit {N} --remove-label status:<ancien> --add-label status:<nouveau>
 gh issue comment {N} --body "..."                              # trace de phase / STOP HUMAIN
 gh issue close {N} --comment "..."                             # après validation humaine
-gh issue list --label status:validation                        # tickets en attente de validation
+gh issue list --label status:validation                        # tickets en attente de validation humaine
+gh issue list --label status:validated                         # tickets validés, en attente du push de main
 ```
+
+Le label `status:validated` se crée une fois : `gh label create status:validated --color 5319e7 --description "Validé, en attente du push de main"`.
 
 **Commentaires** : à chaque changement de phase et à chaque `[STOP HUMAIN]`, l'agent poste un
 commentaire court sur l'issue : phase, fichiers produits (chemins `specs/…`), sprint en cours,
@@ -148,8 +155,8 @@ voit que la tête de la branche est dans `main` et marque la PR « merged » d'e
 - **Commits suivants** : `git push` après chaque commit — la PR se met à jour toute seule.
 - **Commentaires `[STOP HUMAIN]`** sur l'issue : citer la PR (`#<numéro de PR>`) en plus du hash.
 - **Merge** : merge local `--no-ff` dans le dossier principal, **non poussé** tant que l'humain n'a
-  pas validé ; le commit de merge porte `Closes #{N}`, qui ferme l'issue au push (détail :
-  § Validation finale). On n'utilise plus `gh pr merge`.
+  pas validé **tous** les tickets mergés en attente ; le commit de merge porte `Closes #{N}`, qui
+  ferme l'issue au push (détail : § Validation finale). On n'utilise plus `gh pr merge`.
 
 ## Branche d'intégration de milestone
 
@@ -169,12 +176,14 @@ un ticket du milestone, lire `milestone-<X>` / « worktree du milestone » :
 - **Ticket** : worktree créé depuis la branche du milestone
   (`git worktree add ../mon-projet-GH{N} -b GH{N} milestone-<X>`), PR `--base milestone-<X>`.
 - **Validation finale** : mêmes préconditions et mêmes étapes, appliquées au worktree du milestone
-  (propre ; `rev-list origin/milestone-<X>..milestone-<X>` vide) : `git merge milestone-<X>` dans le
-  worktree du ticket, puis `merge --no-ff GH{N}` dans le worktree du milestone, non poussé.
+  (propre ; `origin/milestone-<X>` ancêtre de `milestone-<X>`) : `git merge milestone-<X>` dans le
+  worktree du ticket, puis `merge --no-ff GH{N}` dans le worktree du milestone, non poussé. Comme
+  pour `main`, plusieurs tickets peuvent y attendre ; la branche du milestone n'est poussée que
+  lorsque tous sont validés.
 - **Après validation** : `git -C ../mon-projet-milestone-<X> push`, ajout de `Closes #{N}` au corps
-  de la PR parapluie, puis **fermeture de l'issue à la main** (`gh issue close`) : `Closes` ne ferme
-  une issue qu'au merge dans la branche par défaut. Nettoyage du worktree et de la branche du ticket
-  comme d'habitude.
+  de la PR parapluie pour chaque ticket poussé, puis **fermeture des issues à la main**
+  (`gh issue close`) : `Closes` ne ferme une issue qu'au merge dans la branche par défaut.
+  Nettoyage du worktree et de la branche de chaque ticket comme d'habitude.
 - **Fin du milestone** : la PR parapluie suit le même cycle qu'un ticket (merge local `--no-ff`
   dans le dossier principal, validation humaine, push de `main`).
 
@@ -186,8 +195,10 @@ un ticket du milestone, lire `milestone-<X>` / « worktree du milestone » :
 ## Vue d'ensemble
 
 ```
-Feature : [Agent Spec] → [STOP HUMAIN spec] → [Design → Dev sprint 1..N] → merge main local → [STOP HUMAIN validation] → push
-Bug     : [Workflow Bug]                                                  → merge main local → [STOP HUMAIN validation] → push
+Feature : [Agent Spec] → [STOP HUMAIN spec] → [Design → Dev sprint 1..N] → merge main local → [STOP HUMAIN validation] → push *
+Bug     : [Workflow Bug]                                                  → merge main local → [STOP HUMAIN validation] → push *
+
+* le push de `main` part quand tous les tickets mergés en local sont validés (file d'attente, § Validation finale)
 ```
 
 Après validation de la spec, **une seule instruction** lance tout l'aval : design, puis tous les
@@ -292,7 +303,7 @@ Chaque sprint n'exécute que son propre périmètre.
 5. Corrige les problèmes identifiés
 6. Exécute la vérification de **niveau 2** (§ Niveaux de vérification ; détail e2e :
    `apps/desktop/e2e-web/README.md`). La suite e2e complète n'est pas lancée ici : elle attend le
-   « Validé » de l'humain. Les scénarios du ticket qui peuvent l'être sont ajoutés en e2e
+   « Validé » du dernier ticket du lot, juste avant le push. Les scénarios du ticket qui peuvent l'être sont ajoutés en e2e
    (`e2e-web/gh{N}-*.spec.ts`) plutôt que laissés en test manuel.
 7. Corrige jusqu'à zéro bug
 
@@ -327,13 +338,27 @@ si l'écart touche la spec (même règle d'escalade que l'Agent Design).
 
 Commune aux features (après le dernier sprint) et aux bugs (après le correctif). Le ticket est
 mergé dans le **dossier principal** (`mon-projet/`, branche `main`) **sans être poussé** :
-l'humain teste là où il travaille d'habitude, puis autorise le push.
+l'humain teste là où il travaille d'habitude, puis valide. **Plusieurs tickets peuvent s'accumuler
+ainsi sur `main` local** : chacun est validé séparément, et `main` n'est poussé qu'une fois, quand
+tous le sont.
+
+**File d'attente** = les tickets mergés sur `main` local et pas encore poussés :
+```
+git -C <dossier principal> log --first-parent --merges --format="%h %s" origin/main..main
+```
+Un commit de merge `Closes #{N}` par ticket ; les commits qui ne sont pas des merges (ex.
+documentation) n'en sont pas. Chaque ticket de la file est `status:validation` (à tester par
+l'humain) ou `status:validated` (validé, attend le push).
+
+**Pas de push partiel.** Pousser `main` envoie tout ce qui est local, merges des autres tickets
+compris : le push ne part que si **aucun** ticket de la file n'est encore `status:validation`.
 
 **Préconditions** (sinon : s'arrêter et le signaler à l'humain, ne rien forcer) :
 - le dossier principal est sur `main` et propre : `git -C <dossier principal> status --porcelain` vide
-- aucun autre ticket n'y attend déjà sa validation : `git -C <dossier principal> fetch` puis
-  `git -C <dossier principal> rev-list origin/main..main` vide — **un seul ticket à la fois** en
-  attente de push, sinon pousser l'un pousserait l'autre
+- l'origine n'a pas avancé de son côté : `git -C <dossier principal> fetch` puis
+  `git -C <dossier principal> merge-base --is-ancestor origin/main main` réussit. `main` peut avoir
+  de l'avance (c'est la file) ; s'il a divergé, ne pas rebaser ni fusionner soi-même des merges
+  non validés — la décision revient à l'humain
 
 **Ce qu'il fait :**
 
@@ -343,7 +368,9 @@ l'humain teste là où il travaille d'habitude, puis autorise le push.
    git -C <dossier principal> pull --ff-only
    git merge main                 # dans ../mon-projet-GH{N}/
    ```
-   S'il y a eu des changements : relance typecheck / lint / `pnpm test`, commit, `git push`.
+   La branche reprend ainsi le code des tickets déjà en file : voulu, le ticket est testé sur
+   l'état réel de `main`. S'il y a eu des changements : relance typecheck / lint / `pnpm test`,
+   commit, `git push`.
 2. Passe la PR en prêt : `gh pr ready GH{N}`
 3. Merge local dans le dossier principal, sans push :
    ```
@@ -357,33 +384,53 @@ l'humain teste là où il travaille d'habitude, puis autorise le push.
 **`[STOP HUMAIN]`** — présente :
 - le résumé de ce qui a été fait (et pour un bug : root cause en une phrase)
 - les vérifications lancées avec leur résultat, et celles qui ne l'ont pas été (dont la suite e2e
-  complète, si elle reste à lancer après le « Validé »)
+  complète, qui n'est lancée qu'au push du lot)
 - la liste des scénarios de `GH{N}-tests.md` (ou « comment vérifier » du bug) **qui ne sont pas
   couverts par les tests automatiques** — c'est ce que l'humain doit tester à la main
 - comment lancer l'appli depuis le dossier principal
+- la file d'attente : les autres tickets déjà sur `main` local et leur statut (`validation` /
+  `validated`) — `main` les contient, ils peuvent influer sur ce que l'humain voit
 
 Réponses possibles :
-- **Validé** → suite complète si le ticket le requiert (**niveau 3**, § Niveaux de vérification),
-  lancée dans le worktree pour laisser le dossier principal libre. Tant qu'il reste un échec lié au
-  ticket, pas de push : l'agent corrige dans le worktree, repasse `--last-failed`, commit, push de
-  la branche, re-merge dans le dossier principal et re-présente le correctif à l'humain. Sinon, push
-  et nettoyage :
-  ```
-  git -C <dossier principal> push origin main     # PR marquée merged, issue fermée par « Closes #{N} »
-  git worktree remove ../mon-projet-GH{N}
-  git branch -d GH{N}
-  git push origin --delete GH{N}
-  ```
-  Puis commentaire de clôture sur l'issue (`gh issue comment {N}`) : résumé, PR, hash du merge,
-  résultats (typecheck, lint, unitaires, e2e complets ou ciblés, tests ignorés).
+- **Validé** →
+  1. Pose `status:validated` (retire `status:validation`) et commente l'issue : validé, en attente
+     du push.
+  2. Relit la file : pour chaque ticket qui y figure (`Closes #M`), son label `status:*`. S'il en
+     reste un en `status:validation`, **pas de push** : annonce « #N validé, en attente de #M »
+     et s'arrête. Le worktree et la PR de #N restent en place jusqu'au push.
+  3. Si tous sont `status:validated` (ce ticket est le dernier), **push du lot**. Suite complète si
+     au moins un ticket du lot le requiert (**niveau 3**, § Niveaux de vérification), lancée
+     **dans le worktree de ce ticket** après `git merge --ff-only main` (le worktree a alors
+     l'arbre exact de `main`) pour laisser le dossier principal libre. Tant qu'il reste un échec lié
+     à un ticket du lot, pas de push : l'agent corrige dans le worktree de ce ticket, repasse
+     `--last-failed`, commit, push de la branche, re-merge dans le dossier principal ; le ticket
+     repasse `status:validation` et est re-présenté à l'humain (le lot repart à son « Validé »).
+  4. Juste avant le push : `git fetch` et vérifier que `main` n'a pas bougé depuis le lancement de
+     la suite (`git rev-parse main`) et que la file n'a toujours aucun ticket `status:validation`.
+     Un merge arrivé entre-temps n'est ni testé ni validé : pas de push, retour à l'étape 2.
+  5. Push et nettoyage, **pour chaque ticket du lot** :
+     ```
+     git -C <dossier principal> push origin main     # PR marquées merged, issues fermées par « Closes #{N} »
+     git worktree remove ../mon-projet-GH{N}
+     git branch -d GH{N}
+     git push origin --delete GH{N}
+     ```
+     Puis commentaire de clôture sur chaque issue (`gh issue comment {N}`) : résumé, PR, hash du
+     merge, résultats (typecheck, lint, unitaires, e2e complets du lot ou ciblés, tests ignorés).
 - **Non conforme** → l'agent corrige **dans le worktree**, vérifie (§ Niveaux de vérification),
   commit, push de la branche, puis re-merge dans le dossier principal (nouveau `merge --no-ff`, même
   message) et re-présente. Pas de reset de `main` : le premier merge local reste, le correctif
-  s'ajoute par-dessus.
+  s'ajoute par-dessus, même si d'autres tickets ont été mergés depuis. Le ticket repasse
+  `status:validation` (y compris s'il était `status:validated`) ; les autres tickets de la file ne
+  changent pas de statut, mais le push attend ce correctif.
 - **Divergence d'attente** (la spec n'était pas la bonne) → mettre à jour `specs/GH{N}.md` avec
   l'humain, puis reprendre au design ou au sprint concerné.
-- **Abandon** → uniquement sur demande explicite : `git -C <dossier principal> reset --hard origin/main`
-  (efface le merge local non poussé), la branche et la PR restent ouvertes.
+- **Abandon** → uniquement sur demande explicite, **ticket par ticket** : si son merge est le
+  dernier commit de `main` local, `git -C <dossier principal> reset --hard <hash du merge>^1` ;
+  sinon `git -C <dossier principal> revert -m 1 <hash du merge>` (annule ce ticket sans toucher aux
+  autres ; s'il revient plus tard, annuler d'abord ce revert avant de re-merger). Vider toute la
+  file (`reset --hard origin/main`) seulement si l'humain le demande en toutes lettres. La branche
+  et la PR restent ouvertes.
 
 ---
 
@@ -421,7 +468,7 @@ correctif + comment vérifier.
 
 - **Chaque ticket a son propre worktree** `../mon-projet-GH{N}/` — ne jamais développer dans le dossier principal (on n'y fait que le merge local de la validation finale)
 - **Chaque ticket a sa pull request** `GH{N}` → `main`, ouverte en brouillon dès le premier commit (§ Branches et pull requests)
-- **Ne jamais pousser `main` sans validation humaine explicite** du ticket mergé localement (§ Validation finale) — un seul ticket à la fois en attente de push (même règle pour une branche de milestone, § Branche d'intégration de milestone)
+- **Ne jamais pousser `main` sans validation humaine explicite** de **chaque** ticket mergé localement (§ Validation finale) — plusieurs tickets peuvent attendre sur `main` local, mais le push ne part que lorsque tous sont validés, pas de push partiel (même règle pour une branche de milestone, § Branche d'intégration de milestone)
 - **Stops** : seulement la spec et la validation finale. En dehors, l'agent ne s'arrête que pour
   une question qui change le résultat (ambiguïté de périmètre, spec contradictoire, choix
   structurant non tranché) — pas pour faire valider un livrable intermédiaire

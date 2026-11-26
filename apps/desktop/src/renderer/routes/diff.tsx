@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { ViewHeader } from '../components/layout/ViewHeader'
@@ -28,6 +29,7 @@ const WORKING_TREE_DIFF = { staleTime: 0, refetchInterval: 3000 } as const
 function DiffPage() {
   const { projectId, repoPath: searchRepoPath, filepath, commitSha, element, baseSha, toSha } = Route.useSearch()
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   // `repoPath` identifies which repo the file lives in (root or a component repo of the workspace) — passed
   // by the caller (sidebar/graph) since that's the only place that knows it. Falls back to the
@@ -40,7 +42,7 @@ function DiffPage() {
   const repoPath = searchRepoPath ?? project?.localPath ?? ''
 
   // GH200 — élément entre deux états : version de départ → commit (ou disque).
-  const { data: elementDiffData, isLoading: isLoadingElement } = useQuery({
+  const { data: elementDiffData, isLoading: isLoadingElement, refetch: refetchElement, isFetching: fetchingElement } = useQuery({
     queryKey: ['sync:diff-element', repoPath, filepath, baseSha, toSha],
     queryFn: () => api.sync.diffElement(repoPath, filepath, baseSha ?? null, toSha ?? null),
     enabled: !!repoPath && !!element && !!filepath,
@@ -55,7 +57,7 @@ function DiffPage() {
   })
 
   // Working tree diff (current, no commit)
-  const { data: workingDiffData, isLoading: isLoadingWorking } = useQuery({
+  const { data: workingDiffData, isLoading: isLoadingWorking, refetch: refetchWorking, isFetching: fetchingWorking } = useQuery({
     queryKey: ['sync:diff', repoPath, filepath],
     queryFn: () => api.sync.diff(repoPath, filepath),
     enabled: !!repoPath && !commitSha && !element && !!filepath,
@@ -64,6 +66,14 @@ function DiffPage() {
 
   const diffData = element ? elementDiffData : commitSha ? commitDiffData : workingDiffData
   const isLoading = element ? isLoadingElement : commitSha ? isLoadingCommit : isLoadingWorking
+
+  // GH455 — le diff du disque est relu toutes les 3 s ; le bouton force une relecture immédiate. Un diff
+  // de commit (ou entre deux commits) ne change pas : pas de bouton.
+  const readsDisk = !commitSha && (!element || !toSha)
+  const refreshing = element ? fetchingElement : fetchingWorking
+  function refresh() {
+    void (element ? refetchElement() : refetchWorking())
+  }
 
 
   // GH228 — diff d'un commit : retour au graphe positionné sur ce commit (page parente). Diff du
@@ -77,6 +87,12 @@ function DiffPage() {
       <ViewHeader
         currentProjectId={projectId}
         back={commitSha ? { onClick: backToGraph } : undefined}
+        actions={readsDisk ? (
+          <button type="button" onClick={refresh} disabled={refreshing} data-testid="diff-refresh"
+            className="text-xs text-ink-3 hover:text-ink px-2 py-1 rounded hover:bg-hover disabled:opacity-40">
+            {t('diffView.refresh')}
+          </button>
+        ) : undefined}
         title={
           <span className="flex items-center gap-2 font-mono">
             {commitSha && (

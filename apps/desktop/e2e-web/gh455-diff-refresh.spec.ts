@@ -22,7 +22,7 @@ test.beforeAll(async () => {
   fs.writeFileSync(path.join(localPath, FILE), 'marker: v2\n')
 })
 
-test('le diff ouvert affiche une écriture faite hors application sans attendre le cache', async () => {
+async function openDiff() {
   const { localPath } = s.project
   await s.page.evaluate(u => {
     history.pushState({}, '', u)
@@ -30,9 +30,27 @@ test('le diff ouvert affiche une écriture faite hors application sans attendre 
   }, s.projectUrl('/diff', { repoPath: localPath, filepath: FILE }))
   // Mode Raw : le texte du fichier est lisible d'un seul tenant (le mode Rendu découpe le YAML en cellules).
   await s.page.getByTestId('diff-mode-toggle').getByRole('button', { name: 'Raw' }).click()
+}
+
+test('le diff ouvert affiche une écriture faite hors application sans attendre le cache', async () => {
+  const { localPath } = s.project
+  await openDiff()
   await expect(s.page.locator('body')).toContainText('marker: v2')
 
   fs.writeFileSync(path.join(localPath, FILE), 'marker: v3\n')
 
   await expect(s.page.locator('body')).toContainText('marker: v3', { timeout: 10_000 })
+})
+
+test('le bouton Rafraîchir relit le fichier du disque', async () => {
+  const { localPath } = s.project
+  await openDiff()
+  await expect(s.page.locator('body')).toContainText('marker: v3')
+
+  fs.writeFileSync(path.join(localPath, FILE), 'marker: v4\n')
+  await s.page.getByTestId('diff-refresh').click()
+
+  // Le bouton relit le disque tout de suite ; l'interrogation toutes les 3 s pourrait aussi y arriver,
+  // d'où un délai court : ce test vérifie le câblage du bouton, le cadencement est couvert ci-dessus.
+  await expect(s.page.locator('body')).toContainText('marker: v4', { timeout: 2_000 })
 })

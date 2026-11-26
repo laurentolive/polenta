@@ -1,22 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Lock, Plus, Tag } from 'lucide-react'
+import { Lock, Plus, Tag } from 'lucide-react'
 import type { UpdateVersionDto } from '@polenta/types'
-import { fieldValueToText } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { ViewHeader } from '../components/layout/ViewHeader'
-import { DynamicField } from '../components/DynamicField'
 import { PageLink } from '../components/element/PageLink'
-import { useHeaderCollapsed } from '../components/grid/useHeaderCollapsed'
 import { useSetTabTitle } from '../contexts/TabsContext'
 import { VersionChangesTable } from '../components/versions/VersionChangesTable'
 import { VersionElementPicker } from '../components/versions/VersionElementPicker'
 import { ReleaseVersionDialog } from '../components/versions/ReleaseVersionDialog'
-import { STATE_BADGE, statusLabel, useInvalidateVersions, useSectionOpen, useVersionImpact, useVersionPage, useVersionTree, versionErrorText } from '../components/versions/useVersions'
+import { STATE_BADGE, useInvalidateVersions, useSectionOpen, useVersionImpact, useVersionPage, useVersionTree, versionErrorText } from '../components/versions/useVersions'
 import { VersionAnalysisSection } from '../components/versions/VersionAnalysisSection'
 import { VersionTestsSection } from '../components/versions/VersionTestsSection'
+import { VersionInfoSection } from '../components/versions/VersionInfoSection'
+import { VersionExportButton } from '../components/versions/VersionExportButton'
+import { VersionRequirementsSection } from '../components/versions/VersionRequirementsSection'
+import { SectionToggle } from '../components/versions/SectionToggle'
 
 /** GH201 §5 — page d'une version. URL : /version/<ID>?projectId=…&repoPath=… */
 export const Route = createFileRoute('/version/$versionId')({
@@ -37,11 +38,9 @@ function VersionPage() {
   const invalidate = useInvalidateVersions()
   // GH245 — analyse d'impact et tests à exécuter (pas pour une version abandonnée).
   const impactQuery = useVersionImpact(repoPath, versionId, projectId, !!page && page.state !== 'abandoned')
-  // Sections repliables, état mémorisé par poste (comme l'analyse et les tests).
+  // Sections repliables, état mémorisé par poste (GH439 : « Informations » et « Exigences » s'y ajoutent).
   const [componentsOpen, setComponentsOpen] = useSectionOpen('components')
   const [changesOpen, setChangesOpen] = useSectionOpen('changes')
-  // GH389 §2.1 — bloc d'informations repliable, mémorisé par poste pour toutes les versions.
-  const [headerCollapsed, toggleHeader] = useHeaderCollapsed('version')
   // Repo de chaque composant (racines de l'analyse portées par un composant).
   const { data: tree } = useVersionTree(projectId)
   const repoOfComponent = useMemo(() => {
@@ -52,19 +51,11 @@ function VersionPage() {
   }, [tree])
   useSetTabTitle(page ? `${page.version.title} (${page.version.id})` : versionId)
 
-  const [title, setTitle] = useState('')
-  const [fields, setFields] = useState<Record<string, unknown>>({})
   const [error, setError] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
   const [releasing, setReleasing] = useState(false)
-  useEffect(() => {
-    if (!page) return
-    setTitle(page.version.title)
-    setFields(page.version.fields ?? {})
-  }, [page])
 
   const editable = !!page && page.state === 'in_progress' && !page.component.readonly
-  const fieldsDirty = !!page && JSON.stringify(fields) !== JSON.stringify(page.version.fields ?? {})
   const included = useMemo(() => new Set((page?.version.changes ?? []).map(c => c.id)), [page])
 
   const run = async (op: () => Promise<unknown>) => {
@@ -81,28 +72,24 @@ function VersionPage() {
   if (isLoading) return <p className="p-4 text-xs text-ink-3 italic">{t('common.loading')}</p>
   if (!page) return <p className="p-4 text-xs text-status-danger">{loadError ? versionErrorText(t, loadError) : versionId}</p>
 
-  const { version, typeDef, state } = page
-  // Statuts proposés : jamais le statut released (passage dédié) ; une version figée ne propose que l'abandon.
-  const statusOptions = (typeDef.statuses ?? []).filter(s => s.name === version.status || (!s.isApproval && (!version.freeze || s.isTerminal)))
+  const { version, state } = page
+  // Abandonnée avant tout passage released : aucun état figé à lire, la section Exigences n'existe pas.
+  const hasRequirements = !(state === 'abandoned' && !version.freeze)
 
   return (
     <div className="flex flex-col h-full overflow-hidden" data-testid="version-page">
       <ViewHeader
         currentProjectId={projectId}
         title={`${version.title} — ${page.component.label}`}
-        subtitle={headerCollapsed ? (
+        subtitle={(
           <span className="flex items-center gap-2">
             {version.id}
             <span className={`px-1.5 rounded text-[10px] ${STATE_BADGE[state]}`} data-testid="version-state-short">{t(`versions.state.${state}`)}</span>
           </span>
-        ) : version.id}
+        )}
         actions={
           <>
-            <button type="button" className="btn-icon" onClick={toggleHeader} aria-expanded={!headerCollapsed}
-              title={t(headerCollapsed ? 'grid.expandHeader' : 'grid.collapseHeader')} aria-label={t(headerCollapsed ? 'grid.expandHeader' : 'grid.collapseHeader')}
-              data-testid="version-header-toggle">
-              {headerCollapsed ? <ChevronsDown size={14} /> : <ChevronsUp size={14} />}
-            </button>
+            <VersionExportButton page={page} repoPath={repoPath} projectId={projectId} versionId={versionId} />
             {page.component.readonly && <span title={t('versions.readonly')}><Lock size={13} className="text-status-warning" /></span>}
             {page.tagPending && <span className="text-xs text-status-warning" title={t('versions.tagPendingHelp')} data-testid="version-tag-pending">{t('versions.tagPending', { tag: version.freeze?.tag })}</span>}
             {editable && (
@@ -116,72 +103,7 @@ function VersionPage() {
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
         {error && <p className="text-xs text-status-danger" role="alert">{error}</p>}
 
-        {!headerCollapsed && <div className="flex flex-col gap-5" data-testid="version-header">
-        <section className="grid grid-cols-[10rem_1fr] gap-x-4 gap-y-2 text-xs items-center max-w-3xl">
-          <span className="text-ink-3">{t('versions.label')}</span>
-          {editable ? (
-            <input
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              onBlur={() => { if (title.trim() && title !== version.title) void update({ title }) }}
-              className="input-field text-sm max-w-xs"
-              data-testid="version-title"
-            />
-          ) : <span className="text-sm text-ink">{version.title}</span>}
-
-          <span className="text-ink-3">{t('versions.status')}</span>
-          <span className="flex items-center gap-2">
-            <span className={`px-1.5 rounded text-[10px] ${STATE_BADGE[state]}`}>{t(`versions.state.${state}`)}</span>
-            {!page.component.readonly && statusOptions.length > 1 ? (
-              <select value={version.status} onChange={e => void update({ status: e.target.value })} className="input-field text-xs" data-testid="version-status">
-                {statusOptions.map(s => <option key={s.name} value={s.name}>{s.label || s.name}</option>)}
-              </select>
-            ) : <span className="text-ink">{statusLabel(typeDef, version.status)}</span>}
-          </span>
-
-          <span className="text-ink-3">{t('versions.basedOn')}</span>
-          {editable ? (
-            <select value={version.basedOn ?? ''} onChange={e => void update({ basedOn: e.target.value || null })} className="input-field text-xs max-w-xs" data-testid="version-based-on">
-              <option value="">{t('versions.none')}</option>
-              {page.basedOnOptions.map(v => <option key={v.id} value={v.id}>{v.title} ({v.id})</option>)}
-            </select>
-          ) : page.basedOn ? (
-            <span>
-              <PageLink id={page.basedOn.id} repoPath={repoPath} className="text-prim text-left"
-                onFallback={() => void navigate({ to: '/version/$versionId', params: { versionId: page.basedOn!.id }, search: { projectId, repoPath } })}>
-                {page.basedOn.title} ({page.basedOn.id})
-              </PageLink>
-            </span>
-          ) : <span className="text-ink-3">{t('versions.none')}</span>}
-
-          {version.freeze && (
-            <>
-              <span className="text-ink-3">{t('versions.release.tag')}</span>
-              <span className="font-mono text-ink">{version.freeze.tag} <span className="text-ink-3">@ {version.freeze.sha.slice(0, 7)}</span></span>
-            </>
-          )}
-        </section>
-
-        {(typeDef.fields ?? []).length > 0 && (
-          <section className="flex flex-col gap-3 max-w-3xl">
-            {(typeDef.fields ?? []).map(f => (
-              <DynamicField
-                key={f.name}
-                field={f}
-                value={fieldValueToText(fields[f.name])}
-                onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
-                disabled={!editable}
-                repoPath={repoPath}
-              />
-            ))}
-            {editable && fieldsDirty && (
-              <div className="flex gap-2">
-                <button type="button" onClick={() => void update({ fields })} className="btn-primary-sm" data-testid="version-save-fields">{t('common.save')}</button>
-                <button type="button" onClick={() => setFields(version.fields ?? {})} className="btn-secondary-sm">{t('common.cancel')}</button>
-              </div>
-            )}
-          </section>
-        )}
+        <VersionInfoSection page={page} repoPath={repoPath} projectId={projectId} editable={editable} onUpdate={update} />
 
         {page.components.length > 0 && (
           <section className="flex flex-col gap-2">
@@ -219,12 +141,12 @@ function VersionPage() {
           </section>
         )}
 
+        {/* Une alerte ne se replie pas : visible même sous une section « Composants » fermée. */}
         <OrphanComponents
           entries={Object.entries(version.components ?? {}).filter(([name]) => !page.components.some(c => c.name === name))}
           editable={editable}
           onRemove={name => void update({ components: Object.fromEntries(Object.entries(version.components ?? {}).filter(([n]) => n !== name)) })}
         />
-        </div>}
 
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
@@ -260,6 +182,10 @@ function VersionPage() {
             <VersionTestsSection data={impactQuery.data?.tests ?? undefined} repoPath={repoPath} projectId={projectId} versionLabel={`${version.id} — ${version.title}`} />
           </>
         )}
+
+        {hasRequirements && (
+          <VersionRequirementsSection repoPath={repoPath} projectId={projectId} versionId={versionId} versionLabel={`${version.id} — ${version.title}`} />
+        )}
       </div>
 
       {picking && (
@@ -273,17 +199,6 @@ function VersionPage() {
       )}
       {releasing && <ReleaseVersionDialog repoPath={repoPath} version={version} workspaceDir={workspaceDir} onClose={() => setReleasing(false)} />}
     </div>
-  )
-}
-
-/** En-tête repliable d'une section de la page (même présentation que l'analyse et les tests). */
-function SectionToggle({ open, onToggle, label, count, testId }: { open: boolean; onToggle: () => void; label: string; count: number; testId: string }) {
-  return (
-    <button type="button" onClick={onToggle} aria-expanded={open} className="flex items-center gap-1 section-label hover:text-ink self-start" data-testid={testId}>
-      {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-      {label}
-      <span className="font-normal text-ink-3 normal-case">({count})</span>
-    </button>
   )
 }
 

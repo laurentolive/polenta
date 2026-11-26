@@ -44,12 +44,15 @@ export function useVersionBacklog(repoPath: string) {
 
 const SECTIONS_KEY = 'polenta:versionSections'
 
-/** GH245 — section repliable de la page d'une version, état mémorisé par poste (ouverte par défaut). */
-export function useSectionOpen(section: string): [boolean, (fn: (open: boolean) => boolean) => void] {
+/**
+ * GH245 — section repliable de la page d'une version, état mémorisé par poste (ouverte par défaut ;
+ * GH439 : `defaultOpen` pour une section fermée tant que l'utilisateur ne l'a pas ouverte).
+ */
+export function useSectionOpen(section: string, defaultOpen = true): [boolean, (fn: (open: boolean) => boolean) => void] {
   const read = (): Record<string, boolean> => {
     try { return JSON.parse(localStorage.getItem(SECTIONS_KEY) ?? '{}') as Record<string, boolean> } catch { return {} }
   }
-  const [open, setOpenState] = useState<boolean>(() => read()[section] ?? true)
+  const [open, setOpenState] = useState<boolean>(() => read()[section] ?? defaultOpen)
   const setOpen = (fn: (open: boolean) => boolean) => setOpenState(prev => {
     const next = fn(prev)
     try { localStorage.setItem(SECTIONS_KEY, JSON.stringify({ ...read(), [section]: next })) } catch { /* stockage indisponible */ }

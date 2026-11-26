@@ -11,7 +11,8 @@ interface CoverageBadgeProps {
   testsById: Map<string, TestCase>
 }
 
-const CLASS_BY_STATUS: Record<CoverageStatus, string> = {
+/** Couleur du libellé de chaque statut de vérification (réutilisée par la section Exigences d'une version, GH439). */
+export const CLASS_BY_STATUS: Record<CoverageStatus, string> = {
   not_covered: 'text-ink-3',
   covered: 'text-status-warning/80',
   validated: 'text-status-success',

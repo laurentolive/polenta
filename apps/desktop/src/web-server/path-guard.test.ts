@@ -74,7 +74,7 @@ describe('GH252 — versions, validation', () => {
   const CHANNELS = [...WEB_EXPOSED].filter(ch => /^(versions|validations):/.test(ch) || ch === 'issues:add-decision')
 
   it('tous exposés, plus aucun masqué', () => {
-    expect(CHANNELS).toHaveLength(27)
+    expect(CHANNELS).toHaveLength(28)   // GH439 : + versions:requirements
     expect(Object.keys(WEB_HIDDEN).filter(ch => /^(versions|validations):/.test(ch) || ch === 'issues:add-decision')).toEqual([])
   })
 

@@ -11,8 +11,8 @@ import type { SchemaService } from './schema.service'
 import { SyncService } from './sync.service'
 import type { AuthService } from './auth.service'
 import { TraceabilityService } from './traceability.service'
-import type { RequirementsIndexService } from './requirements-index.service'
-import type { TestsIndexService } from './tests-index.service'
+import { RequirementsIndexService } from './requirements-index.service'
+import { TestsIndexService } from './tests-index.service'
 import { VersionTrackingService } from './version-tracking.service'
 import { VersionsService } from './versions.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
@@ -74,11 +74,15 @@ beforeEach(async () => {
   const moteur = node('moteur', comp)
   const produit = node('produit', root, [moteur])
   const tree: WorkspaceTree = { rootRepoHeadSha: '', generatedAt: '', nodes: [produit, moteur], logicalTree: produit }
-  const schemaStub = { get: async (repo: string) => schemas.get(path.resolve(repo))! } as unknown as SchemaService
+  // `getAt` : schéma du gel (GH439 — le passage released fige la couverture des exigences du périmètre).
+  const schemaStub = {
+    get: async (repo: string) => schemas.get(path.resolve(repo))!,
+    getAt: async (repo: string) => schemas.get(path.resolve(repo))!,
+  } as unknown as SchemaService
   const treeStub = { readCache: async () => tree } as unknown as WorkspaceTreeService
   versions = new VersionsService(gitSvc, new SyncService(auth), schemaStub, new VersionTrackingService(gitSvc, schemaStub), undefined, treeStub)
   versions.setImpactSources({
-    traceability: new TraceabilityService({} as RequirementsIndexService, {} as TestsIndexService, gitSvc, new SyncService(auth), treeStub),
+    traceability: new TraceabilityService(new RequirementsIndexService(gitSvc), new TestsIndexService(gitSvc), gitSvc, new SyncService(auth), treeStub),
     campaigns: new CampaignsService(gitSvc, undefined as never),
   })
 })

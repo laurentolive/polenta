@@ -21,6 +21,7 @@ import { VersionTrackingService } from './services/version-tracking.service'
 import { VersionsService } from './services/versions.service'
 import { IssuesService } from './services/issues.service'
 import { ValidationsService } from './services/validations.service'
+import { VersionRequirementsService } from './services/version-requirements.service'
 import { SavedViewsService } from './services/saved-views.service'
 import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
@@ -130,6 +131,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const validations = new ValidationsService(git, sync, schema, versions, traceability, history, {
     history: (repoPath, target, workspaceDir) => executionHistory.history(repoPath, target, workspaceDir),
   })
+  // GH439 — exigences d'une version et leur statut de vérification (figé à la release).
+  const versionRequirements = new VersionRequirementsService(versions, traceability)
   // GH210 — reflets Design et Validation des vues exigence.
   const reflections = new ReflectionsService(schema, versions, validations)
   // GH203 — vues enregistrées du ⚙️.
@@ -243,6 +246,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     elementMove,
     campaigns,
     versions,
+    versionRequirements,
     campaignExecution,
     executionHistory,
     testedConfig,

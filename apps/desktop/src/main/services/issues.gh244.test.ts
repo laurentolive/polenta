@@ -96,6 +96,7 @@ beforeEach(async () => {
   const tree: WorkspaceTree = { rootRepoHeadSha: '', generatedAt: '', nodes: [produit, moteur], logicalTree: produit }
   const schemaStub = {
     get: async (repo: string) => schemas.get(path.resolve(repo))!,
+    getAt: async (repo: string) => schemas.get(path.resolve(repo))!,
     resolveComponentRepoPath: async () => null,
   } as unknown as SchemaService
   const treeStub = { readCache: async () => tree } as unknown as WorkspaceTreeService

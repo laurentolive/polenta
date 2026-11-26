@@ -5,16 +5,10 @@ import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { VersionTestToRun, VersionTestsToRun } from '@polenta/types'
 import { api } from '../../api'
-import { ElementLink } from '../element/ElementLink'
-import { ElementLinks } from '../element/ElementLinks'
 import { DataGrid } from '../grid/DataGrid'
-import type { GridColumn } from '../grid/gridTypes'
 import { useGridScrollKey } from '../grid/useGridScrollKey'
 import { useSectionOpen } from './useVersions'
-
-const DEFAULTS = ['id', 'label', 'requirements', 'via', 'alreadyIn']
-const testIdOf = (x: VersionTestToRun) => x.testId
-const viaOf = (x: VersionTestToRun) => x.sources.filter(id => id !== x.testId)
+import { VERSION_TEST_DEFAULTS, buildVersionTestColumns, versionTestRowId as testIdOf } from './versionTestColumns'
 
 /** Instances retenues par test, pour le paramètre `instances` (`TEST-1:SW-1|SW-2,TEST-2:SW-3`, GH207). */
 export function encodeInstances(tests: VersionTestToRun[]): string | undefined {
@@ -48,26 +42,8 @@ export function VersionTestsSection({ data, repoPath, projectId, versionLabel }:
   const tests = useMemo(() => data?.tests ?? [], [data])
   const chosen = tests.filter(x => selected.has(x.testId))
   const scrollKey = useGridScrollKey('version-tests')
-  const columns = useMemo<GridColumn<VersionTestToRun>[]>(() => [
-    {
-      key: 'id', label: t('versions.columns.id'), locked: true, getText: x => x.testId,
-      render: x => <ElementLink id={x.testId} className="font-mono text-prim" />, elementId: x => x.testId,
-    },
-    { key: 'label', label: t('versions.columns.label'), getText: x => x.title },
-    {
-      key: 'requirements', label: t('versions.columns.requirements'), getText: x => x.requirementIds.join(', '),
-      render: x => <ElementLinks ids={x.requirementIds} />, elementId: x => x.requirementIds[0],
-    },
-    {
-      key: 'via', label: t('versions.tests.via'), getText: x => viaOf(x).join(', '),
-      render: x => <ElementLinks ids={viaOf(x)} />, elementId: x => viaOf(x)[0],
-    },
-    {
-      key: 'alreadyIn', label: t('versions.tests.alreadyIn'), getText: x => x.alreadyIn.map(c => c.id).join(', '),
-      render: x => <ElementLinks ids={x.alreadyIn.map(c => c.id)} />, elementId: x => x.alreadyIn[0]?.id,
-    },
-  ], [t])
-  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::version-tests', view: 'columns', defaults: DEFAULTS }), [repoPath])
+  const columns = useMemo(() => buildVersionTestColumns({ t }), [t])
+  const prefs = useMemo(() => ({ repoPath, prefKey: 'grid::version-tests', view: 'columns', defaults: VERSION_TEST_DEFAULTS }), [repoPath])
   // Campagnes ouvertes du repo : cibles de « Ajouter à … » (raccourci, aucun lien écrit).
   const { data: campaigns = [] } = useQuery({
     queryKey: ['campaigns', repoPath],
@@ -138,6 +114,7 @@ export function VersionTestsSection({ data, repoPath, projectId, versionLabel }:
                 prefs={prefs}
                 selection={{ mode: 'checkbox', selected, onChange: setSelected }}
                 scrollMemoryKey={scrollKey}
+                noExport
               />
             </div>
           )}

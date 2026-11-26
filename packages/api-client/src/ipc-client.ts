@@ -344,6 +344,7 @@ export function createIpcClient(
       tree: (p, workspaceDir) => invoke('versions:tree', p, workspaceDir ?? null),
       list: (p) => invoke('versions:list', p),
       get: (p, id, workspaceDir) => invoke('versions:get', p, id, workspaceDir ?? null),
+      requirements: (p, id, workspaceDir) => invoke('versions:requirements', p, id, workspaceDir ?? null),
       backlog: (p) => invoke('versions:backlog', p),
       create: (p, dto, workspaceDir) => invoke('versions:create', p, dto, workspaceDir ?? null),
       update: (p, id, dto, workspaceDir) => invoke('versions:update', p, id, dto, workspaceDir ?? null),

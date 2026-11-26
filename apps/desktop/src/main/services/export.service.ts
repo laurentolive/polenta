@@ -1,4 +1,4 @@
-import type { ExportFormat, ExportKind, RequirementsExportPayload, TestsExportPayload, CampaignExportPayload, QueryResultExportPayload, DashboardExportPayload, TableExportPayload, ExecutionsExportPayload } from '@polenta/types'
+import type { ExportFormat, ExportKind, RequirementsExportPayload, TestsExportPayload, CampaignExportPayload, QueryResultExportPayload, DashboardExportPayload, TableExportPayload, TablesExportPayload, ExecutionsExportPayload } from '@polenta/types'
 import type { PrintRenderer } from '../host/print-renderer'
 import type { TemplateExportService } from './export/template/template-export.service'
 
@@ -33,6 +33,8 @@ const GENERATORS: Partial<Record<`${ExportKind}:${'xlsx' | 'docx'}`, Generator>>
     (await import('./export/dashboard.docx')).exportDashboardDocx(p as DashboardExportPayload, d),
   'table:xlsx': async (p, d) => (await import('./export/table.xlsx')).exportTableXlsx(p as TableExportPayload, d),
   'executions:docx': async (p, d) => (await import('./export/executions.docx')).exportExecutionsDocx(p as ExecutionsExportPayload, d),
+  // GH439 — page d'une version : un classeur, une feuille par section choisie.
+  'version:xlsx': async (p, d) => (await import('./export/table.xlsx')).exportTablesXlsx(p as TablesExportPayload, d),
 }
 
 /**

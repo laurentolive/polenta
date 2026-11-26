@@ -65,8 +65,8 @@ export default tseslint.config(
     },
   },
   {
-    // Scripts Node CommonJS (agent hôte GH63, fichiers .cjs)
-    files: ['**/*.cjs', 'deploy/**/*.js'],
+    // Scripts Node CommonJS (agent hôte GH63, fichiers .cjs ; askpass GH337, livré tel quel)
+    files: ['**/*.cjs', 'deploy/**/*.js', 'apps/desktop/src/main/git/askpass/*.js'],
     languageOptions: { sourceType: 'commonjs' },
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },

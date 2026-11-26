@@ -18,6 +18,8 @@ export default tseslint.config(
       '**/playwright-report/**',
       // Rapport HTML de Playwright (reporter de apps/desktop/playwright.config) : régénéré à chaque run e2e
       'apps/desktop/e2e-web/.report/**',
+      // Git embarqué (PortableGit, copié à l'installation, ignoré par git) : pas du code du projet
+      'apps/desktop/vendor/**',
       // Worktrees / outils d'agents copiés sous le repo
       '.claire/**',
       '.claude/**',

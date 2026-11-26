@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type RefObject, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { Check, Plus, Trash2, Tag, GitCommitHorizontal } from 'lucide-react'
+import { Check, Plus, Trash2, Tag, GitCommitHorizontal, AlertTriangle } from 'lucide-react'
 import type { BranchInfo } from '@polenta/api-client'
 
 /** Same rule as WorkspaceTreeService.repoExistsAtPin's SHA detection — a short or full SHA-1. */
@@ -91,12 +91,15 @@ interface BranchComboboxProps {
   displayValue?: string
   /** Tooltip of the closed combo. */
   title?: string
+  /** GH450 — the closed combo shows a warning icon and colour (detached HEAD: nothing can be
+   *  committed or published until a branch is checked out). */
+  warning?: boolean
   /** Notified when the dropdown opens/closes — lets a caller lazily enable its branches/tags
    *  fetch only while the list is actually visible (T86), instead of polling continuously. */
   onOpenChange?: (open: boolean) => void
 }
 
-export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCheckoutCommit, onDelete, onCreateNew, isPending, integrationBranch, displayValue, title, onOpenChange }: BranchComboboxProps) {
+export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCheckoutCommit, onDelete, onCreateNew, isPending, integrationBranch, displayValue, title, warning, onOpenChange }: BranchComboboxProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
@@ -226,8 +229,12 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
         onFocus={openDrop}
         onClick={openDrop}
         disabled={isPending}
-        className="w-full input-field text-xs py-1 font-mono pr-6 disabled:opacity-50 cursor-pointer"
+        data-warning={warning && !open ? 'true' : undefined}
+        className={`w-full input-field text-xs py-1 font-mono pr-6 disabled:opacity-50 cursor-pointer${warning && !open ? ' pl-6 text-status-warning' : ''}`}
       />
+      {warning && !open && (
+        <AlertTriangle size={12} aria-hidden className="absolute left-2 top-1/2 -translate-y-1/2 text-status-warning pointer-events-none" />
+      )}
       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none text-[10px]">▾</span>
 
       {open && createPortal(

@@ -459,6 +459,8 @@
       "deleteShort": "Del.",
       "tags": "Tags",
       "branchPlaceholder": "branch…",
+      "detached": "detached",
+      "detachedHint": "Detached HEAD on commit {{commit}}: nothing can be committed or published until a branch is checked out.",
       "localBranches": "Local branches",
       "remoteBranches": "Remote branches",
       "commits": "Recent commits",

@@ -459,6 +459,8 @@
       "deleteShort": "Suppr.",
       "tags": "Tags",
       "branchPlaceholder": "branche…",
+      "detached": "détaché",
+      "detachedHint": "HEAD détachée sur le commit {{commit}} : rien ne peut être commité ni publié tant qu'une branche n'est pas extraite.",
       "localBranches": "Branches locales",
       "remoteBranches": "Branches remote",
       "commits": "Commits récents",

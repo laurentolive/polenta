@@ -68,6 +68,17 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
     branchNotices, dismissBranchNotices,
   } = useBranchCheckout(node, workspaceDir, flatNodes, branchDropdownOpen)
 
+  // GH450 — detached HEAD (component pinned on a commit): no branch name to show, and commit /
+  // push are refused there, so the combo says so with a warning instead of staying empty.
+  const detached = !!syncStatus && !syncStatus.branch
+  const { data: integrationState } = useQuery({
+    queryKey: ['integration:state', repoPath],
+    queryFn: () => api.integration.state(repoPath),
+    enabled: !!repoPath && detached,
+    refetchInterval: 10_000,
+  })
+  const detachedOid = detached ? integrationState?.headOid : undefined
+
   const staged = syncStatus?.staged ?? []
   const unstaged = syncStatus?.unstaged ?? []
   const isDirty = staged.length + unstaged.length > 0
@@ -267,6 +278,9 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
             branches={allBranches}
             tags={allTags}
             currentBranch={currentBranch}
+            displayValue={detached ? t('sidebar.version.detached') : undefined}
+            title={detached ? t('sidebar.version.detachedHint', { commit: detachedOid?.slice(0, 7) ?? '' }) : undefined}
+            warning={detached}
             onCheckout={handleCheckout}
             onCheckoutCommit={handleCheckoutCommit}
             onDelete={deleteBranch}
@@ -281,7 +295,7 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
         repoPath={repoPath}
         workspaceDir={workspaceDir}
         root={depth === 0}
-        detached={!!syncStatus && !syncStatus.branch}
+        detached={detached}
         indent={indent}
       />
 

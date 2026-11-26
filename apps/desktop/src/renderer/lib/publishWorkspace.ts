@@ -261,7 +261,8 @@ export async function resumePublishAfterResolution(opts: {
     if (status.branch === workBranch) await leaveWorkBranch(repoPath, integrationBranch, workBranch)
   }
   if (node) {
-    const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, sha)
+    // GH454 — a parent pinning the integration branch keeps following it.
+    const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, sha, { keepBranch: integrationBranch })
     pinOutcome.updated.push(...outcome.updated)
     pinOutcome.conflicted.push(...outcome.conflicted)
     pinOutcome.failed.push(...outcome.failed)
@@ -468,7 +469,8 @@ export async function publishWorkspace(opts: {
 
       // T82: propose the merge SHA as pin wherever this repo is declared as a dependency — the
       // dependents come later in `candidates`, so the pin update is published with them.
-      const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, sha)
+      // GH454 — except in a parent pinning that integration branch: it already follows the merge.
+      const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, sha, { keepBranch: state.integrationBranch })
       pinOutcome.updated.push(...outcome.updated)
       pinOutcome.conflicted.push(...outcome.conflicted)
       pinOutcome.failed.push(...outcome.failed)

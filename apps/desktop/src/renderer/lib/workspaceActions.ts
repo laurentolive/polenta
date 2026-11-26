@@ -349,12 +349,18 @@ export interface PinPropagationOutcome {
  *
  * Sequential manifest I/O and a single `api.workspace.rebuildTree()`: rebuildTree deletes and
  * rewrites the single shared `.polenta/tree.cache.yaml`, concurrent rebuilds would race on it.
+ *
+ * GH454 — `keepBranch`: the branch that now holds `newPin` (publication: the integration branch
+ * the merge landed on). A dependent pinning that branch already follows it and is left as is —
+ * replacing its pin with the SHA would freeze the component, detached at the next rebuild once
+ * the branch moves on.
  */
 export async function propagatePinToDependents(
   workspaceDir: string,
   flatNodes: WorkspaceTreeNode[],
   target: { name: string; url: string },
   newPin: string,
+  options: { keepBranch?: string } = {},
 ): Promise<PinPropagationOutcome> {
   const outcome: PinPropagationOutcome = { updated: [], conflicted: [], failed: [] }
   const written: Array<{ name: string; repoPath: string; manifest: PolentaRepoManifest }> = []
@@ -365,6 +371,7 @@ export async function propagatePinToDependents(
       const dependencies = manifest.dependencies ?? []
       const index = dependencies.findIndex(d => d.name === target.name && d.url === target.url)
       if (index < 0 || dependencies[index].pin === newPin) continue
+      if (options.keepBranch && dependencies[index].pin === options.keepBranch) continue
       const nextDependencies = dependencies.map((d, i) => i === index ? { ...d, pin: newPin } : d)
       await api.polentaRepo.save(node.repoPath, { ...manifest, dependencies: nextDependencies })
       written.push({ name: node.name, repoPath: node.repoPath, manifest })

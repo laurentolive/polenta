@@ -685,7 +685,14 @@ export class WorkspaceTreeService {
       const head = await this.peelToCommit(repoPath, 'HEAD')
 
       if (/^[0-9a-f]{7,40}$/i.test(pin)) {
-        return head.startsWith(pin) || pin.startsWith(head.substring(0, pin.length))
+        if (head.startsWith(pin) || pin.startsWith(head.substring(0, pin.length))) return true
+        // GH454 — on a branch that contains the pinned commit (it moved on: publication, conformity
+        // commit, pull): checking the SHA out would detach HEAD behind the user's back and drop those
+        // commits from the working tree. A pin moved to a commit the branch lacks still checks out.
+        const g = gitFor(repoPath)
+        if (!(await g.currentBranch())) return false
+        const pinned = await g.resolveCommit(pin).catch(() => null)
+        return !!pinned && await g.isAncestor(pinned, head).catch(() => false)
       }
 
       try {

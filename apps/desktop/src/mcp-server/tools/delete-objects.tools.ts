@@ -7,6 +7,7 @@ import { jsonToolResult } from '../mcp-types'
 import { deleteWithTombstone } from '../../main/services/id-counter.util'
 import { withKeyLock } from '../../main/services/serialize-writes.util'
 import { findObjectTypeDef, findOwningNode, findLocalNodeByRefPrefix } from '../../main/services/schema-lookup.util'
+import { findOwnerScope, groupByScope, isScopeReadonly, scoped, workspaceScopes, type RepoScope } from './workspace-scope'
 
 /**
  * GH384 — suppression d'exigences et de tests par ID (`delete_requirements` / `delete_tests`), pour
@@ -37,7 +38,7 @@ const DIRS: Record<Category, { dir: string; extra: string }> = {
   test: { dir: 'tests', extra: 'test-runs' },
 }
 
-async function runDelete(container: McpContainer, category: Category, ids: string[], dryRun: boolean) {
+async function runDelete(container: McpContainer, category: Category, ids: string[], dryRun: boolean): Promise<DeleteResult> {
   const { repoPath, workspaceDir } = container
   // Process sans watcher : un objet ou un usage créé par l'application depuis le dernier appel doit compter.
   container.reqIndex.invalidate(repoPath)
@@ -111,19 +112,62 @@ async function runDelete(container: McpContainer, category: Category, ids: strin
   return { dryRun: false, summary: { total: ids.length, ok: deleted.length, failed: errors.length }, wouldDelete: [], deleted, errors }
 }
 
+interface DeleteResult {
+  dryRun: boolean
+  summary: { total: number; ok: number; failed: number }
+  wouldDelete: Array<{ index: number; id: string; title: string }>
+  deleted: string[]
+  errors: DeleteError[]
+}
+
+/**
+ * GH447 — chaque ID est supprimé dans le repo qui le porte (racine ou composant en repo séparé du
+ * workspace) : campagnes, versions et validations de ce repo, liens de tout le workspace, pierre
+ * tombale dans ce repo. Un composant en lecture seule refuse (`NODE_READONLY`). Un ID introuvable
+ * partout reste traité par le repo racine (`OBJECT_NOT_FOUND`), comme avant.
+ */
+async function runDeleteAcrossRepos(container: McpContainer, category: Category, ids: string[], dryRun: boolean): Promise<DeleteResult> {
+  const scopes = await workspaceScopes(container)
+  if (scopes.length === 1) return runDelete(container, category, ids, dryRun)
+  const located: Array<{ index: number; scope: RepoScope; item: string }> = []
+  for (const [index, id] of ids.entries()) {
+    located.push({ index, scope: (await findOwnerScope(container, scopes, category, id)) ?? scopes[0], item: id })
+  }
+  const merged: DeleteResult = { dryRun, summary: { total: ids.length, ok: 0, failed: 0 }, wouldDelete: [], deleted: [], errors: [] }
+  for (const { scope, items } of groupByScope(located)) {
+    const indices = items.map(i => i.index)
+    if (await isScopeReadonly(container, scope)) {
+      merged.errors.push(...items.map(({ index, item: id }) => ({
+        index, id, code: 'NODE_READONLY' as const, reason: `composant '${scope.component}' en lecture seule — suppression refusée`,
+      })))
+      continue
+    }
+    const r = await runDelete(scoped(container, scope), category, items.map(i => i.item), dryRun)
+    merged.wouldDelete.push(...r.wouldDelete.map(w => ({ ...w, index: indices[w.index] })))
+    merged.deleted.push(...r.deleted)
+    merged.errors.push(...r.errors.map(e => ({ ...e, index: indices[e.index] })))
+  }
+  merged.errors.sort((a, b) => a.index - b.index)
+  merged.wouldDelete.sort((a, b) => a.index - b.index)
+  merged.summary.failed = merged.errors.length
+  merged.summary.ok = dryRun ? merged.wouldDelete.length : merged.deleted.length
+  return merged
+}
+
 const description = (what: string, extra: string) =>
   `Supprime définitivement des ${what} par ID, pour corriger un import (doublon, mauvais lot) — ` +
   "un objet abandonné passe plutôt au statut terminal de son type. dryRun (défaut true) : aperçu " +
   "(wouldDelete) et refus, SANS RIEN ÉCRIRE. Refus par objet, sans bloquer les autres : OBJECT_NOT_FOUND, " +
   `NODE_READONLY, OBJECT_IN_USE (lié à un objet — supprimer d'abord ses liens avec delete_links —, ${extra}, ` +
   "inclus dans une version, cité par une validation). dryRun: false : pierre tombale (l'ID n'est jamais " +
-  "réattribué), fichier supprimé, en série, best-effort. Le rangement en dossiers n'est pas modifié."
+  "réattribué), fichier supprimé, en série, best-effort. Le rangement en dossiers n'est pas modifié. " +
+  "Workspace : un objet d'un composant en repo séparé est supprimé dans le repo de ce composant."
 
 export function registerDeleteObjectTools(server: McpServer, container: McpContainer): void {
   server.registerTool(
     'delete_requirements',
     { title: 'Delete requirements', description: description('exigences', 'présent dans une campagne'), inputSchema: deleteInput },
-    async ({ ids, dryRun }) => jsonToolResult(await runDelete(container, 'requirement', ids, dryRun)),
+    async ({ ids, dryRun }) => jsonToolResult(await runDeleteAcrossRepos(container, 'requirement', ids, dryRun)),
   )
   server.registerTool(
     'delete_tests',
@@ -132,6 +176,6 @@ export function registerDeleteObjectTools(server: McpServer, container: McpConta
       description: description('cas de test', 'présent dans une campagne (testCaseIds ou exécution)') + ' Ses exécutions (test-runs/<ID>) sont supprimées avec lui.',
       inputSchema: deleteInput,
     },
-    async ({ ids, dryRun }) => jsonToolResult(await runDelete(container, 'test', ids, dryRun)),
+    async ({ ids, dryRun }) => jsonToolResult(await runDeleteAcrossRepos(container, 'test', ids, dryRun)),
   )
 }

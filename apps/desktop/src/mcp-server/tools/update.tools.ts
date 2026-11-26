@@ -10,6 +10,7 @@ import { canonicalMultiEnumFields } from '../../main/services/field-values.util'
 import { findObjectTypeDef } from '../../main/services/schema-lookup.util'
 import { mergeFields } from '../../main/services/field-merge.util'
 import { readOwnedTypeDef } from '../../main/services/field-write.util'
+import { findOwnerScope, isScopeReadonly, scoped, workspaceScopes } from './workspace-scope'
 
 /**
  * Tools de modification d'objets existants (GH150 — specs/GH150-design.md) :
@@ -49,13 +50,14 @@ interface UpdateToolResult {
 
 type Written = { version?: number; history?: ObjectHistory }
 
+/** GH447 — `c` : conteneur du repo qui porte l'objet (racine ou composant en repo séparé, `scoped`). */
 interface UpdateTarget<TEntry> {
-  category: ObjectCategory
+  category: Extract<ObjectCategory, 'requirement' | 'test'>
   extraKeys: readonly string[]
-  find: (id: string) => Promise<UpdatableObject & Written>
+  find: (c: McpContainer, id: string) => Promise<UpdatableObject & Written>
   /** Écrit le contenu (tout sauf `status`) ; renvoie l'objet écrit. */
-  writeContent: (entry: TEntry) => Promise<Written>
-  writeStatus: (id: string, status: string, comment?: string) => Promise<Written>
+  writeContent: (c: McpContainer, entry: TEntry) => Promise<Written>
+  writeStatus: (c: McpContainer, id: string, status: string, comment?: string) => Promise<Written>
 }
 
 /** Nombre total d'entrées d'historique (tous champs suivis). */
@@ -70,21 +72,33 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
   dryRun: boolean,
   target: UpdateTarget<TEntry>,
 ): Promise<UpdateToolResult> {
-  const schema = await container.schema.get(container.repoPath)
   const result: UpdateToolResult = {
     dryRun, summary: { total: entries.length, ok: 0, failed: 0 }, updated: [], preview: [], errors: [],
   }
+  // GH447 — chaque objet se lit et s'écrit dans le repo qui le porte, avec le schéma de ce repo.
+  const scopes = await workspaceScopes(container)
+  const schemas = new Map<string, Promise<ProjectSchema>>()
+  const readonly = new Map<string, Promise<boolean>>()
 
   // Série, jamais Promise.all : deux entrées sur le même ID s'appliquent dans l'ordre.
   for (const [index, input] of entries.entries()) {
     let entry = input
+    const scope = await findOwnerScope(container, scopes, target.category, entry.id)
+    const c = scope ? scoped(container, scope) : container
     let existing: UpdatableObject & Written
     try {
-      existing = await target.find(entry.id)
+      existing = await target.find(c, entry.id)
     } catch {
       result.errors.push({ index, id: entry.id, reason: `objet introuvable : ${entry.id}` })
       continue
     }
+    if (scope && !readonly.has(scope.repoPath)) readonly.set(scope.repoPath, isScopeReadonly(container, scope))
+    if (scope && await readonly.get(scope.repoPath)) {
+      result.errors.push({ index, id: entry.id, reason: `composant '${scope.component}' en lecture seule — écriture refusée` })
+      continue
+    }
+    if (!schemas.has(c.repoPath)) schemas.set(c.repoPath, c.schema.get(c.repoPath))
+    const schema = await schemas.get(c.repoPath)!
     // GH384 — `multi_enum` en liste réécrit au format de l'application (« a, b »).
     const typeDef = findObjectTypeDef(schema, existing.objectTypeRef, target.category)
     const canonical = canonicalMultiEnumFields(typeDef === 'unresolvable' ? null : typeDef, entry.fields)
@@ -98,7 +112,7 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
     // donnent le même résultat, et un statut refusé n'écrit pas le contenu (pas d'écriture partielle).
     let transitionWarnings: TransitionIssue[] = []
     if (plan.changes.status) {
-      const check = await transitionCheck(container, existing, entry)
+      const check = await transitionCheck(c, existing, entry)
       if (check.blocked) {
         result.errors.push({ index, id: entry.id, reason: `TRANSITION_BLOCKED: ${check.issues.map(i => i.message).join(' ; ')}` })
         continue
@@ -121,9 +135,9 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
       const hasContent = changedKeys.some(k => k !== 'status')
       const reopening = !!plan.changes.status && leavesApproval(schema, target.category, existing, entry.status!)
       // GH200 — réouverture d'abord : le contenu d'un élément approuvé est verrouillé.
-      if (reopening) written = await target.writeStatus(entry.id, entry.status!, entry.modificationComment)
-      if (hasContent) written = await target.writeContent(entry)
-      if (plan.changes.status && !reopening) written = await target.writeStatus(entry.id, entry.status!, entry.modificationComment)
+      if (reopening) written = await target.writeStatus(c, entry.id, entry.status!, entry.modificationComment)
+      if (hasContent) written = await target.writeContent(c, entry)
+      if (plan.changes.status && !reopening) written = await target.writeStatus(c, entry.id, entry.status!, entry.modificationComment)
       const commentLost = !!entry.modificationComment?.trim() && historySize(written) <= historySize(existing)
       result.updated.push({
         index, id: entry.id, version: written?.version, changed: true, ...(commentLost && { warning: NO_TRACKED_CHANGE }), ...warned,
@@ -171,14 +185,15 @@ function leavesApproval(schema: ProjectSchema, category: ObjectCategory, existin
 }
 
 export function registerUpdateTools(server: McpServer, container: McpContainer): void {
-  const { repoPath, workspaceDir } = container
+  const { workspaceDir } = container
 
   server.registerTool(
     'update_requirements',
     {
       title: 'Update requirements',
       description:
-        "Modifie des exigences existantes, par ID : title, status, fields (fusion partielle ; une clé " +
+        "Modifie des exigences existantes, par ID (repo ouvert ou composant du workspace : l'exigence est " +
+        "modifiée dans le repo qui la porte, selon le schéma de ce repo) : title, status, fields (fusion partielle ; une clé " +
         "à null retire le champ). dryRun (défaut true) : valide chaque entrée (statut connu du type, " +
         "champs déclarés, valeurs d'enum / multi_enum, number, boolean et date bien formés, champs required " +
         "non vidés, syntaxe EARS des champs modifiés) " +
@@ -192,11 +207,11 @@ export function registerUpdateTools(server: McpServer, container: McpContainer):
     async ({ entries, dryRun }) => jsonToolResult(await runUpdate(container, entries, dryRun, {
       category: 'requirement',
       extraKeys: [],
-      find: id => container.requirements.findOne(repoPath, id),
-      writeContent: ({ id, title, fields, modificationComment }) =>
-        container.requirements.update(repoPath, id, { title, fields, modificationComment }, workspaceDir, { removeNullFields: true }),
-      writeStatus: (id, status, comment) =>
-        container.requirements.transition(repoPath, id, { toStatus: status, comment }, workspaceDir),
+      find: (c, id) => c.requirements.findOne(c.repoPath, id),
+      writeContent: (c, { id, title, fields, modificationComment }) =>
+        c.requirements.update(c.repoPath, id, { title, fields, modificationComment }, workspaceDir, { removeNullFields: true }),
+      writeStatus: (c, id, status, comment) =>
+        c.requirements.transition(c.repoPath, id, { toStatus: status, comment }, workspaceDir),
     })),
   )
 
@@ -212,14 +227,14 @@ export function registerUpdateTools(server: McpServer, container: McpContainer):
     async ({ entries, dryRun }) => jsonToolResult(await runUpdate(container, entries, dryRun, {
       category: 'test',
       extraKeys: TEST_STRUCTURE_KEYS,
-      find: id => container.tests.findOne(repoPath, id),
-      writeContent: ({ id, title, fields, preconditions, postconditions, steps, equipment, modificationComment }) =>
-        container.tests.update(
-          repoPath, id, { title, fields, preconditions, postconditions, steps, equipment, modificationComment }, workspaceDir,
+      find: (c, id) => c.tests.findOne(c.repoPath, id),
+      writeContent: (c, { id, title, fields, preconditions, postconditions, steps, equipment, modificationComment }) =>
+        c.tests.update(
+          c.repoPath, id, { title, fields, preconditions, postconditions, steps, equipment, modificationComment }, workspaceDir,
           { removeNullFields: true },
         ),
-      writeStatus: (id, status, comment) =>
-        container.tests.update(repoPath, id, { status, modificationComment: comment }, workspaceDir),
+      writeStatus: (c, id, status, comment) =>
+        c.tests.update(c.repoPath, id, { status, modificationComment: comment }, workspaceDir),
     })),
   )
 }

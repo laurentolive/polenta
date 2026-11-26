@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { McpContainer } from '../container'
 import { jsonToolResult, paginate } from '../mcp-types'
 import { readEffectiveHistory } from '../../main/services/history.service'
+import { findOwnerScope, presentObject, workspaceScopes } from './workspace-scope'
 
 /**
  * Filtres communs `list_requirements`/`list_tests` — même forme que
@@ -11,7 +12,7 @@ import { readEffectiveHistory } from '../../main/services/history.service'
  */
 const listFiltersSchema = z
   .object({
-    type: z.string().optional().describe('objectTypeRef exact (ex. "root::exigence-systeme")'),
+    type: z.string().optional().describe('objectTypeRef exact (ex. "root::exigence-systeme", "<composant>::<type>" pour un composant en repo séparé)'),
     status: z.string().optional().describe('statut exact (ex. "approved")'),
     search: z.string().optional().describe('recherche texte libre (titre / contenu)'),
   })
@@ -39,17 +40,21 @@ export function registerReadTools(server: McpServer, container: McpContainer): v
     {
       title: 'List requirements',
       description:
-        'Liste les exigences du repo, triées par ID. Filtres optionnels : type ' +
+        'Liste les exigences du repo et des composants du workspace, triées par ID. Une exigence de composant ' +
+        'en repo séparé porte `component` (nom de montage) et son objectTypeRef sous ce nom (`<composant>::<type>`). ' +
+        'Filtres optionnels : type ' +
         '(objectTypeRef exact), status (statut exact), search (texte libre). ' +
         'Résultat plafonné à 200 objets (troncature signalée via `truncated`/`total`).',
       inputSchema: { filters: listFiltersSchema },
     },
     async ({ filters }) => {
-      const all = await container.requirements.findAll(container.repoPath, {
-        type: filters?.type,
-        status: filters?.status,
-        search: filters?.search,
-      })
+      // GH447 — tous les repos du workspace ; le type se filtre sur la référence présentée.
+      const perRepo = await Promise.all((await workspaceScopes(container)).map(async scope =>
+        (await container.requirements.findAll(scope.repoPath, { status: filters?.status, search: filters?.search }))
+          .map(r => presentObject(scope, r))))
+      const all = perRepo.flat()
+        .filter(r => !filters?.type || r.objectTypeRef === filters.type)
+        .sort((a, b) => a.id.localeCompare(b.id))
       return jsonToolResult(paginate(all))
     },
   )
@@ -59,7 +64,8 @@ export function registerReadTools(server: McpServer, container: McpContainer): v
     {
       title: 'List tests',
       description:
-        "Liste les cas de test du repo, triés par ID. Filtres optionnels : type " +
+        "Liste les cas de test du repo et des composants du workspace (même présentation que list_requirements), " +
+        "triés par ID. Filtres optionnels : type " +
         "(objectTypeRef exact), status (statut exact), search (texte libre sur le " +
         "titre). NOTE : TestsService.findAll() n'accepte aujourd'hui aucun filtre " +
         "côté service — le filtrage est fait en mémoire par ce tool (cf. " +
@@ -68,7 +74,9 @@ export function registerReadTools(server: McpServer, container: McpContainer): v
       inputSchema: { filters: listFiltersSchema },
     },
     async ({ filters }) => {
-      let all = await container.tests.findAll(container.repoPath)
+      // GH447 — tous les repos du workspace.
+      let all = (await Promise.all((await workspaceScopes(container)).map(async scope =>
+        (await container.tests.findAll(scope.repoPath)).map(t => presentObject(scope, t))))).flat()
 
       if (filters?.type) all = all.filter((t) => t.objectTypeRef === filters.type)
       if (filters?.status) all = all.filter((t) => t.status === filters.status)
@@ -105,7 +113,8 @@ export function registerReadTools(server: McpServer, container: McpContainer): v
     {
       title: 'Get object history',
       description:
-        "Historique des champs suivis d'une exigence, d'un test ou d'une campagne (repo ouvert) : une liste par " +
+        "Historique des champs suivis d'une exigence, d'un test (repo ouvert ou composant du workspace) ou d'une " +
+        "campagne (repo ouvert) : une liste par " +
         'champ (`status` pour le statut), entrées `{ value?, at, by?, source?, comment?, implicit? }` triées ' +
         "par date. `implicit: true` = valeur constatée dont la date de changement est inconnue " +
         '(datée du dernier commit du fichier). Données brutes : aucune interprétation.',
@@ -114,6 +123,12 @@ export function registerReadTools(server: McpServer, container: McpContainer): v
         id: z.string().describe('ID de l’objet (ex. SYS-0001, CAMP-0003)'),
       },
     },
-    async ({ kind, id }) => jsonToolResult(await readEffectiveHistory(container, container.repoPath, kind, id)),
+    async ({ kind, id }) => {
+      // GH447 — exigence ou test d'un composant en repo séparé : lu dans son repo.
+      const scope = kind === 'requirement' || kind === 'test'
+        ? await findOwnerScope(container, await workspaceScopes(container), kind, id)
+        : null
+      return jsonToolResult(await readEffectiveHistory(container, scope?.repoPath ?? container.repoPath, kind, id))
+    },
   )
 }

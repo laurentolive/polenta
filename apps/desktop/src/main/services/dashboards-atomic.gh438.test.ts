@@ -32,10 +32,13 @@ describe('GH438 — lecture pendant l\'écriture d\'un dashboard partagé', () =
       }
     })()
     let reads = 0
+    // Lecteur cadencé (1 ms entre deux lectures, comme une interface qui se rafraîchit) : une lecture
+    // sans pause garde le fichier ouvert en permanence et fait échouer chaque renommage sous Windows.
     while (writing) {
       const got = await dashboards.get(repo, U, d.id)
       reads++
       if (!got) absent.push(reads)
+      await new Promise((resolve) => setTimeout(resolve, 1))
     }
     await writer
     expect(reads).toBeGreaterThan(0)

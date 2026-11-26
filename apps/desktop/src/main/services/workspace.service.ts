@@ -14,6 +14,7 @@ import { parseTreeCache, serializeTreeCache } from './tree-cache.util'
 import { GITATTRIBUTES_CONTENT, GITIGNORE_CONTENT } from './repo-conformity.util'
 import {
   buildMcpJsonContent,
+  extractMcpJsonAbsolutePaths,
   extractMcpJsonVersion,
   MCP_JSON_TEMPLATE_VERSION,
 } from '../../mcp-server/mcp-json.template'
@@ -533,10 +534,21 @@ export class WorkspaceService {
       pending.push({ path: 'AGENTS.md', content: buildAgentsMdTemplate(BRAND) })
     }
     const mcpServerLaunch = this.host.mcpServerLaunch
-    if (mcpServerLaunch && await stale('.mcp.json', extractMcpJsonVersion, MCP_JSON_TEMPLATE_VERSION)) {
+    if (mcpServerLaunch && (
+      await stale('.mcp.json', extractMcpJsonVersion, MCP_JSON_TEMPLATE_VERSION) || await this.mcpJsonPathMissing(rootRepoPath)
+    )) {
       pending.push({ path: '.mcp.json', content: buildMcpJsonContent(mcpServerLaunch()) })
     }
     return pending
+  }
+
+  /** GH447 — la commande du `.mcp.json` pointe vers un chemin absent de ce poste (fichier écrit ailleurs, build déplacé). */
+  private async mcpJsonPathMissing(rootRepoPath: string): Promise<boolean> {
+    const raw = await fsPromises.readFile(path.join(rootRepoPath, '.mcp.json'), 'utf-8').catch(() => null)
+    if (raw === null) return false
+    const paths = extractMcpJsonAbsolutePaths(raw, p => path.isAbsolute(p))
+    const exists = await Promise.all(paths.map(p => fsPromises.access(p).then(() => true, () => false)))
+    return exists.includes(false)
   }
 
   private async ensureAgentsMd(rootRepoPath: string): Promise<boolean> {

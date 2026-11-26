@@ -16,8 +16,9 @@ import {
 import { peekNextCounterId, formatCounterId } from '../../main/services/id-counter.util'
 import { readOwnedTypeDef } from '../../main/services/field-write.util'
 import { canonicalMultiEnumFields } from '../../main/services/field-values.util'
-import { findObjectTypeDef } from '../../main/services/schema-lookup.util'
+import { findObjectTypeDef, findLocalNodeByRefPrefix } from '../../main/services/schema-lookup.util'
 import { placeBulkFolders, planBulkFolders, type BulkFolderEntry } from './tree.tools'
+import { groupByScope, isScopeReadonly, localizeRef, scoped, workspaceRef, workspaceScopes, type RepoScope } from './workspace-scope'
 
 /**
  * Tools d'import massif (T122 sprint 2 — specs/T122-design.md §3) : un tool par
@@ -300,6 +301,67 @@ async function makeCampaignIdPreview(
   }
 }
 
+/**
+ * GH447 — import réparti par repo cible : une entrée `<composant>::<type>` d'un composant en repo séparé
+ * est importée DANS ce repo (son schéma, ses fichiers et pierres tombales pour la numérotation, son
+ * rangement), avec la référence telle que ce repo l'écrit (`root::<type>`), comme l'application quand
+ * ce composant est sélectionné. `importInRepo` reçoit le conteneur du repo cible et ses entrées ; les
+ * indices de son résultat sont ramenés à ceux de la requête. Sans entrée de composant : chemin inchangé.
+ */
+async function bulkImportAcrossRepos<TEntry extends BulkImportEntryDto>(
+  container: McpContainer,
+  raw: TEntry[],
+  dryRun: boolean,
+  importInRepo: (c: McpContainer, entries: TEntry[]) => Promise<BulkImportToolResult>,
+): Promise<BulkImportToolResult> {
+  const scopes = await workspaceScopes(container)
+  const rootSchema = container.workspaceDir ? await container.schema.get(container.repoPath) : null
+  const refused: BulkEntryError[] = []
+  const located: Array<{ index: number; scope: RepoScope; item: TEntry }> = []
+  raw.forEach((entry, index) => {
+    if (!entry.objectTypeRef) {
+      located.push({ index, scope: scopes[0], item: entry })
+      return
+    }
+    const { scope, ref } = localizeRef(scopes, entry.objectTypeRef)
+    // En workspace, un préfixe qui n'est ni un nœud du schéma ni un composant est une faute de frappe :
+    // l'entrée irait sinon au repo racine avec un préfixe d'ID inventé.
+    const [node] = entry.objectTypeRef.split('::')
+    if (rootSchema && !scope.component && entry.objectTypeRef.includes('::') && node !== 'root'
+      && !findLocalNodeByRefPrefix(rootSchema, entry.objectTypeRef)) {
+      refused.push({ index, reason: `objectTypeRef inconnu : "${node}" n'est ni un nœud du schéma ni un composant du workspace (cf. get_schema, workspaceComponents)` })
+      return
+    }
+    located.push({ index, scope, item: ref === entry.objectTypeRef ? entry : { ...entry, objectTypeRef: ref } })
+  })
+  const groups = groupByScope(located)
+  if (refused.length === 0 && groups.length <= 1 && !groups[0]?.scope.component) return importInRepo(container, raw)
+
+  const merged: BulkImportToolResult = {
+    dryRun, summary: { total: raw.length, ok: 0, failed: failedEntries(refused) }, created: [], wouldCreate: [], errors: [...refused],
+  }
+  for (const { scope, items } of groups) {
+    const indices = items.map(i => i.index)
+    if (await isScopeReadonly(container, scope)) {
+      const reason = `composant '${scope.component}' en lecture seule — écriture refusée`
+      merged.errors.push(...indices.map(index => ({ index, reason })))
+      merged.summary.failed += indices.length
+      continue
+    }
+    const r = await importInRepo(scoped(container, scope), items.map(i => i.item))
+    const back = <E extends { index: number }>(list: E[]): E[] => list.map(e => ({ ...e, index: indices[e.index] }))
+    merged.summary.ok += r.summary.ok
+    merged.summary.failed += r.summary.failed
+    merged.created.push(...back(r.created))
+    merged.wouldCreate.push(...back(r.wouldCreate))
+    merged.errors.push(...back(r.errors))
+    if (r.transitionWarnings) (merged.transitionWarnings ??= []).push(...back(r.transitionWarnings))
+    if (r.folders) (merged.folders ??= []).push(...r.folders.map(f => ({ ...f, objectTypeRef: workspaceRef(scope, f.objectTypeRef) })))
+  }
+  for (const list of [merged.created, merged.wouldCreate, merged.errors, merged.transitionWarnings ?? []]) list.sort(byIndex)
+  return merged
+}
+
 export function registerBulkImportTools(server: McpServer, container: McpContainer): void {
   server.registerTool(
     'bulk_import_requirements',
@@ -315,23 +377,24 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
         "(une entrée en échec n'annule pas les précédentes). Appeler get_schema " +
         "d'abord pour connaître les objectTypeRef valides et leurs champs requis. " +
         "status est facultatif : sans lui, l'exigence prend le premier statut du type. " +
+        "Composant en repo séparé (workspace) : objectTypeRef `<composant>::<type>` (cf. get_schema avec " +
+        "component) — l'exigence est créée dans le repo du composant, numérotée selon ses fichiers. " +
         "folder (facultatif, GH361) : dossier où ranger l'exigence créée (chemin « A/B », créé s'il manque ; " +
         "chemin invalide ou ambigu = entrée refusée ; rangement impossible, ex. TREE_LOCKED quand l'application " +
         "affiche ce rangement = exigence créée mais non classée, FOLDER_PLACEMENT_FAILED dans errors)." + RICHTEXT_COLORS_NOTE,
       inputSchema: bulkImportRequirementsInput,
     },
-    async ({ entries: raw, dryRun }) => {
-      const schema = await container.schema.get(container.repoPath)
-      const entries = withCanonicalMultiEnum(schema, raw)
+    async ({ entries: raw, dryRun }) => jsonToolResult(await bulkImportAcrossRepos(container, raw, dryRun, async (c, located) => {
+      const schema = await c.schema.get(c.repoPath)
+      const entries = withCanonicalMultiEnum(schema, located)
       const preview = dryRun
-        ? await makeSchemaBackedIdPreview(container, schema, entries, 'requirements')
+        ? await makeSchemaBackedIdPreview(c, schema, entries, 'requirements')
         : NOOP_ID_PREVIEW
-      const result = await bulkImportWithFolders(container, entries, dryRun, (dtos) =>
+      return bulkImportWithFolders(c, entries, dryRun, (dtos) =>
         runBulkImport(schema, dtos, dryRun, preview, (dto) =>
-          container.requirements.create(container.repoPath, dto, container.workspaceDir),
-        makeCreationCheck(container)))
-      return jsonToolResult(result)
-    },
+          c.requirements.create(c.repoPath, dto, c.workspaceDir),
+        makeCreationCheck(c)))
+    })),
   )
 
   server.registerTool(
@@ -344,18 +407,17 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
         "écriture série best-effort en dryRun: false, champ folder).",
       inputSchema: bulkImportTestsInput,
     },
-    async ({ entries: raw, dryRun }) => {
-      const schema = await container.schema.get(container.repoPath)
-      const entries = withCanonicalMultiEnum(schema, raw)
+    async ({ entries: raw, dryRun }) => jsonToolResult(await bulkImportAcrossRepos(container, raw, dryRun, async (c, located) => {
+      const schema = await c.schema.get(c.repoPath)
+      const entries = withCanonicalMultiEnum(schema, located)
       const preview = dryRun
-        ? await makeSchemaBackedIdPreview(container, schema, entries, 'tests')
+        ? await makeSchemaBackedIdPreview(c, schema, entries, 'tests')
         : NOOP_ID_PREVIEW
-      const result = await bulkImportWithFolders(container, entries, dryRun, (dtos) =>
+      return bulkImportWithFolders(c, entries, dryRun, (dtos) =>
         runBulkImport(schema, dtos, dryRun, preview, (dto) =>
-          container.tests.create(container.repoPath, dto, container.workspaceDir),
-        makeCreationCheck(container)))
-      return jsonToolResult(result)
-    },
+          c.tests.create(c.repoPath, dto, c.workspaceDir),
+        makeCreationCheck(c)))
+    })),
   )
 
   server.registerTool(

@@ -5,7 +5,8 @@
  * Process Node.js autonome, indépendant du process Electron principal — ne construit
  * jamais de `BrowserWindow`, n'appelle `app.whenReady()` nulle part. Scoping "un repo
  * fixe par instance" (cf. specs/T122.md) : `--repo` est obligatoire, `--workspace` est
- * optionnel (mode mono-repo si absent, cf. specs/T122-design.md §2.3). `--user` est
+ * optionnel (absent : workspace reconnu à côté du repo, GH447 `workspace-detect.ts`, sinon mode
+ * mono-repo, cf. specs/T122-design.md §2.3). `--user` est
  * optionnel (GH18) : utilisateur dont le `.{user}.pref` porte les requêtes/dashboards
  * privés de la vue Suivi — absent, seul le scope partagé est accessible.
  *
@@ -26,6 +27,7 @@ import * as path from 'path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createMcpContainer } from './container'
+import { detectWorkspaceDir } from './workspace-detect'
 import { registerSchemaTools } from './tools/schema.tools'
 import { registerReadTools } from './tools/read.tools'
 import { registerVersionTools } from './tools/versions.tools'
@@ -92,7 +94,8 @@ async function main(): Promise<void> {
     return
   }
 
-  const workspaceDirResolved = workspaceDirArg ? path.resolve(workspaceDirArg) : undefined
+  // GH447 — `--workspace` absent (cas du `.mcp.json` généré) : workspace reconnu à côté du repo.
+  const workspaceDirResolved = workspaceDirArg ? path.resolve(workspaceDirArg) : detectWorkspaceDir(repoPath)
   const workspaceDirExists = workspaceDirResolved !== undefined && fs.existsSync(workspaceDirResolved)
   if (workspaceDirResolved && !workspaceDirExists) {
     console.error(`[mcp-server] avertissement : workspaceDir introuvable (${workspaceDirResolved}), repli en mode mono-repo.`)

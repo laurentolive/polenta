@@ -79,6 +79,11 @@ describe('publishWorkspace — GH133', () => {
     expect(propagatePinToDependents).toHaveBeenCalled()
   })
 
+  it('GH454 — la propagation laisse en place le pin d\'un parent qui suit la branche d\'intégration', async () => {
+    await publish()
+    expect(propagatePinToDependents).toHaveBeenCalledWith('/ws', [root], { name: 'root', url: '' }, 'merge1', { keepBranch: 'main' })
+  })
+
   it('case décochée sur la branche d\'intégration : publication nominale inchangée', async () => {
     sync.status.mockResolvedValue({ branch: 'main', staged: ['x'], unstaged: [] })
     const createBranch = vi.fn(async () => {})

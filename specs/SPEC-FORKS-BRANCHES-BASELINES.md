@@ -119,6 +119,8 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
 > unitaire décrit ci-dessus ; après chacun, son SHA de merge est propagé comme pin dans ses
 > dépendants (T82), qui passent ensuite et publient donc cette mise à jour de pin avec leurs
 > propres modifications (un parent sans autre modification est publié pour le seul pin).
+> Un dépendant qui épingle la branche d'intégration où le merge a eu lieu garde ce pin : il
+> suit déjà la branche, un SHA le figerait (GH454).
 > Contrôles **avant toute écriture**, sur les repos à publier et tous leurs ancêtres : une branche
 > bloquante (HEAD détaché, `int-*` non configurée) refuse toute la publication en listant les
 > repos ; un `fetch` en échec (T154) aussi, en nommant le repo. Un échec (conflit…) sur un repo
@@ -208,6 +210,10 @@ courante. Appelée à chaque tick d'auto-pull (avant le fetch, donc aussi hors l
 - un composant épinglé par nom de branche reste considéré « au pin » sur une `dev-auto` issue de
   cette branche (`WorkspaceTreeService.repoExistsAtPin`) : pas de checkout qui retirerait les
   modifications.
+- un composant épinglé sur un commit reste où il est s'il est sur une branche (quelle qu'elle soit)
+  qui contient ce commit (`repoExistsAtPin`, GH454) : la reconstruction de l'arbre ne le détache
+  plus quand la branche a avancé. HEAD détaché ailleurs, ou branche sans le commit épinglé : checkout
+  du pin, comme avant.
 
 Pas de bascule sans remote, en detached HEAD, sur une `int-*` non désignée ni sur une autre branche.
 

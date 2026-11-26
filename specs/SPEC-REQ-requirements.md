@@ -803,7 +803,7 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 - Tant que le repo a des versions, le type garde son nom, son préfixe et ses statuts marqués (le
   renommage de type GH100 ne migre pas les versions) et ne se supprime pas (`HAS_VERSIONS`).
 - Fichier `versions/<ID>.yaml` (IDs GH20, `history` GH77) ; champs système `basedOn` (version
-  précédente du repo), `components` (versions des dépendances `polenta-repo.yaml`, par nom de
+  précédente du repo, released ou en cours — planification, GH451), `components` (versions des dépendances `polenta-repo.yaml`, par nom de
   montage), `changes` (`{ id, base?: { sha, version } }`), `freeze` (`{ tag, sha, at }`, au passage
   released), `analysis` (§11.4) et `verification` (§11.5), posés au passage released. `history.changes` (GH202) : une entrée `{ value: [IDs triés], at, by }` par écriture qui change la liste, toujours
   active, une seule par seconde ; une exécution y fait référence (`changesAt`, SPEC-TESTS §3.2). Le label est le `title`, unique parmi les versions non abandonnées du repo. Les composants
@@ -816,13 +816,21 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
   `components` pré-remplis avec la dernière released de chaque dépendance (interface) ; ils se
   choisissent aussi depuis le panneau Produit, dans la structure dépliée d'une version en cours. L'ordre des
   livraisons est la date de gel (`freeze.at`, obligatoire ; pas de reprise des versions qui n'en ont pas).
+- **Version de base** (GH451) : toute version du repo released ou en cours, sauf elle-même, ses descendantes
+  (chaîne `basedOn` qui l'atteint : pas de boucle) et les abandonnées ; option en cours suffixée « — en cours ».
+  Une base déjà enregistrée puis abandonnée reste acceptée telle quelle (en tête de liste). Refus :
+  `VERSION_NOT_FOUND` (introuvable, abandonnée, boucle de lignée). Une version en cours peut ainsi en suivre une
+  autre encore en cours (Proto V2 basée sur Proto V1).
 - **Abandon définitif** : une version abandonnée ne revient pas en cours.
 - **Copie** : nouvelle version en cours dans le même repo, mêmes `basedOn`, `components`, `fields` et
   éléments inclus (`base` recalculée), sans `freeze` ; label suffixé « (copie) ».
 - **Suppression** : version jamais figée (en cours, ou abandonnée sans avoir été released), pierre
-  tombale GH20 ; refusée sinon (`VERSION_LOCKED`) : une version figée porte un tag, on l'abandonne.
+  tombale GH20 ; refusée sinon (`VERSION_LOCKED`) : une version figée porte un tag, on l'abandonne. Refusée aussi
+  si une version du repo est basée sur elle (`VERSION_IS_BASE`, GH451) : changer d'abord leur base.
 - **Passage released** (action dédiée, jamais par un simple changement de statut) : refus si le tag
-  est invalide ou existe, si une version de `components` n'est pas released, si un élément inclus a
+  est invalide ou existe, si une version de `components` n'est pas released, si `basedOn` est en cours
+  (`BASE_NOT_RELEASED`, GH451 — une base abandonnée ne bloque pas : une release repose toujours sur une lignée
+  released ou abandonnée), si un élément inclus a
   des modifications non commitées, ou si le repo est en lecture seule. Sinon `freeze.sha` = HEAD,
   commit du **seul** fichier de version (`[version] <ID> <label> released`, qui porte aussi l'analyse
   d'impact et la couverture figées, §11.4, §11.5), **tag annoté** posé sur ce
@@ -885,7 +893,9 @@ Détail : `specs/GH439.md`.
 
 - **Section « Exigences »** de la page d'une version (fermée par défaut, **lue à l'ouverture seulement**,
   `versions:requirements`) : les exigences **du repo** **disponibles dans la version**, hors statut terminal — celles
-  incluses (`changes`) dans la version ou dans une version **released** de sa lignée (`basedOn`, de proche en proche ;
+  incluses (`changes`) dans la version ou dans une version **non abandonnée** de sa lignée (`basedOn`, de proche en proche ;
+  GH451 : pour une version en cours, une base en cours compte — vue plan, V1 en cours livre R1, R2, V2 basée sur V1
+  livre R3 → V2 liste R1, R2, R3 ; une release n'a que des ancêtres released ou abandonnés ;
   une version abandonnée de la lignée ne livre rien, comme au backlog) : la première release ne liste que ses propres
   changements, une exigence jamais livrée (backlog) n'y est pas. **État lu** : à `freeze.sha` avec le schéma de ce
   commit (version released, ou abandonnée avec gel), sur le disque pour une version en cours ; un fichier d'un type non

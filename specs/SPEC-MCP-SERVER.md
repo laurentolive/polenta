@@ -623,7 +623,8 @@ GH362 — écriture, par les méthodes de `VersionsService` de l'IPC (mêmes con
 `remove_from_version { id, elementIds }`, `set_version_impact { id, elementId, status, comment? }`
 (version en cours), `get_version_release_preview { id, tag? }` et `release_version { id, tag? }`
 (tag suggéré par défaut ; gel, commit du seul fichier, tag annoté — irréversible, refusé sur
-`DIRTY_CHANGES`, `TAG_EXISTS`, composant non released…). Tous acceptent `component`. `update_version` fusionne
+`DIRTY_CHANGES`, `TAG_EXISTS`, composant non released, base en cours `BASE_NOT_RELEASED`…). GH451 : `basedOn` accepte une
+version released ou en cours (ni abandonnée, ni descendante : `VERSION_NOT_FOUND`). Tous acceptent `component`. `update_version` fusionne
 `fields` et remplace `components` ; `include_in_version` renvoie `notFound` (IDs introuvables, ignorés). Chaque
 écriture relit le schéma et les index du repo (`freshComponentRepoResolver` : pas de watcher dans ce process).
 Auteur du commit de release : §7.

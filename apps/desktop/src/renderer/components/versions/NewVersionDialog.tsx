@@ -10,7 +10,8 @@ import { backdropDismiss } from '../../lib/backdropDismiss'
 const lastReleased = (versions: VersionSummary[]) => versions.find(v => v.state === 'released')?.id ?? ''
 
 /**
- * GH201 §2 — création d'une version : label, version précédente (dernière released par défaut),
+ * GH201 §2 — création d'une version : label, version précédente (dernière released par défaut ; GH451 : une version
+ * en cours peut aussi être choisie),
  * versions des composants (dernière released de chaque dépendance qui a un type version).
  */
 export function NewVersionDialog({ node, workspaceDir, onCreated, onClose }: {
@@ -62,8 +63,8 @@ export function NewVersionDialog({ node, workspaceDir, onCreated, onClose }: {
             {t('versions.basedOn')}
             <select value={basedOn} onChange={e => setBasedOn(e.target.value)} className="input-field text-sm" data-testid="new-version-based-on">
               <option value="">{t('versions.none')}</option>
-              {node.versions.filter(v => v.state === 'released').map(v => (
-                <option key={v.id} value={v.id}>{v.title} ({v.id})</option>
+              {node.versions.filter(v => v.state !== 'abandoned').map(v => (
+                <option key={v.id} value={v.id}>{v.title} ({v.id}){v.state === 'in_progress' ? ` — ${t('versions.state.in_progress')}` : ''}</option>
               ))}
             </select>
           </label>

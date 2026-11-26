@@ -14,8 +14,10 @@ E2E : `apps/desktop/e2e-web/gh451-version-based-on.spec.ts`.
 | U5 | `update(V5, { basedOn: V4 abandonnée })` | `VERSION_NOT_FOUND`, détail « abandonnée » |
 | U6 | V2 basée sur V1 puis V1 abandonnée ; `update(V2, { title, basedOn: V1 })` | acceptée (valeur inchangée) ; page de V2 : V1 en tête des options |
 | U7 | Passage released de V2 basée sur V1 en cours | aperçu et `release` : `BASE_NOT_RELEASED`, détail `V1 <label>` |
-| U8 | V1 released (resp. abandonnée) | V2 n'a plus `BASE_NOT_RELEASED` et peut passer released |
+| U7b | V0 en cours ← V1 abandonnée ← V2 ; passage released de V2 | `BASE_NOT_RELEASED`, détail V0 (lignée entière, abandonnées sautées) |
+| U8 | V1 released (resp. base abandonnée dont la lignée est released) | V2 n'a plus `BASE_NOT_RELEASED` et peut passer released |
 | U9 | Suppression de V1 alors que V2 est basée sur V1 | `VERSION_IS_BASE`, détail nomme V2 ; base de V2 retirée → suppression OK |
+| U9b | V2 basée sur V1, V2 abandonnée ; suppression de V1 | toujours `VERSION_IS_BASE` (historique gardé) |
 | U10 | Section « Exigences » : V1 en cours inclut R1, R2 ; V2 en cours basée sur V1 inclut R3 | V2 : R1, R2, R3 ; V1 abandonnée → V2 : R3 |
 | U11 | Non-régression : version released basée sur une released | page, options, release, lignée inchangées (suite gh201/gh439 verte) |
 

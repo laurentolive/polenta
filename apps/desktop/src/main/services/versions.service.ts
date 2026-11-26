@@ -215,7 +215,8 @@ export class VersionsService {
 
   /**
    * GH439 — IDs des éléments « disponibles » dans une version : inclus (`changes`) dans la version ou dans une version
-   * released de sa lignée (`basedOn`, de proche en proche). Une version abandonnée de la lignée ne livre rien (GH268,
+   * non abandonnée de sa lignée (`basedOn`, de proche en proche) : released, ou en cours pour une version en cours qui
+   * planifie sur une autre (GH451 ; une release n'a pas d'ancêtre en cours, `BASE_NOT_RELEASED`). Une version abandonnée de la lignée ne livre rien (GH268,
    * comme le backlog) ; la lignée se poursuit au-delà. Garde anti-cycle (fichier édité à la main).
    */
   async availableIds(repoPath: string, version: Pick<ProductVersion, 'id' | 'basedOn' | 'changes'>): Promise<Set<string>> {
@@ -368,7 +369,7 @@ export class VersionsService {
       const title = this.assertLabel(vt.typeDef, versions, dto.title)
       // Absent : dernière version released du repo (pré-remplissage §2) ; `null` : aucune.
       const lastReleased = releasedInOrder(vt.typeDef, versions).at(-1)?.id ?? null
-      const basedOn = this.assertBasedOn(vt.typeDef, versions, dto.basedOn === undefined ? lastReleased : dto.basedOn, null)
+      const basedOn = this.assertBasedOn(vt.typeDef, versions, dto.basedOn === undefined ? lastReleased : dto.basedOn, null, null)
       const id = await nextCounterId(this.git, repoPath, vt.typeDef.prefix, VERSIONS_DIR)
       const filePath = `${VERSIONS_DIR}/${id}.yaml`
       await assertNewObjectFile(this.git, repoPath, filePath, id)
@@ -426,6 +427,9 @@ export class VersionsService {
       const typeDef = (await this.versionType(repoPath))?.typeDef ?? null
       const existing = await this.get(repoPath, id)
       if (existing.freeze || versionState(typeDef, existing.status) === 'released') throw new VersionError('VERSION_LOCKED', id)
+      // GH451 — une version en cours peut servir de base : la supprimer laisserait une référence pendante.
+      const children = (await this.list(repoPath)).filter(v => v.basedOn === id)
+      if (children.length > 0) throw new VersionError('VERSION_IS_BASE', children.map(v => `${v.id} ${v.title}`).join(', '))
       const validations = await this.git.listFiles(repoPath, 'validations').catch(() => [])
       for (const file of validations.filter(f => f.endsWith('.yaml'))) {
         const v = await this.git.readYaml<{ id?: string; versionId?: string }>(repoPath, file).catch(() => null)
@@ -457,11 +461,12 @@ export class VersionsService {
           throw new VersionError('VERSION_LOCKED', id)
         }
       }
-      const versions = (await this.list(repoPath)).filter(v => v.id !== id)
+      const all = await this.list(repoPath)
+      const versions = all.filter(v => v.id !== id)
       const updated: ProductVersion = { ...existing }
       if (from === 'in_progress' && dto.title !== undefined) updated.title = this.assertLabel(typeDef, versions, dto.title)
       if (dto.basedOn !== undefined) {
-        const basedOn = this.assertBasedOn(typeDef, versions, dto.basedOn, id)
+        const basedOn = this.assertBasedOn(typeDef, all, dto.basedOn, id, existing.basedOn ?? null)
         if (basedOn) updated.basedOn = basedOn
         else delete updated.basedOn
       }
@@ -535,6 +540,7 @@ export class VersionsService {
     const readonly = await this.isReadonly(repoPath, workspaceDir)
     const summary = (v: ProductVersion) => this.summary(vt.typeDef, v)
     const basedOnVersion = version.basedOn ? versions.find(v => v.id === version.basedOn) : undefined
+    const candidates = this.basedOnCandidates(vt.typeDef, versions, id)
 
     const deps = this.dependencies(repoPath, ws?.logicalTree ?? null)
     const components = await Promise.all(deps.map(async dep => {
@@ -556,7 +562,10 @@ export class VersionsService {
       component: { ...info, readonly },
       typeDef: vt.typeDef,
       basedOn: basedOnVersion ? summary(basedOnVersion) : null,
-      basedOnOptions: versions.filter(v => v.id !== id && versionState(vt.typeDef, v.status) === 'released').map(summary).reverse(),
+      basedOnOptions: [
+        ...(basedOnVersion && !candidates.includes(basedOnVersion) ? [basedOnVersion] : []),
+        ...[...candidates].reverse(),
+      ].map(summary),
       components,
       rows,
       tagPending: !!version.freeze?.tag && (await this.sync.pendingTags(repoPath).catch((): string[] => [])).includes(version.freeze.tag),
@@ -801,6 +810,19 @@ export class VersionsService {
         problems.push({ code: 'COMPONENT_NOT_RELEASED', detail: `${dep} : ${depId}` })
       }
     }
+    // GH451 — une base en cours (planification) doit sortir avant : une release repose sur une lignée released ou
+    // abandonnée. Toute la lignée : une version en cours derrière une base abandonnée livrerait encore (`availableIds`).
+    if (version.basedOn) {
+      const byId = new Map((await this.list(repoPath)).map(v => [v.id, v]))
+      const seen = new Set([version.id])
+      for (let cur = byId.get(version.basedOn); cur && !seen.has(cur.id); cur = cur.basedOn ? byId.get(cur.basedOn) : undefined) {
+        seen.add(cur.id)
+        if (versionState(vt?.typeDef ?? null, cur.status) === 'in_progress') {
+          problems.push({ code: 'BASE_NOT_RELEASED', detail: `${cur.id} ${cur.title}` })
+          break
+        }
+      }
+    }
     const head = await this.sync.resolveHead(repoPath)
     const dirty: string[] = []
     for (const c of version.changes ?? []) {
@@ -886,10 +908,33 @@ export class VersionsService {
     return label
   }
 
-  private assertBasedOn(typeDef: ObjectTypeDefinition | null, versions: ProductVersion[], basedOn: string | null, self: string | null): string | null {
+  /**
+   * GH451 — bases possibles de `self` (null : version à créer) : versions released ou en cours du repo, ni `self`,
+   * ni une de ses descendantes (version dont la chaîne `basedOn` atteint `self`), pour qu'aucune boucle ne se forme.
+   */
+  private basedOnCandidates(typeDef: ObjectTypeDefinition | null, versions: ProductVersion[], self: string | null): ProductVersion[] {
+    const byId = new Map(versions.map(v => [v.id, v]))
+    const reachesSelf = (v: ProductVersion): boolean => {
+      const seen = new Set<string>()
+      for (let cur: ProductVersion | undefined = v; cur && !seen.has(cur.id); cur = cur.basedOn ? byId.get(cur.basedOn) : undefined) {
+        if (cur.id === self) return true
+        seen.add(cur.id)
+      }
+      return false
+    }
+    return versions.filter(v => versionState(typeDef, v.status) !== 'abandoned' && (self === null || !reachesSelf(v)))
+  }
+
+  /** `current` : base déjà enregistrée, acceptée telle quelle même si elle a changé d'état depuis (GH451). */
+  private assertBasedOn(
+    typeDef: ObjectTypeDefinition | null, versions: ProductVersion[], basedOn: string | null, self: string | null, current: string | null,
+  ): string | null {
     if (!basedOn) return null
+    if (basedOn === current) return basedOn
     const v = versions.find(x => x.id === basedOn)
-    if (!v || v.id === self || versionState(typeDef, v.status) !== 'released') throw new VersionError('VERSION_NOT_FOUND', `${basedOn} (version released attendue)`)
+    if (!v) throw new VersionError('VERSION_NOT_FOUND', `${basedOn} (introuvable)`)
+    if (versionState(typeDef, v.status) === 'abandoned') throw new VersionError('VERSION_NOT_FOUND', `${basedOn} (version abandonnée)`)
+    if (!this.basedOnCandidates(typeDef, versions, self).includes(v)) throw new VersionError('VERSION_NOT_FOUND', `${basedOn} (boucle de lignée)`)
     return basedOn
   }
 

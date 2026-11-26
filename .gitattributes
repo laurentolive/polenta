@@ -8,3 +8,6 @@ tasks/lessons.md merge=union
 
 # GH260 — sortie du générateur TanStack en LF : sinon il voit le fichier différent sous Windows (autocrlf) et le réécrit à chaque lancement.
 apps/desktop/src/renderer/routeTree.gen.ts text eol=lf
+
+# GH448 — scripts shell (shim askpass) : toujours en LF, y compris sous Windows avec autocrlf.
+*.sh text eol=lf

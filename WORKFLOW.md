@@ -8,7 +8,8 @@
   sur `main` local avant push (en aval). Entre les deux, design et sprints s'enchaînent sans
   arrêt — l'agent ne s'arrête que sur une vraie question (§ Règles communes)
 - L'humain teste dans son dossier principal, sur `main` local où le ticket vient d'être mergé —
-  jamais besoin de rouvrir le worktree du ticket
+  jamais besoin de rouvrir le worktree du ticket. Plusieurs tickets peuvent y attendre leur
+  validation avant le push (§ Validation finale, « File de validation »)
 - Le chat sert uniquement aux questions et validations — jamais aux livrables
 
 ## Méthode de travail
@@ -168,9 +169,10 @@ un ticket du milestone, lire `milestone-<X>` / « worktree du milestone » :
   ```
 - **Ticket** : worktree créé depuis la branche du milestone
   (`git worktree add ../mon-projet-GH{N} -b GH{N} milestone-<X>`), PR `--base milestone-<X>`.
-- **Validation finale** : mêmes préconditions et mêmes étapes, appliquées au worktree du milestone
-  (propre ; `rev-list origin/milestone-<X>..milestone-<X>` vide) : `git merge milestone-<X>` dans le
-  worktree du ticket, puis `merge --no-ff GH{N}` dans le worktree du milestone, non poussé.
+- **Validation finale** : mêmes préconditions, mêmes étapes et même file de validation, appliquées au
+  worktree du milestone (propre ; `origin/milestone-<X>` ancêtre de `milestone-<X>`) :
+  `git merge milestone-<X>` dans le worktree du ticket, puis `merge --no-ff GH{N}` dans le worktree du
+  milestone, non poussé.
 - **Après validation** : `git -C ../mon-projet-milestone-<X> push`, ajout de `Closes #{N}` au corps
   de la PR parapluie, puis **fermeture de l'issue à la main** (`gh issue close`) : `Closes` ne ferme
   une issue qu'au merge dans la branche par défaut. Nettoyage du worktree et de la branche du ticket
@@ -329,11 +331,15 @@ Commune aux features (après le dernier sprint) et aux bugs (après le correctif
 mergé dans le **dossier principal** (`mon-projet/`, branche `main`) **sans être poussé** :
 l'humain teste là où il travaille d'habitude, puis autorise le push.
 
+**Plusieurs tickets peuvent attendre ainsi.** Les merges locaux non poussés forment la **file de
+validation**, du plus ancien au plus récent :
+`git -C <dossier principal> log --first-parent --oneline origin/main..main` (règles : § File de validation).
+
 **Préconditions** (sinon : s'arrêter et le signaler à l'humain, ne rien forcer) :
 - le dossier principal est sur `main` et propre : `git -C <dossier principal> status --porcelain` vide
-- aucun autre ticket n'y attend déjà sa validation : `git -C <dossier principal> fetch` puis
-  `git -C <dossier principal> rev-list origin/main..main` vide — **un seul ticket à la fois** en
-  attente de push, sinon pousser l'un pousserait l'autre
+- la file se pose sur l'état poussé : `git -C <dossier principal> fetch` puis
+  `git -C <dossier principal> merge-base --is-ancestor origin/main main` réussit. Sinon (`origin/main`
+  a avancé pendant que des tickets attendent), ne pas fusionner de force : le signaler à l'humain
 
 **Ce qu'il fait :**
 
@@ -344,6 +350,8 @@ l'humain teste là où il travaille d'habitude, puis autorise le push.
    git merge main                 # dans ../mon-projet-GH{N}/
    ```
    S'il y a eu des changements : relance typecheck / lint / `pnpm test`, commit, `git push`.
+   Le `git merge main` ramène aussi les tickets déjà en file : le ticket est testé avec eux et
+   **dépend d'eux** (§ File de validation).
 2. Passe la PR en prêt : `gh pr ready GH{N}`
 3. Merge local dans le dossier principal, sans push :
    ```
@@ -361,29 +369,62 @@ l'humain teste là où il travaille d'habitude, puis autorise le push.
 - la liste des scénarios de `GH{N}-tests.md` (ou « comment vérifier » du bug) **qui ne sont pas
   couverts par les tests automatiques** — c'est ce que l'humain doit tester à la main
 - comment lancer l'appli depuis le dossier principal
+- **la file de validation** : un ticket par ligne (`#{N}`, hash du merge, « validé » ou « en
+  attente »), et la position du ticket présenté
 
 Réponses possibles :
 - **Validé** → suite complète si le ticket le requiert (**niveau 3**, § Niveaux de vérification),
   lancée dans le worktree pour laisser le dossier principal libre. Tant qu'il reste un échec lié au
   ticket, pas de push : l'agent corrige dans le worktree, repasse `--last-failed`, commit, push de
-  la branche, re-merge dans le dossier principal et re-présente le correctif à l'humain. Sinon, push
-  et nettoyage :
+  la branche, re-merge dans le dossier principal et re-présente le correctif à l'humain. Sinon, si
+  tous les tickets qui le précèdent dans la file sont validés (§ File de validation), push de la
+  file jusqu'à son merge, puis nettoyage :
   ```
-  git -C <dossier principal> push origin main     # PR marquée merged, issue fermée par « Closes #{N} »
+  git -C <dossier principal> push origin <hash du merge du ticket>:main   # PR marquée merged, issue fermée par « Closes #{N} »
   git worktree remove ../mon-projet-GH{N}
   git branch -d GH{N}
   git push origin --delete GH{N}
   ```
   Puis commentaire de clôture sur l'issue (`gh issue comment {N}`) : résumé, PR, hash du merge,
-  résultats (typecheck, lint, unitaires, e2e complets ou ciblés, tests ignorés).
+  résultats (typecheck, lint, unitaires, e2e complets ou ciblés, tests ignorés). Les tickets
+  précédents poussés avec lui sont clos et nettoyés de la même façon.
 - **Non conforme** → l'agent corrige **dans le worktree**, vérifie (§ Niveaux de vérification),
   commit, push de la branche, puis re-merge dans le dossier principal (nouveau `merge --no-ff`, même
   message) et re-présente. Pas de reset de `main` : le premier merge local reste, le correctif
-  s'ajoute par-dessus.
+  s'ajoute par-dessus (en fin de file).
 - **Divergence d'attente** (la spec n'était pas la bonne) → mettre à jour `specs/GH{N}.md` avec
   l'humain, puis reprendre au design ou au sprint concerné.
-- **Abandon** → uniquement sur demande explicite : `git -C <dossier principal> reset --hard origin/main`
-  (efface le merge local non poussé), la branche et la PR restent ouvertes.
+- **Abandon** → uniquement sur demande explicite, sans effacer les autres tickets de la file :
+  - ticket le plus récent de la file : `git -C <dossier principal> reset --hard <hash du merge>^1` ;
+  - ticket plus ancien : `git -C <dossier principal> revert -m 1 <hash du merge>` — les tickets
+    au-dessus contiennent son code, l'humain décide d'abord de leur sort ;
+  - toute la file : `git -C <dossier principal> reset --hard origin/main`, seulement si l'humain le
+    demande ainsi.
+
+  La branche et la PR restent ouvertes.
+
+## File de validation
+
+Plusieurs tickets mergés en local et non poussés attendent chacun leur « Validé ». Règles :
+
+1. **L'ordre de la file est un ordre de dépendance.** L'étape 1 fait `git merge main` : un ticket
+   mergé après d'autres contient leur code. Il ne se pousse donc pas sans eux, et sa PR montre aussi
+   leurs changements jusqu'à leur push.
+2. **Le push se fait par préfixe.** Un « Validé » sur le ticket en position k autorise
+   `git push origin <hash du merge de k>:main`, qui envoie aussi les tickets 1 à k-1 (ses ancêtres).
+   Si l'un d'eux n'est pas encore validé, l'agent ne pousse pas : il répond « #{M} attend sa
+   validation » ; les validations déjà données restent acquises. Les tickets après k restent en file.
+3. **Niveau 3 sur l'état exact à pousser**, une fois par push et non par ticket : dans le worktree du
+   ticket validé le plus récent du préfixe (mis à jour à l'étape 1, son arbre est celui de son merge, il
+   contient les tickets précédents). Requis si l'un des tickets du préfixe l'exige (§ Niveaux de
+   vérification).
+4. **Non conforme sur un ticket déjà empilé** : le correctif est re-mergé en fin de file (§ Réponses
+   possibles). Le préfixe qui précède le merge fautif reste poussable ; tout préfixe qui le contient
+   attend le correctif, donc inclut tout ce qui est au-dessus.
+5. **Un nouveau ticket peut être mergé** quand la file n'est pas vide : sa présentation nomme les
+   tickets dont il dépend (`dépend de #{M}, en attente de validation`).
+6. **Garde-fou inchangé** : jamais de push de `main` sans validation humaine explicite de chaque
+   ticket poussé.
 
 ---
 
@@ -421,7 +462,7 @@ correctif + comment vérifier.
 
 - **Chaque ticket a son propre worktree** `../mon-projet-GH{N}/` — ne jamais développer dans le dossier principal (on n'y fait que le merge local de la validation finale)
 - **Chaque ticket a sa pull request** `GH{N}` → `main`, ouverte en brouillon dès le premier commit (§ Branches et pull requests)
-- **Ne jamais pousser `main` sans validation humaine explicite** du ticket mergé localement (§ Validation finale) — un seul ticket à la fois en attente de push (même règle pour une branche de milestone, § Branche d'intégration de milestone)
+- **Ne jamais pousser `main` sans validation humaine explicite** de chaque ticket mergé localement qui part avec le push (§ Validation finale, « File de validation » : plusieurs tickets peuvent attendre, le push se fait par préfixe de la file ; même règle pour une branche de milestone, § Branche d'intégration de milestone)
 - **Stops** : seulement la spec et la validation finale. En dehors, l'agent ne s'arrête que pour
   une question qui change le résultat (ambiguïté de périmètre, spec contradictoire, choix
   structurant non tranché) — pas pour faire valider un livrable intermédiaire

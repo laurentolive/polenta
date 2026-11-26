@@ -209,7 +209,8 @@ export interface VersionPage {
   component: { name: string; label: string; repoPath: string; readonly: boolean }
   typeDef: ObjectTypeDefinition
   basedOn: VersionSummary | null
-  /** Versions du repo sélectionnables comme `basedOn` (released). */
+  /** Versions du repo sélectionnables comme `basedOn` (GH451 : released ou en cours, ni elle-même ni une descendante),
+   *  précédées de la base actuelle si elle n'en fait pas partie. */
   basedOnOptions: VersionSummary[]
   components: VersionPageComponent[]
   rows: VersionChangeRow[]
@@ -236,7 +237,7 @@ export type VersionErrorCode =
   | 'NO_VERSION_TYPE' | 'LABEL_TAKEN' | 'LABEL_EMPTY' | 'VERSION_LOCKED'
   | 'NOT_IN_PROGRESS' | 'RELEASE_REQUIRED' | 'TAG_INVALID' | 'TAG_EXISTS' | 'COMPONENT_NOT_RELEASED'
   | 'DIRTY_CHANGES' | 'READONLY_REPO' | 'VERSION_NOT_FOUND' | 'STATUS_UNKNOWN' | 'VERSION_ABANDONED'
-  | 'NOT_OWN_ELEMENT' | 'VERSION_HAS_VALIDATION' | 'VERSION_NOT_FROZEN'
+  | 'NOT_OWN_ELEMENT' | 'VERSION_HAS_VALIDATION' | 'VERSION_NOT_FROZEN' | 'BASE_NOT_RELEASED' | 'VERSION_IS_BASE'
 
 export interface VersionProblem {
   code: VersionErrorCode
@@ -252,6 +253,7 @@ export const VERSION_ERROR_CODES: readonly VersionErrorCode[] = [
   'NO_VERSION_TYPE', 'LABEL_TAKEN', 'LABEL_EMPTY', 'VERSION_LOCKED',
   'NOT_IN_PROGRESS', 'RELEASE_REQUIRED', 'TAG_INVALID', 'TAG_EXISTS', 'COMPONENT_NOT_RELEASED',
   'DIRTY_CHANGES', 'READONLY_REPO', 'VERSION_NOT_FOUND', 'STATUS_UNKNOWN', 'VERSION_ABANDONED', 'NOT_OWN_ELEMENT', 'VERSION_HAS_VALIDATION', 'VERSION_NOT_FROZEN',
+  'BASE_NOT_RELEASED', 'VERSION_IS_BASE',
 ]
 
 /** État d'une version selon les marques de son type. */

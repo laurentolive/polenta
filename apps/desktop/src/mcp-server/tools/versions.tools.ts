@@ -123,11 +123,11 @@ export function registerVersionTools(server: McpServer, container: McpContainer)
       title: 'Create version',
       description:
         'Crée une version en cours du composant (statut initial du type version). `title` = label, unique dans le ' +
-        'composant ; `basedOn` = version précédente ; `components` = versions retenues des dépendances. Les ' +
+        'composant ; `basedOn` = version précédente (released ou en cours — planification —, ni abandonnée ni descendante ; absent : dernière released) ; `components` = versions retenues des dépendances. Les ' +
         'changements s’ajoutent ensuite par `include_in_version` (cf. `get_version_backlog`).',
       inputSchema: {
         title: z.string().min(1).max(200),
-        basedOn: z.string().nullable().optional().describe('ID de la version précédente'),
+        basedOn: z.string().nullable().optional().describe('ID de la version précédente (released ou en cours)'),
         components: componentsSchema,
         fields: fieldsSchema,
         component: componentSchema,
@@ -161,7 +161,7 @@ export function registerVersionTools(server: McpServer, container: McpContainer)
       inputSchema: {
         ...idInput,
         title: z.string().min(1).max(200).optional(),
-        basedOn: z.string().nullable().optional().describe('ID de la version précédente ; null : aucune'),
+        basedOn: z.string().nullable().optional().describe('ID de la version précédente (released ou en cours, ni abandonnée ni descendante) ; null : aucune'),
         components: componentsSchema,
         fields: fieldsSchema,
         status: z.string().optional().describe('Statut du type version'),

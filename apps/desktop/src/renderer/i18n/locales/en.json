@@ -2668,7 +2668,9 @@
       "VERSION_ABANDONED": "Abandoned version: {{detail}}",
       "NOT_OWN_ELEMENT": "Element of another component: {{detail}}",
       "VERSION_HAS_VALIDATION": "This version has a validation: {{detail}}",
-      "VERSION_NOT_FROZEN": "Version abandoned before any release: there is no frozen state to read ({{detail}})"
+      "VERSION_NOT_FROZEN": "Version abandoned before any release: there is no frozen state to read ({{detail}})",
+      "BASE_NOT_RELEASED": "Base version not released yet: {{detail}}",
+      "VERSION_IS_BASE": "Base of {{detail}}: first change the base of the in-progress versions (a released or abandoned version keeps its own)"
     },
     "info": {
       "title": "Information"

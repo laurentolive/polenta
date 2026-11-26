@@ -65,7 +65,7 @@ export function VersionInfoSection({ page, repoPath, projectId, editable, onUpda
             {editable ? (
               <select value={version.basedOn ?? ''} onChange={e => void onUpdate({ basedOn: e.target.value || null })} className="input-field text-xs max-w-xs" data-testid="version-based-on">
                 <option value="">{t('versions.none')}</option>
-                {page.basedOnOptions.map(v => <option key={v.id} value={v.id}>{v.title} ({v.id})</option>)}
+                {page.basedOnOptions.map(v => <option key={v.id} value={v.id}>{v.title} ({v.id}){v.state !== 'released' ? ` — ${t(`versions.state.${v.state}`)}` : ''}</option>)}
               </select>
             ) : page.basedOn ? (
               <span>

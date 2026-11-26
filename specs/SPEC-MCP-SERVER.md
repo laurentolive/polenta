@@ -57,14 +57,18 @@ sous `tsx` échoue (« marque non injectée »).
 | Paramètre | CLI | Variable d'env | Obligatoire | Comportement si absent |
 |---|---|---|---|---|
 | Repo produit ciblé | `--repo <path>` | `POLENTA_REPO_PATH` | Oui | `process.exit(1)`, message sur **stderr uniquement** (jamais stdout — canal réservé au protocole MCP) |
-| Racine workspace multi-repo | `--workspace <path>` | `POLENTA_WORKSPACE_DIR` | Non | Mode mono-repo (cf. §2.3) ; si fourni mais introuvable, avertissement stderr + repli mono-repo (pas un échec) |
+| Racine workspace multi-repo | `--workspace <path>` | `POLENTA_WORKSPACE_DIR` | Non | Détection (GH447, §2.3) : dossier parent dont `.polenta/workspace.yaml` a pour `rootRepo` ce repo (ou `selfContained` sur le repo lui-même) ; sinon mode mono-repo. Si fourni mais introuvable, avertissement stderr + repli mono-repo (pas un échec) |
 | Utilisateur Polenta (GH18) | `--user <login>` | `POLENTA_USER` | Non | Scope **partagé** seulement pour les tools de la vue Suivi (§4.5). Valeur hors `^[A-Za-z0-9][A-Za-z0-9._-]*$` ou contenant `..` → `process.exit(1)`, message stderr. Même login que l'app (nom du fichier `.{login}.pref`). `.mcp.json` généré par l'app ne le pose pas. |
 
 CLI prioritaire si les deux mécanismes sont fournis pour un même paramètre.
 
 ### 2.3 Mode mono-repo (workspace absent)
 
-Sans `--workspace`, `resolveComponentRepoPath()` ne route jamais vers un vrai
+GH447 — le `.mcp.json` généré ne passe que `--repo .` : sans `--workspace`, le serveur reconnaît le
+workspace dont ce repo est la racine (`mcp-server/workspace-detect.ts`) ; le mode mono-repo ne
+s'applique qu'à un repo hors workspace.
+
+Sans workspace, `resolveComponentRepoPath()` ne route jamais vers un vrai
 composant **en repo séparé** (nom de montage d'une dépendance de `polenta-repo.yaml`) — seuls `root`
 et les composants **locaux** (T113/T123, même repo, imbriqués ou non) sont correctement gérés. Avec
 `--workspace`, le serveur lit le cache existant
@@ -185,6 +189,30 @@ métier **attendues** (prefix pris, nœud readonly, champ manquant…) reviennen
 `{ isError: true, content: [{ type: 'text', text: <message> }] }` (`errorToolResult()`)
 — jamais une exception JS non catchée. Les erreurs **inattendues** (FS, YAML corrompu)
 remontent telles quelles, traduites par le SDK MCP en erreur de protocole côté client.
+
+**Composants en repo séparé (GH447, `tools/workspace-scope.ts`).** En workspace, un composant en
+repo séparé est traité comme l'application le fait quand on le sélectionne : un repo autonome, dont
+les objets portent `root::<type>` (relatif à son schéma) et s'écrivent avec le chemin de ce repo
+(conteneur `scoped`). Vers l'agent, ses références sont présentées sous le nom de montage
+(`<composant>::<type>`, `<composant>::<nœud local>::<type>`) :
+
+- `get_schema` : `workspaceComponents` (noms de montage) ; `component` → schéma de ce composant.
+- `list_requirements` / `list_tests` : objets de tous les repos du workspace, triés par ID ; un
+  objet de composant porte `component` et son `objectTypeRef` sous le nom de montage (filtre `type`
+  sur cette forme).
+- `bulk_import_requirements` / `bulk_import_tests` : une entrée `<composant>::<type>` est importée
+  dans le repo du composant (schéma, préfixe, numérotation sur ses fichiers et pierres tombales,
+  rangement `folder`), écrite `root::<type>` ; les indices du résultat restent ceux de la requête.
+  En workspace, un préfixe qui n'est ni un nœud du schéma racine ni un composant est refusé
+  (`objectTypeRef inconnu`).
+- `update_requirements` / `update_tests`, `delete_requirements` / `delete_tests`, `get_history`
+  (exigence, test) : l'ID est cherché dans tous les repos (racine d'abord, index relus une fois si
+  introuvable) et traité dans le repo qui le porte, selon son schéma.
+- Composant en lecture seule (HEAD détachée, ou monté sous un nœud `readonly`) : écriture refusée
+  (`composant '<nom>' en lecture seule`, `NODE_READONLY` pour la suppression), aperçu compris.
+
+Hors périmètre : mutation du schéma d'un composant, campagnes (`list_campaigns`,
+`bulk_import_campaigns`) — repo ouvert seulement.
 
 ### 4.1 Lecture (`tools/schema.tools.ts`, `tools/read.tools.ts`)
 
@@ -727,6 +755,12 @@ Pour chacun des deux fichiers, `ensureAgentFiles` (factorisé dans
    - **Absent** (fichier pré-T122/T106, ou créé/édité à la main sans le marqueur) ou
      **périmé** (marqueur < constante courante) → régénération complète (réécriture
      intégrale du fichier).
+3. GH447 — `.mcp.json` est aussi **périmé** quand un chemin absolu de sa commande (`command`, ou
+   un élément d'`args`) n'existe pas sur ce poste (`extractMcpJsonAbsolutePaths`,
+   `WorkspaceService.mcpJsonPathMissing`) : fichier écrit sur un autre poste ou par un ancien build
+   (dossier d'extraction `%TEMP%` d'un exécutable portable). Il est alors proposé par la mise en
+   conformité (`pendingAgentFiles`, GH336). Le fichier étant commité, deux postes aux chemins
+   d'installation différents se le proposent l'un l'autre (choix accepté, #447).
 
 **Pas une comparaison de contenu byte à byte** : si l'utilisateur a ajouté des notes
 personnelles en bas d'`AGENTS.md`, elles ne sont PAS effacées tant que la version du

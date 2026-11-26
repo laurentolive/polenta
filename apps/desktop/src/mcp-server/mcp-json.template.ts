@@ -57,3 +57,20 @@ export function extractMcpJsonVersion(raw: string): number | undefined {
     return undefined
   }
 }
+
+/**
+ * GH447 — chemins absolus de la commande de lancement (`command` et `args` de `mcpServers.polenta`).
+ * Le fichier est commité mais la commande est propre au poste qui l'a écrit (exécutable installé, ou
+ * dossier d'extraction temporaire d'un ancien build portable) : un chemin absent sur ce poste rend le
+ * fichier périmé. Les arguments relatifs (`.`) et les options sont ignorés.
+ */
+export function extractMcpJsonAbsolutePaths(raw: string, isAbsolute: (p: string) => boolean): string[] {
+  try {
+    const parsed = JSON.parse(raw) as { mcpServers?: { polenta?: { command?: unknown; args?: unknown } } }
+    const server = parsed.mcpServers?.polenta
+    const values = [server?.command, ...(Array.isArray(server?.args) ? server.args : [])]
+    return values.filter((v): v is string => typeof v === 'string' && isAbsolute(v))
+  } catch {
+    return []
+  }
+}

@@ -36,6 +36,15 @@ async function navigate(p: Page, url: string) {
   await p.waitForLoadState('networkidle')
 }
 
+/** GH442 — « Reportée depuis » n'est plus visible par défaut : absente à l'ouverture, affichée par 👁 Colonnes. */
+async function showCarriedColumn(p: Page) {
+  await expect(p.getByTestId('campaign-entries-header-carried')).toHaveCount(0)
+  await p.getByTestId('campaign-entries-columns').click()
+  await p.getByTestId('campaign-entries-column-carried').click()
+  await p.keyboard.press('Escape')
+  await expect(p.getByTestId('campaign-entries-header-carried')).toHaveCount(1)
+}
+
 async function openCarryTab(p: Page, sourceId: string) {
   await p.getByRole('tab', { name: 'Depuis une campagne' }).click()
   await p.getByTestId('carry-sources').getByRole('checkbox', { name: sourceId }).check()
@@ -94,6 +103,7 @@ test('U1–U4 — ajout depuis une campagne clôturée : filtre, coches conserv�
     [A, 'pending', { campaignId: source.id, entryId: `${A}-1` }],
     [B, 'pending', { campaignId: source.id, entryId: `${B}-1` }],
   ].sort())
+  await showCarriedColumn(p)
   await expect(carryLinks(p, source.id)).toHaveCount(2)
 
   // Source inchangée.

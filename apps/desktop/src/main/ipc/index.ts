@@ -775,6 +775,10 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('campaigns:preview-params',
     (_e, repoPath: string, source: { campaignId?: string }, testCaseIds: string[], workspaceDir?: string) =>
       c.campaigns.previewParams(repoPath, source, testCaseIds, workspaceDir))
+  // GH442 — exigences affichées de chaque entrée (grille, exports).
+  r.handle('campaigns:entry-requirements',
+    (_e, repoPath: string, campaignId: string, workspaceDir?: string) =>
+      c.campaigns.entryRequirements(repoPath, campaignId, workspaceDir))
   r.handle('campaigns:update-run-params',
     (_e, repoPath: string, campaignId: string, entryId: string, paramValues: Record<string, string>) =>
       c.campaigns.updateRunParams(repoPath, campaignId, entryId, paramValues))

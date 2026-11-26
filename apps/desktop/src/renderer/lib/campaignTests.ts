@@ -1,5 +1,9 @@
 import type { TestCampaign, TestCase, CampaignTestRun } from '@polenta/types'
+import { requirementIdsText } from '@polenta/types'
 import { substituteTestParams } from './testParams'
+
+/** GH442 — suite « · R1, R2 » d'une ligne d'entrée des impressions (cahier, rapport) ; vide sans exigence. */
+export const requirementSuffix = (ids: readonly string[]): string => (ids.length > 0 ? ` · ${requirementIdsText(ids)}` : '')
 
 export interface ResolvedCampaignRun {
   run: CampaignTestRun

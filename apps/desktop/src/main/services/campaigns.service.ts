@@ -1,11 +1,11 @@
 ﻿import * as path from 'path'
-import type { TestCampaign, CampaignStatus, CampaignTestRun, RemovedCampaignTestRun, TestRunResult, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection, ProjectSchema } from '@polenta/types'
+import type { TestCampaign, CampaignStatus, CampaignTestRun, RemovedCampaignTestRun, TestRunResult, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection, ProjectSchema, CampaignEntryRequirements } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
 import type { SchemaService } from './schema.service'
 import type { HistoryService } from './history.service'
-import { REQ_REF_PREFIX, carryKey, convertFieldValue, extractTestReqRefs, flattenSystemNodes, isApprovalStatus, renameFieldKeys } from '@polenta/types'
+import { REQ_REF_PREFIX, carryKey, convertFieldValue, entryRequirementIds, extractTestReqRefs, flattenSystemNodes, isApprovalStatus, renameFieldKeys } from '@polenta/types'
 import { snapshotOf } from './campaign-snapshot.util'
 import type { FieldRename, FieldRenameResult, HistoryCarrier, ObjectHistory } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
@@ -336,6 +336,19 @@ export class CampaignsService {
     const snapshots = await this.snapshotsFor(repoPath, testCaseIds)
     const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
     return [...previews.values()]
+  }
+
+  /**
+   * GH442 — exigences affichées de chaque entrée de la campagne (colonne « Exigence » de la grille,
+   * exports, classeur d'exécution) : l'exigence de l'instance si elle en a une, sinon les exigences
+   * liées au test à l'état courant. Rien n'est figé dans l'entrée.
+   */
+  async entryRequirements(repoPath: string, campaignId: string, workspaceDir?: string): Promise<CampaignEntryRequirements> {
+    const { runs } = await this.get(repoPath, campaignId)
+    // Seules les entrées sans exigence propre ont besoin des liens du test.
+    const needCovered = [...new Set(runs.filter(r => !r.requirementId).map(r => r.testCaseId))]
+    const covered = (needCovered.length > 0 && (await this.parameters?.coveredRequirementIds(repoPath, needCovered, { workspaceDir }))) || new Map<string, string[]>()
+    return Object.fromEntries(runs.map(run => [run.entryId, entryRequirementIds(run, covered.get(run.testCaseId))]))
   }
 
   async updateRunParams(

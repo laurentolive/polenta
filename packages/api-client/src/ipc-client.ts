@@ -374,6 +374,7 @@ export function createIpcClient(
         invoke('campaigns:duplicate-test', p, campaignId, testCaseId, paramValues, workspaceDir, requirementId),
       previewParams: (p, source, testCaseIds, workspaceDir) =>
         invoke('campaigns:preview-params', p, source, testCaseIds, workspaceDir),
+      entryRequirements: (p, campaignId, workspaceDir) => invoke('campaigns:entry-requirements', p, campaignId, workspaceDir),
       updateRunParams: (p, campaignId, entryId, paramValues) =>
         invoke('campaigns:update-run-params', p, campaignId, entryId, paramValues),
       updateRunInputs: (p, campaignId, entryId, inputs) =>

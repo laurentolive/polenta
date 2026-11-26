@@ -1,5 +1,6 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
 import * as fsP from 'fs/promises'
+import { entryRequirementIds, requirementIdsText } from '@polenta/types'
 import type { CampaignExportPayload, TestRunStatus } from '@polenta/types'
 
 // Copie locale plutôt qu'un import de valeur depuis `@polenta/types` (qui exporte la même table
@@ -31,8 +32,8 @@ export async function exportCampaignPlanDocx(
     }),
   ]
 
-  for (const { run, test: t } of entries) {
-    children.push(new Paragraph({ text: entryHeading(t, run.requirementId), heading: HeadingLevel.HEADING_2 }))
+  for (const { run, test: t, requirements } of entries) {
+    children.push(new Paragraph({ text: entryHeading(t, requirements ?? entryRequirementIds(run)), heading: HeadingLevel.HEADING_2 }))
     children.push(new Paragraph({
       children: [new TextRun({ text: `Type : ${t.objectTypeRef}    Statut : ${t.status}`, italics: true })],
     }))
@@ -56,9 +57,9 @@ export async function exportCampaignReportDocx(
     }),
   ]
 
-  for (const { run, test: t } of entries) {
+  for (const { run, test: t, requirements } of entries) {
     const status = run.status
-    children.push(new Paragraph({ text: entryHeading(t, run.requirementId), heading: HeadingLevel.HEADING_2 }))
+    children.push(new Paragraph({ text: entryHeading(t, requirements ?? entryRequirementIds(run)), heading: HeadingLevel.HEADING_2 }))
     children.push(new Paragraph({
       children: [new TextRun({ text: `Résultat : ${TEST_RUN_STATUS_LABELS[status]}`, bold: true })],
     }))
@@ -72,9 +73,9 @@ export async function exportCampaignReportDocx(
   await writeDoc(children, destPath)
 }
 
-/** Titre d'une instance ; T179 — suivi de l'exigence pour laquelle elle a été générée. */
-function entryHeading(t: { id: string; title: string }, requirementId: string | undefined): string {
-  return `${t.id} — ${t.title}${requirementId ? ` · ${requirementId}` : ''}`
+/** Titre d'une instance ; GH442 — suivi de ses exigences affichées (comme la grille de la campagne). */
+function entryHeading(t: { id: string; title: string }, requirementIds: readonly string[]): string {
+  return `${t.id} — ${t.title}${requirementIds.length > 0 ? ` · ${requirementIdsText(requirementIds)}` : ''}`
 }
 
 async function writeDoc(children: Paragraph[], destPath: string): Promise<void> {

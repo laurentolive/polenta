@@ -22,6 +22,7 @@ import { NotApprovedRunsBanner } from '../components/campaign/NotApproved'
 import { CampaignEntriesGrid } from '../components/campaign/CampaignEntriesGrid'
 import { TestPickerModal, EMPTY_PICKER_RESULT, type PickerResult } from '../components/campaign/TestPickerModal'
 import { useParamPreview } from '../hooks/useParamPreview'
+import { useEntryRequirements } from '../hooks/useEntryRequirements'
 import { decodeProjectId } from '../lib/projectId'
 import { useTabDraft } from '../lib/tabDraft'
 import { UnresolvedParamsBanner } from '../components/UnresolvedParamsBanner'
@@ -128,6 +129,15 @@ function CampaignDetailPage() {
   const { previews: paramPreviews } = useParamPreview(
     repoPath, { campaignId }, tests.map(t => t.id), workspaceDir, !!repoPath && tests.length > 0,
   )
+  // GH442 — colonne « Exigence » : exigence de l'instance, sinon exigences couvertes par le test.
+  const { data: entryRequirements } = useEntryRequirements(repoPath, campaign, workspaceDir || undefined)
+  // Exports : exigences relues au clic (liens modifiés depuis l'affichage), même calcul que la grille. Colonne
+  // secondaire : une lecture impossible ne bloque pas l'export, l'exigence de l'instance reste affichée.
+  const exportEntries = async () => {
+    const requirements = await api.campaigns.entryRequirements(repoPath, campaignId, workspaceDir || undefined)
+      .catch((): Record<string, string[]> => ({}))
+    return resolveCampaignRuns(campaign!, tests).map(e => ({ ...e, requirements: requirements[e.run.entryId] }))
+  }
 
   const closeMutation = useMutation({
     mutationFn: (status: 'completed' | 'abandoned') =>
@@ -313,8 +323,8 @@ function CampaignDetailPage() {
                   const headSha = await api.git.headSha(repoPath)
                   return campaignExportBaseName(campaign.component || 'projet', campaign.title, headSha, 'plan')
                 }}
-                getPayload={() => ({ campaign, entries: resolveCampaignRuns(campaign, tests) })}
-                getPrintParams={() => ({ repoPath, campaignId })}
+                getPayload={async () => ({ campaign, entries: await exportEntries() })}
+                getPrintParams={() => ({ repoPath, campaignId, workspaceDir })}
               />
             )}
             {/* Rapport de campagne : seulement si au moins un test a été exécuté (cf. specs/T43.md
@@ -329,8 +339,8 @@ function CampaignDetailPage() {
                   const headSha = await api.git.headSha(repoPath)
                   return campaignExportBaseName(campaign.component || 'projet', campaign.title, headSha, 'report')
                 }}
-                getPayload={() => ({ campaign, entries: resolveCampaignRuns(campaign, tests) })}
-                getPrintParams={() => ({ repoPath, campaignId })}
+                getPayload={async () => ({ campaign, entries: await exportEntries() })}
+                getPrintParams={() => ({ repoPath, campaignId, workspaceDir })}
               />
             )}
             {/* GH36 — exécution hors outil (export du classeur / import des résultats) : pas sur une
@@ -477,6 +487,7 @@ function CampaignDetailPage() {
           repoPath={repoPath}
           testMap={testMap}
           paramPreviews={paramPreviews}
+          entryRequirements={entryRequirements}
           schema={schema}
           isApproved={isApproved}
           statusFilter={statusFilter}

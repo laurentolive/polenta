@@ -2077,6 +2077,14 @@
     "readOnlyProject": "Vous avez un accès en lecture seule à ce projet ({{repo}}) : vous pouvez consulter mais pas publier."
   },
   "history": {
+    "commits": {
+      "menu": "Historique",
+      "title": "Historique Git — {{title}}",
+      "none": "Aucun commit : le fichier de cet objet n'a jamais été commité.",
+      "selectOne": "Sélectionnez un commit pour voir le diff du fichier.",
+      "error": "Lecture de l'historique impossible.",
+      "multiDisabled": "Sélectionnez une seule ligne pour voir son historique"
+    },
     "title": "Historique",
     "status": "Statut",
     "empty": "Aucun historique",

@@ -45,7 +45,7 @@ async function toggle(field: string) {
   await s.page.getByTitle('Configurer les colonnes').click()
   const modal = s.page.locator('.fixed.inset-0.z-50')
   await modal.getByTestId(`field-config-field-${field}`).click()
-  await modal.click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
 }
 
 /** Libellés des en-têtes de la Vue tableau, dans l'ordre affiché. */

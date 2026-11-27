@@ -94,7 +94,8 @@ test('E1–E4 — panneau ⚙️, colonne ajoutée sans perdre la sélection, re
   linkKey = (await linkBox.getAttribute('data-testid'))!.replace('field-config-field-', '')
 
   // E3 — sélection conservée quand une colonne est ajoutée.
-  await panel.click({ position: { x: 5, y: 5 } }) // clic hors du panneau : fermé
+  // Clic hors du panneau : fermé. Le conteneur du panneau ne reçoit pas les clics (GH465), on clique la vue.
+  await p.mouse.click(5, 5)
   await expect(panel).toHaveCount(0)
   const first = tests.find(tc => tc.objectTypeRef === typeA)!
   await p.locator('tr', { hasText: first.id }).getByRole('checkbox').click()
@@ -137,7 +138,7 @@ test('E6 — une modification de la Vue Excel conserve les colonnes du sélecteu
   await p.waitForLoadState('networkidle')
   await p.getByTitle('Configurer les colonnes').click()
   await p.getByTestId('field-config-field-createdAt').click()
-  await p.getByTestId('field-config-panel').click({ position: { x: 5, y: 5 } })
+  await p.mouse.click(5, 5) // clic hors du panneau : fermé (GH465, le conteneur ne reçoit pas les clics)
   await expect.poll(async () => (await getPref(typeA))?.excel).toEqual([...EXCEL, 'createdAt'])
   expect((await getPref(typeA))?.picker).toEqual([...EXCEL, linkKey])
 

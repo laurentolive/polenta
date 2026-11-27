@@ -24,10 +24,10 @@ Design : `specs/GH52-design.md` § 2. Scénarios : `specs/GH52-tests.md` S1.
   et aucun cas réel de `localhost` pour un poste client.
 - **Lien vers les notes** : le design ne le traitait pas. Ajouté : le lien GitHub serait inaccessible au client.
 
-## Point ouvert (non traité)
+## Point clos
 
-- `BRAND.update` absent (autre marque) : la vérification est toujours court-circuitée (`scheduleStartupCheck`). Un flux configuré
-  n'active donc rien pour une marque sans source. Décision à prendre si une autre marque a besoin du flux.
+- `BRAND.update` absent (autre marque) : sans objet. Décision de l'humain (2026-11-27) : la gestion de plusieurs marques
+  n'est plus d'actualité ; la vérification reste court-circuitée sans source de marque, comme avant.
 
 ## Tests lancés
 

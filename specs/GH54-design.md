@@ -43,6 +43,10 @@ Dans `web-server/web-handlers.ts`, à côté de `web:drawio-import` :
   `uploads.remove(uploadId)` dans un `finally` (le fichier envoyé n'est jamais gardé).
 - `web:export-template-delete(relPath)` → `deleteFile`.
 
+`app.ts` : `docx` est ajouté à la liste des extensions acceptées par `POST /upload` (`UPLOAD_EXTENSIONS`,
+jusqu'ici images, `drawio` et `xlsx`). Oubli de la conception, relevé à l'e2e (415). Le contenu n'est contrôlé
+que par le canal qui le lit (ZIP et partie principale, §1.1).
+
 `channel-policy.ts` : les deux entrées dans `WEB_ONLY_CHANNELS`. Pas d'argument de dépôt (`ROOT_ARGS`) : la
 bibliothèque est celle de l'utilisateur, pas celle d'un repo. Les canaux desktop (`export-templates:*`) ne
 changent pas.

@@ -137,9 +137,13 @@ export function registerWebHandlers(r: HandlerRegistry, ctx: WebHandlerContext):
   })
   // GH54 — gabarit d'export envoyé dans la bibliothèque personnelle de l'utilisateur. Le fichier envoyé
   // est toujours supprimé, réussite ou refus.
-  handle('web:export-template-import', async (_e, format: TemplateExportFormat, uploadId: string, replace: boolean) => {
+  handle('web:export-template-import', async (_e, format: TemplateExportFormat, uploadId: string, replace: boolean, expectedName: string | null) => {
     const file = await uploaded(uploadId)
     try {
+      // Remplacement d'une ligne précise : le fichier doit porter le nom de cette ligne.
+      if (typeof expectedName === 'string' && file.fileName !== expectedName) {
+        return { status: 'refused' as const, message: `Pour remplacer « ${expectedName} », choisissez un fichier portant ce nom.` }
+      }
       return await c.exportTemplateLibrary.importFile(format, file.filePath, file.fileName, replace === true)
     } finally {
       await uploads.remove(uploadId)

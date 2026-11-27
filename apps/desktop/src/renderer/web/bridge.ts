@@ -152,6 +152,12 @@ const adapters: Record<string, (...args: unknown[]) => Promise<unknown>> = {
     if (!file) return { status: 'canceled' }
     return rpc('web:drawio-import', [repoPath, await upload(file)])
   },
+  // GH54 — gabarit d'export : sélecteur du format demandé, envoi, puis ajout à la bibliothèque personnelle.
+  'export-templates:import': async (format, replace, expectedName) => {
+    const file = await pickFile(format === 'xlsx' ? '.xlsx' : '.docx')
+    if (!file) return { status: 'canceled' }
+    return rpc('web:export-template-import', [format, await upload(file), replace === true, typeof expectedName === 'string' ? expectedName : null])
+  },
   'campaigns:execution-sheet-preview': async (repoPath, campaignId, workspaceDir) => {
     const file = await pickFile('.xlsx')
     if (!file) return { canceled: true }

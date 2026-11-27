@@ -75,6 +75,7 @@ import type { Issue, RequirementReflectionsList, TransitionCheck, Validation, Va
   ExportKind,
   ExportFormat,
   ExportTemplateListResult,
+  TemplateImportResult,
   TemplateExportFormat,
   ExportResult,
   ExecutionSheetLocale,
@@ -1151,6 +1152,12 @@ export interface ApiClient {
     /** GH34 — copie les gabarits d'exemple livrés avec l'application dans la bibliothèque
      *  (sous-dossier dédié, fichiers existants jamais écrasés) ; renvoie le nombre de fichiers copiés. */
     installExampleTemplates(): Promise<{ folder: string; copied: number }>
+    /** GH54 (web) — ajoute un gabarit à la bibliothèque personnelle : sélecteur de fichier, puis envoi.
+     *  `replace` : remplace un gabarit de même nom (sinon `exists`). `expectedName` : pour remplacer une
+     *  ligne précise, le fichier choisi doit porter ce nom (sinon `refused`). */
+    importTemplate(format: TemplateExportFormat, replace: boolean, expectedName?: string): Promise<TemplateImportResult>
+    /** GH54 (web) — supprime un gabarit de la bibliothèque personnelle. */
+    deleteTemplate(relPath: string): Promise<{ status: 'ok' } | { status: 'refused'; message: string }>
     /** GH34 — depuis la route `/print/drawio-snapshot` : diagramme `index` rendu (rectangle en px
      *  CSS, `null` si échec), ou fin du rendu (`index = -1`). N'a d'effet que dans la fenêtre
      *  cachée de capture d'un export Word par gabarit. */

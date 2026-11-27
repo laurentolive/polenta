@@ -14,13 +14,15 @@ test.beforeEach(() => s.allowConsoleErrors(/status of 404/))
 
 const WORK = 'dev-gh468'
 const FILES = Array.from({ length: 90 }, (_, i) => `gh468/fichier-${String(i + 1).padStart(2, '0')}.txt`)
+const GRAPH_WORK = 'dev-gh468-arbre'
+const GRAPH_FILES = Array.from({ length: 90 }, (_, i) => `gh468-arbre/fichier-${String(i + 1).padStart(2, '0')}.txt`)
 
 interface IntegrationState { currentBranch: string; configured: string }
 
 const state = () => s.invoke<IntegrationState>('integration:state', s.project.localPath)
 
-function writeAll(content: string) {
-  for (const rel of FILES) {
+function writeAll(content: string, files: string[] = FILES) {
+  for (const rel of files) {
     const full = path.join(s.project.localPath, rel)
     fs.mkdirSync(path.dirname(full), { recursive: true })
     fs.writeFileSync(full, content)
@@ -72,4 +74,39 @@ test('GH468-1 — 90 fichiers en conflit : la popup tient dans la fenêtre et «
   await resolve.click()
   await expect(s.page.getByTestId('merge-files-panel')).toContainText('fichier-01.txt', { timeout: 60_000 })
   await s.shot('gh468-1-resolution')
+})
+
+test('GH468-2 — fusion depuis le clic droit sur la branche (vue arbre de versions) : le bouton reste dans la fenêtre', async () => {
+  const { localPath } = s.project
+  await s.page.setViewportSize({ width: 1280, height: 720 })
+
+  // Même conflit, fusion lancée depuis le menu contextuel de la branche dans l'arbre.
+  const { currentBranch, configured } = await state()
+  if (currentBranch !== configured) await s.invoke('sync:checkout-branch', localPath, configured)
+  await s.invoke('sync:create-branch', localPath, GRAPH_WORK)
+  await s.invoke('sync:checkout-branch', localPath, GRAPH_WORK)
+  writeAll('mon travail\n', GRAPH_FILES)
+  await commit('GH468 arbre mon travail')
+  await s.invoke('sync:checkout-branch', localPath, configured)
+  writeAll("la version de l'équipe\n", GRAPH_FILES)
+  await commit('GH468 arbre équipe')
+
+  await s.page.evaluate(u => { history.pushState({}, '', u); dispatchEvent(new PopStateEvent('popstate')) },
+    s.projectUrl('/graph', { repoPath: localPath }))
+  await s.page.waitForLoadState('networkidle')
+  await s.page.getByText(GRAPH_WORK, { exact: true }).first().click({ button: 'right' })
+  await s.page.getByRole('button', { name: 'Merger branche dans…' }).click()
+  await s.page.getByRole('button', { name: configured, exact: true }).click()
+
+  const resolve = s.page.getByRole('button', { name: 'Résoudre les conflits', exact: true })
+  await expect(resolve).toBeVisible({ timeout: 60_000 })
+  const viewport = s.page.viewportSize()!
+  const box = await resolve.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.y).toBeGreaterThanOrEqual(0)
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
+  await s.shot('gh468-2-menu')
+
+  await resolve.click()
+  await expect(s.page.getByTestId('merge-files-panel')).toContainText('fichier-01.txt', { timeout: 60_000 })
 })

@@ -318,15 +318,17 @@ function GraphContextMenu({
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  // Adjust position to avoid overflow
+  // Adjust position to avoid overflow. GH468 — recalculée aussi quand le contenu change (erreur de
+  // fusion, panneau, confirmation) : le menu grandit après l'ouverture, et une position calculée
+  // seulement à l'ouverture le laissait sortir de la fenêtre.
   const [pos, setPos] = useState({ left: state.x, top: state.y })
   useLayoutEffect(() => {
     if (!ref.current) return
     const rect = ref.current.getBoundingClientRect()
-    const left = Math.min(state.x, window.innerWidth  - rect.width  - 8)
-    const top  = Math.min(state.y, window.innerHeight - rect.height - 8)
-    setPos({ left: Math.max(8, left), top: Math.max(8, top) })
-  }, [state.x, state.y])
+    const left = Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8))
+    const top = Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8))
+    setPos(prev => (prev.left === left && prev.top === top ? prev : { left, top }))
+  }, [state.x, state.y, target, selectorMode, inlinePrompt, mutationError, mergeConflict, pendingConfirm])
 
   // ── mutations ───────────────────────────────────────────────────────────────
 
@@ -582,7 +584,7 @@ function GraphContextMenu({
           className="w-full border border-edge rounded px-2 py-1 text-xs bg-surface text-ink outline-none focus:border-status-info mb-2"
         />
         {mutationError && (
-          <p className="text-status-danger text-xs mb-2 whitespace-pre-line">{mutationError}</p>
+          <p className="text-status-danger text-xs mb-2 whitespace-pre-line max-h-40 overflow-y-auto">{mutationError}</p>
         )}
         {(createBranchAtMut.isPending || createTagMut.isPending) && (
           <div className="flex items-center gap-1.5 text-xs text-ink-3 mb-2">
@@ -616,11 +618,13 @@ function GraphContextMenu({
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-56 text-xs"
+      // GH468 — menu borné à la fenêtre, et message d'erreur défilant : « Résoudre les conflits » (en
+      // dessous) reste visible même avec une liste de plusieurs dizaines de fichiers.
+      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-56 text-xs max-h-[calc(100vh-1rem)] overflow-y-auto"
       style={pos}
     >
       {mutationError && (
-        <p className="px-3 py-1.5 text-status-danger leading-snug whitespace-pre-line">{mutationError}</p>
+        <p className="px-3 py-1.5 text-status-danger leading-snug whitespace-pre-line max-h-40 overflow-y-auto">{mutationError}</p>
       )}
       {mergeConflict && (
         <div className="px-3 pb-1.5">

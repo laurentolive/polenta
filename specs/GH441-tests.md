@@ -20,8 +20,10 @@ fixture déclare le type `version` (`isApproval` → released, `isTerminal` → 
 | T2a | `in_progress` (sans `verification`) | `null` (critère 2) |
 | T2b | `abandoned` (sans gel) | `null` (critère 2) |
 | T2c | `released` sans `verification` (avant GH439) | `null` (critère 2) |
+| T2d | `released` puis `abandoned` (fichier avec `verification`) | `verification` gardé (critère 2, GH439 S9) |
 | T3a | `released`, `verification` sans `rows` | `rows: []`, les autres versions du repo sont toujours listées (critère 3) |
 | T3b | `released`, une ligne sans `tests` | `tests: []` pour cette ligne, les autres lignes intactes (critère 3) |
+| T3c | `released`, une ligne `null` | ligne écartée, autres lignes et autres versions intactes (critère 3) |
 | T6 | Script de la vue Suivi (bac à sable, `SandboxContext.prepare` sur le JSON du graphe) lit `versions[i].verification.rows.length` ; une version non figée donne `null` | critère 6 |
 
 ## Tests MCP et séquence réelle — `versions-verification.gh441.test.ts` (dépôt git temporaire)
@@ -36,6 +38,7 @@ Release réelle (`versions.release`) : le fichier de version est écrit dans le 
 | M3 | Clés de `get_version` | exactement `version, state, component, basedOn, components, changes, verification` ; `version` sans `verification` (critère 7) |
 | M4 | Séquence : release v1 (exigence couverte par un test) → on supprime le lien test↔exigence et on ajoute une exécution FAIL → relecture du graphe **et** de `get_version` | `verification` inchangée ; la matrice live, elle, a changé (critère 4) |
 | M5 | Séquence : mêmes étapes, relecture du graphe construit à partir du dépôt (pas d'instance de service conservée) | identique à M4 : la valeur vient du fichier (critère 4) |
+| M6 | Fichier édité à la main (`rows: [null]`) : `get_version` et graphe | même forme `{ computedAt, rows: [] }` (critère 3, forme commune) |
 
 Le test M5 couvre le chemin « écriture hors application puis relecture » (leçon 2026-11-19, GH413) : il ne passe pas
 par `setVersions`.

@@ -4,6 +4,7 @@ import { IMPACT_ANALYSIS_STATUSES, suggestVersionTag, type ImpactAnalysisStatus 
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
 import { componentRepoResolver, componentSchema, freshComponentRepoResolver, flattenComponents as flatten } from './component-repo'
+import { frozenVerificationView } from '../../main/services/version-verification.util'
 
 /**
  * Versions de composant / produit : lecture (GH201 §8, GH245) et, depuis GH362, création,
@@ -58,7 +59,7 @@ export function registerVersionTools(server: McpServer, container: McpContainer)
         version: page.version, state: page.state, component: page.component.name, basedOn: page.basedOn,
         components: page.components.map(c => ({ name: c.name, selected: c.selected })),
         changes: page.rows.map(({ repoPath: _repoPath, ...row }) => row),
-        verification: version.verification ?? null,
+        verification: frozenVerificationView(version.verification),
       })
     },
   )

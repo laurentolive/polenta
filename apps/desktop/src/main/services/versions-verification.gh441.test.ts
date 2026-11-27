@@ -128,4 +128,17 @@ describe('GH441 — get_version et couverture figée', () => {
     expect(graph.requirements.find(r => r.id === reqId)?.coverageStatus).toBe('not_covered')
     expect(graph.versions.find(x => x.id === v.id)?.verification).toEqual(frozen)
   })
+
+  it('M6 — fichier édité à la main (rows absent, ligne null) : get_version et graphe donnent la même forme', async () => {
+    const reqId = await newReq()
+    const v = await released('1.0', [reqId])
+    const file = (await versionFile(v.id))!
+    const computedAt = '2026-11-20T10:00:00.000Z'
+    await gitSvc.writeYaml(dir, `versions/${v.id}.yaml`, { ...file, verification: { computedAt, rows: [null] } })
+
+    const page = await call<{ verification: unknown }>('get_version', { id: v.id })
+    const { graph } = await mcp.graph.build(dir)
+    expect(page.verification).toEqual({ computedAt, rows: [] })
+    expect(graph.versions.find(x => x.id === v.id)?.verification).toEqual(page.verification)
+  })
 })

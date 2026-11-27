@@ -23,6 +23,7 @@ import type { ValidationsService } from './validations.service'
 import { isResyncable } from './campaigns.service'
 import type { FileHistory, GitService } from './git.service'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
+import { frozenVerificationView } from './version-verification.util'
 
 // GH74 — graphe de données JSON (contrat v1, `@polenta/types/graph.ts`) construit à partir des
 // index en mémoire, sur le périmètre repo ouvert + composants du workspace. Données brutes, plus
@@ -279,12 +280,8 @@ export class GraphService {
             sources: (r.sources ?? []).map((s) => ({ rootId: s.rootId, path: (s.path ?? []).map((p) => p.id) })),
           })),
         } : null,
-        // GH441 — couverture figée lue telle quelle. Garde `?? []` : une exception ici tomberait dans le `catch`
-        // ci-dessous et retirerait toutes les versions du repo.
-        verification: v.verification ? {
-          computedAt: v.verification.computedAt,
-          rows: (v.verification.rows ?? []).map((r) => ({ id: r.id, status: r.status, tests: r.tests ?? [] })),
-        } : null,
+        // GH441 — couverture figée lue telle quelle (forme commune avec get_version, `frozenVerificationView`).
+        verification: frozenVerificationView(v.verification),
         fields: v.fields ?? {}, history: v.history ?? {},
       }))
       return { versions, designVersions }

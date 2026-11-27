@@ -77,6 +77,20 @@ describe('GH441 — couverture figée dans le graphe de données', () => {
     ])
   })
 
+  it('T3c — ligne null (fichier édité à la main) : écartée, les autres versions et lignes restent', async () => {
+    const { graph } = await build([
+      version('VER-0001', 'released', { verification: { computedAt: VERIFICATION.computedAt, rows: [null, VERIFICATION.rows[0]] } }),
+      version('VER-0002', 'en_cours'),
+    ])
+    expect(graph.versions.map(v => v.id)).toEqual(['VER-0001', 'VER-0002'])
+    expect(graph.versions[0].verification?.rows).toEqual([VERIFICATION.rows[0]])
+  })
+
+  it('T2d — version released puis abandonnée : couverture gardée (le gel reste un fait, GH439 S9)', async () => {
+    const { graph } = await build([version('VER-0001', 'abandonnee', { verification: VERIFICATION })])
+    expect(graph.versions[0]).toMatchObject({ state: 'abandoned', verification: VERIFICATION })
+  })
+
   it('T6 — script de la vue Suivi (bac à sable, contrat v1) lit verification ; version non figée : null', async () => {
     const { json } = await build([
       version('VER-0001', 'released', { verification: VERIFICATION }),

@@ -29,6 +29,14 @@ Aucune de fond. Notes d'exécution :
 - Le design prévoyait `GraphCoverageStatus` pour `status` : confirmé, les deux types ont les mêmes cinq valeurs.
 - Les tests de graphe passent par `setVersions` (fixture), comme prévu ; le test de séquence réelle M4/M5 est sur dépôt git et conteneur MCP réels.
 
+## Revue de code (`/code-review`, niveau medium) et corrections
+
+- **Important** : une version released puis abandonnée gardait sa couverture, ce qui est le bon comportement (GH439 S9),
+  mais la spec §2.1 disait « abandoned → null ». Spec corrigée (§2.1, critère 2), test T2d ajouté.
+- Forme de `get_version` ≠ graphe pour un fichier édité à la main : une seule fonction `frozenVerificationView` (`version-verification.util.ts`), test M6.
+- Une ligne `null` dans `rows` faisait tomber toutes les versions du repo : lignes `null` écartées, test T3c.
+- SPEC-INDEX, colonne MAJ de SPEC-MCP-SERVER : GH451 gardé en plus de GH441.
+
 ## Mises à jour SPEC
 
 - SPEC-DASHBOARDS §2 : note GH441 (contrat v1, ajout), manifeste v19.
@@ -50,7 +58,7 @@ Aucune de fond. Notes d'exécution :
 | 1 | `pnpm typecheck` | OK (4 tâches) |
 | 1 | `pnpm lint` | échec **hors périmètre** : fichiers non touchés (`askpass.js`, `node-checkout.gh337.test.ts`, `merge-resolution.service.ts`) et `vendor/git` téléchargé dans ce worktree. Le lint de mes fichiers passe (`eslint` ciblé, exit 0). Les correctifs (GH437, ignore de `vendor`) sont sur le `main` poussé depuis, pas dans la base du milestone : résolu à la mise à jour avec `main` (validation finale). |
 | 1 | `vitest` ciblé (graphe, GH439, GH271, contrat L7/L8/L11) | 98 tests OK |
-| 2 | `pnpm test` (suite unitaire complète) | **260 fichiers, 2 496 tests passés, 5 ignorés**, code 0 (passage propre, sans autre charge). Un premier passage avait un échec isolé (`sync.service.gh414` R3, délai de 20 s) pendant le build web et l'e2e lancés en parallèle ; le test passe seul (1,2 s) et dans le passage propre. |
+| 2 | `pnpm test` (suite unitaire complète, après correction de revue) | **260 fichiers, 2 499 tests passés, 5 ignorés**, code 0. Passage précédent (avant revue) : 2 496 tests, code 0 (passage propre, sans autre charge). Un premier passage avait un échec isolé (`sync.service.gh414` R3, délai de 20 s) pendant le build web et l'e2e lancés en parallèle ; le test passe seul (1,2 s) et dans le passage propre. |
 | 2 | `pnpm build:web` puis `playwright test e2e-web/gh74-suivi e2e-web/gh74-editing` | 9 passés |
 | 3 | suite e2e complète | non lancée : requise au push du lot (le ticket touche `graph.service.ts` et le MCP). |
 

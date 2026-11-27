@@ -25,7 +25,7 @@ async function openExcelWithLinks() {
   const modal = s.page.locator('.fixed.inset-0.z-50')
   const links = modal.locator('div.border-t').filter({ has: s.page.getByText('Liens', { exact: true }) })
   for (const box of await links.getByRole('checkbox').all()) await box.check()
-  await modal.click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
   await expect(linkCells().first()).toBeVisible()
 }
 

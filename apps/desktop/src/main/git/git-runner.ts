@@ -1,4 +1,4 @@
-import { spawn } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { appendFileSync } from 'fs'
 
 import { gitInstall } from './git-binary'
@@ -108,23 +108,66 @@ export function countGitSpawn(sub: string): void {
 
 /**
  * Diagnostic des blocages : `POLENTA_GIT_HANG_LOG=<fichier>` y écrit, toutes les 5 s, ce qui attend
- * depuis plus de 10 s (processus, file d'écriture, requête cat-file). C'est ce journal qui a montré
+ * depuis plus de 10 s : processus git (pid, appelant dans le code, temps CPU et état des threads
+ * Windows), file d'écriture, requête cat-file. Une commande git de plus de 5 s est consignée à sa
+ * fin, avec le délai entre la fin de git et la fermeture de ses tuyaux. C'est ce journal qui a montré
  * les tuyaux hérités entre threads de test (cat-file-batch.ts, IDLE_MS).
  */
-const pending = new Map<number, { what: string; since: number }>()
+interface PendingEntry { what: () => string; since: number; pid?: () => number | undefined; inspecting: boolean }
+const pending = new Map<number, PendingEntry>()
 let pendingSeq = 0
 const hangLog = process.env.POLENTA_GIT_HANG_LOG
+const stamp = (): string => new Date().toISOString()
+
+/** Premier appelant hors de `git/` (services, tests) : ` appelé depuis fichier:ligne`. */
+function callerSite(): string {
+  const caller = (new Error().stack ?? '').split('\n').slice(2)
+    .find(l => !/[\\/]git[\\/](git-|cat-file|node-checkout)/.test(l) && /\.ts:\d+/.test(l))
+  const where = caller?.match(/([\w.-]+\.ts):(\d+)/)
+  return where ? ` appelé depuis ${where[1]}:${where[2]}` : ''
+}
+
+/** État Windows d'un processus : temps CPU et état de chaque thread (diagnostic seul). */
+function snapshotProcess(pid: number): Promise<string> {
+  const script = `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if (-not $p) { 'absent' } else { 'cpu=' + [math]::Round($p.CPU, 2) + ' threads=' + (($p.Threads | ForEach-Object { $_.ThreadState.ToString() + '/' + $_.WaitReason.ToString() }) -join ' ') }`
+  return new Promise(resolve => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 15_000 },
+      (err, stdout) => resolve(err ? `indisponible (${err.message.split('\n')[0].slice(0, 100)})` : String(stdout).trim()))
+  })
+}
+
 if (hangLog) {
   setInterval(() => {
     const now = Date.now()
-    const old = [...pending.values()].filter(p => now - p.since > 10_000)
-    if (old.length) appendFileSync(hangLog, old.map(p => `${Math.round((now - p.since) / 1000)}s ${p.what}\n`).join(''))
+    for (const p of pending.values()) {
+      const age = now - p.since
+      if (age <= 10_000) continue
+      const pid = p.pid?.()
+      appendFileSync(hangLog, `${stamp()} ${Math.round(age / 1000)}s ${p.what()}\n`)
+      if (pid && !p.inspecting) {
+        p.inspecting = true
+        void snapshotProcess(pid).then(s => {
+          appendFileSync(hangLog, `${stamp()}   pid=${pid} : ${s}\n`)
+          p.inspecting = false
+        })
+      }
+    }
   }, 5000).unref()
 }
-export function trackPending(what: string): () => void {
+
+/** Commande git lente : consignée à sa fin (durée totale et délai fin de git → fermeture des tuyaux). */
+function logSlowExit(label: string, pid: number | undefined, spawnedAt: number, exitedAt: number, code: number | null): void {
+  if (!hangLog) return
+  const total = Date.now() - spawnedAt
+  if (total > 5_000) {
+    appendFileSync(hangLog, `${stamp()} LENT ${total} ms, code ${code}, pid=${pid}, fermeture ${exitedAt ? Date.now() - exitedAt : '?'} ms après la fin de git : ${label}\n`)
+  }
+}
+
+export function trackPending(what: string | (() => string), pid?: () => number | undefined): () => void {
   if (!hangLog) return () => undefined
   const id = ++pendingSeq
-  pending.set(id, { what, since: Date.now() })
+  pending.set(id, { what: typeof what === 'string' ? () => what : what, since: Date.now(), pid, inspecting: false })
   return () => { pending.delete(id) }
 }
 
@@ -133,13 +176,17 @@ const EXIT_DRAIN_MS = 500
 
 function spawnGit(cwd: string, args: string[], opts: RunOptions): Promise<RunResult> {
   countGitSpawn(args.find((a, i) => !a.startsWith('-') && args[i - 1] !== '-c') ?? '?')
-  const label = `processus git ${args.join(' ').slice(0, 120)} (${cwd})`
-  let untrack = trackPending(label)
+  const label = `processus git ${args.join(' ').slice(0, 120)} (${cwd})${hangLog ? callerSite() : ''}`
+  let pid: number | undefined
+  let untrack = trackPending(() => `${label}${pid ? ` pid=${pid}` : ''}`, () => pid)
+  const spawnedAt = Date.now()
+  let exitedAt = 0
   const { gitExe } = gitInstall()
   const env = gitEnv({ readOnly: !opts.write, ...opts.env })
   return new Promise<RunResult>((resolve, reject) => {
     const child = spawn(gitExe, args, { cwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], ...groupSpawnOptions() })
     track(child, cwd)
+    pid = child.pid
     const out: Buffer[] = []
     const err: Buffer[] = []
     let errLine = ''
@@ -168,6 +215,7 @@ function spawnGit(cwd: string, args: string[], opts: RunOptions): Promise<RunRes
     // résout quand même. Le vidage n'est pas changé. Cause : héritage des tuyaux par un autre processus
     // sous Windows (tasks/lessons.md, 2026-11-18). À réouvrir si un bug de données tronquées est observé.
     child.on('exit', code => {
+      exitedAt = Date.now()
       if (settled) return
       const drain = setTimeout(() => {
         if (settled) return
@@ -191,6 +239,7 @@ function spawnGit(cwd: string, args: string[], opts: RunOptions): Promise<RunRes
     })
     child.on('error', e => done(() => reject(new GitError('other', args, null, e.message, (e as NodeJS.ErrnoException).code))))
     child.on('close', code => done(() => {
+      logSlowExit(label, pid, spawnedAt, exitedAt, code)
       const stderr = Buffer.concat(err).toString('utf8')
       const exitCode = code ?? -1
       if (timedOut) return reject(new GitError('timeout', args, exitCode, stderr, 'ETIMEDOUT'))

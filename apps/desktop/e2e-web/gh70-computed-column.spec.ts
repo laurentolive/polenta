@@ -67,7 +67,7 @@ async function toggleColumn(tab: 'Tableau' | 'Document', qid: string, label: str
   const modal = s.page.locator('.fixed.inset-0.z-50')
   await modal.getByRole('button', { name: tab, exact: true }).click()
   await computedBox(modal, qid, label).click()
-  await modal.click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
 }
 
 test('N4 / N5 / N6 / N7 — proposée dans ⚙️, décochée ; cochée : valeur et infobulle ; pref par type', async () => {
@@ -76,7 +76,7 @@ test('N4 / N5 / N6 / N7 — proposée dans ⚙️, décochée ; cochée : valeur
   const section = s.page.getByTestId('field-config-computed')
   await expect(section).toBeVisible()
   await expect(computedBox(s.page, queryId, 'Dernier résultat')).not.toBeChecked()
-  await s.page.locator('.fixed.inset-0.z-50').click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
 
   await toggleColumn('Tableau', queryId, 'Dernier résultat')
   await expect(headerOf(queryId)).toContainText('Dernier résultat')

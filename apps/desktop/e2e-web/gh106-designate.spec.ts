@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { setupSession } from './support/session'
-import { remoteLog } from './support/forge'
+import { remoteHasBranch, remoteLog } from './support/forge'
 
 /**
  * GH106 — « Désigner » depuis le bandeau de « Publier » (specs/GH106-tests.md T-09 ; T-24 est couvert en unitaire) : une
@@ -37,6 +37,9 @@ test('GH106-1 — int-* héritée : bandeau « Désigner », commit poussé, Pub
   await expect(s.page.getByText("n'est pas désignée comme branche d'intégration")).toHaveCount(0)
 
   expect(await s.invoke<IntegrationState>('integration:state', localPath)).toMatchObject({ configured: BRANCH, status: 'ok' })
+  // GH427 — la désignation écrit la copie de travail puis pousse ; l'état (relu toutes les 10 s) peut
+  // passer à « ok » avant la fin du push. On attend la branche sur la forge avant de la lire.
+  await expect.poll(() => remoteHasBranch(BRANCH), { timeout: 15_000 }).toBe(true)
   // Poussée sur la forge : le dernier commit de la branche distante est la désignation.
   expect(remoteLog('%s', undefined, BRANCH).trim().split('\n')[0]).toBe(`Branche d'intégration : ${BRANCH}`)
   // La désignation ne laisse rien en attente et ne touche pas aux modifications déjà présentes.

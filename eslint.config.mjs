@@ -16,6 +16,10 @@ export default tseslint.config(
       '**/coverage/**',
       '**/test-results/**',
       '**/playwright-report/**',
+      // Rapport HTML de Playwright (reporter de apps/desktop/playwright.config) : régénéré à chaque run e2e
+      'apps/desktop/e2e-web/.report/**',
+      // Git embarqué (PortableGit, copié à l'installation, ignoré par git) : pas du code du projet
+      'apps/desktop/vendor/**',
       // Worktrees / outils d'agents copiés sous le repo
       '.claire/**',
       '.claude/**',
@@ -65,8 +69,8 @@ export default tseslint.config(
     },
   },
   {
-    // Scripts Node CommonJS (agent hôte GH63, fichiers .cjs)
-    files: ['**/*.cjs', 'deploy/**/*.js'],
+    // Scripts Node CommonJS (agent hôte GH63, fichiers .cjs ; askpass GH337, livré tel quel)
+    files: ['**/*.cjs', 'deploy/**/*.js', 'apps/desktop/src/main/git/askpass/*.js'],
     languageOptions: { sourceType: 'commonjs' },
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },

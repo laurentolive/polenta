@@ -1751,6 +1751,7 @@
   "diffView": {
     "raw": "Raw",
     "rendered": "Rendu",
+    "refresh": "Rafraîchir",
     "hideUnchanged": "Masquer les inchangés",
     "unchangedCount_one": "{{count}} champ inchangé",
     "unchangedCount_other": "{{count}} champs inchangés",

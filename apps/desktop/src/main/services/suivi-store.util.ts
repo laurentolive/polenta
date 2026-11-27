@@ -1,5 +1,6 @@
 import * as fsP from 'fs/promises'
 import * as path from 'path'
+import { randomBytes } from 'crypto'
 import * as yaml from 'js-yaml'
 import type { QueryColumnDef, QueryParameterDef, SuiviObjectState, TemplateRef, WidgetCode } from '@polenta/types'
 import { findQueryTemplate, findWidgetTemplate, queryCode, widgetCode } from '@polenta/types'
@@ -46,13 +47,45 @@ export async function readYamlFile<T>(repoPath: string, rel: string): Promise<T 
   return (yaml.load(text) as T) ?? null
 }
 
-/** Écrit les fichiers d'un dossier d'objet et retire ceux qui n'en font plus partie (widget supprimé). */
+/** Sous Windows, renommer par-dessus un fichier qu'un lecteur tient ouvert échoue en EPERM tant que la
+ *  lecture dure (GH438, mesuré : jusqu'à ~90 tentatives sur une lecture en boucle). On réessaie donc,
+ *  sur les seules erreurs transitoires, pendant un peu moins d'une seconde au plus. */
+const RENAME_ATTEMPTS = 200
+const RENAME_RETRY_MS = 5
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  const TRANSIENT = new Set(['EPERM', 'EACCES', 'EBUSY'])
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await fsP.rename(from, to)
+      return
+    } catch (err) {
+      if (attempt >= RENAME_ATTEMPTS || !TRANSIENT.has((err as NodeJS.ErrnoException).code ?? '')) throw err
+      await new Promise((resolve) => setTimeout(resolve, RENAME_RETRY_MS))
+    }
+  }
+}
+
+/** Écriture atomique : un lecteur voit l'ancien contenu ou le nouveau, jamais un fichier tronqué
+ *  (GH438). Le temporaire est dans le même dossier (même volume), puis renommé sur la cible. */
+async function writeFileAtomic(file: string, content: string): Promise<void> {
+  const tmp = `${file}.${randomBytes(6).toString('hex')}.tmp`
+  await fsP.writeFile(tmp, content, 'utf8')
+  try {
+    await renameWithRetry(tmp, file)
+  } catch (err) {
+    await fsP.rm(tmp, { force: true })
+    throw err
+  }
+}
+
+/** Écrit les fichiers d'un dossier d'objet et retire ceux qui n'en font plus partie (widget supprimé).
+ *  Les `.tmp` en cours d'une autre écriture ne sont jamais retirés. */
 export async function writeObjectFolder(repoPath: string, relDir: string, files: Record<string, string>): Promise<void> {
   const dir = path.join(repoPath, relDir)
   await fsP.mkdir(dir, { recursive: true })
-  for (const [name, content] of Object.entries(files)) await fsP.writeFile(path.join(dir, name), content, 'utf8')
+  for (const [name, content] of Object.entries(files)) await writeFileAtomic(path.join(dir, name), content)
   const existing = await fsP.readdir(dir).catch(() => [] as string[])
-  for (const name of existing) if (!(name in files)) await fsP.rm(path.join(dir, name), { force: true })
+  for (const name of existing) if (!(name in files) && !name.endsWith('.tmp')) await fsP.rm(path.join(dir, name), { force: true })
 }
 
 export function toYaml(data: unknown): string {

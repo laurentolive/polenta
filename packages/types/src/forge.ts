@@ -35,6 +35,11 @@ export interface MachineConfig {
   demoProjectUrl?: string
   /** `false` : vérification des mises à jour désactivée et verrouillée. */
   autoUpdate?: false
+  /**
+   * GH53 — chemin absolu d'un PEM (une ou plusieurs CA, racine ou chaîne) de l'autorité privée de
+   * l'entreprise. Ajouté aux CA publiques pour les appels à la forge et pour git ; jamais en remplacement.
+   */
+  caPath?: string
 }
 
 /** Ce que l'écran de connexion doit proposer pour un serveur donné (`auth:detect-forge`). */

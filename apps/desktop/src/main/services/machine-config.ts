@@ -87,6 +87,11 @@ export function parseMachineConfig(raw: string, file: string, warn: (message: st
         if (value === false) config.autoUpdate = false
         else if (value !== true) warn(`[machine-config] autoUpdate ignoré : seul false a un effet`)
         break
+      case 'caPath':
+        // GH53 — le fichier n'est lu qu'au démarrage, par extra-ca.ts (ce chargeur reste pur).
+        if (typeof value === 'string' && value.trim() !== '') config.caPath = value.trim()
+        else warn(`[machine-config] caPath ignoré : chemin de fichier attendu`)
+        break
       default:
         warn(`[machine-config] clé inconnue ignorée : ${key}`)
     }

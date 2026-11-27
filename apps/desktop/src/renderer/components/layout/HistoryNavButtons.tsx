@@ -30,7 +30,8 @@ export function HistoryNavButtons() {
         onMenu={() => setMenu(delta)}
         testId={`history-${label}`}
       >
-        {delta < 0 ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+        {/* GH464 — centrage optique : le chevron était ~1 px au-dessus des capitales du titre (polices Windows). */}
+        {delta < 0 ? <ChevronLeft size={14} className="relative top-px" /> : <ChevronRight size={14} className="relative top-px" />}
       </HistoryButton>
     )
   }

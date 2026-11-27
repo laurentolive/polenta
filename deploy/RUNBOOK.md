@@ -57,6 +57,9 @@ un domaine.
    ssh admin@hote
    cd ~/polenta-kit && sudo ./polenta-host.sh setup
    ```
+   Les scripts sont exécutables dans git, mais une copie faite depuis Windows (scp, WinSCP) perd le bit
+   d'exécution (`Permission denied`) : sur l'hôte, `chmod +x polenta-host.sh polenta-admin.sh admin/install.sh tests/*.sh`,
+   ou lancer `sudo bash ./polenta-host.sh setup`. Les fichiers `lib/*.sh` sont sourcés : pas besoin du bit.
    Le premier passage crée `/opt/polenta/host.env` depuis l'exemple et s'arrête : le compléter
    (`sudo nano /opt/polenta/host.env`) — `ACME_EMAIL`, `BASE_DOMAIN`, `BACKUP_S3_*`, facultatifs
    `SMTP_*`, `ADMIN_IPS` (A8), `POLENTA_DOWNLOAD_URL`, `BACKUP_PING_URL` — puis relancer
@@ -144,6 +147,46 @@ différents), le lien d'invitation affiché, et la **Partie B** de ce document.
 Remise à niveau d'une instance existante après une évolution du kit : `instance sync <nom>`.
 Arrêt / redémarrage : `instance stop|start <nom>`.
 
+**Certificat fourni (forge interne, GH53)** — au lieu de Let's Encrypt, pour un domaine interne dont l'autorité
+de certification est celle du client (CADDY_MODE=managed uniquement ; en external, le certificat relève du
+Caddy de l'exploitant) :
+
+```
+sudo polenta-host instance add <nom> --domain <domaine> --tls-cert /chemin/cert.pem --tls-key /chemin/cle.pem
+```
+
+- Contrôles avant toute création : certificat et clé lisibles, clé non chiffrée, clé correspondant au
+  certificat, certificat non expiré. Un contrôle échoué n'écrit rien.
+- Les fichiers sont copiés dans `instances/<nom>/tls/` (sauvegardés avec l'instance, supprimés avec elle) et
+  rendus dans le Caddy du kit.
+- **Échéance à surveiller** : le certificat expire, il n'y a pas d'alerte automatique dans cette version.
+- **Renouvellement** (procédure provisoire, non contrôlée par `tls_check`) : remplacer les deux fichiers dans
+  `instances/<nom>/tls/` (clé en 600), puis `sudo polenta-host instance sync <nom>`. À vérifier avant : `openssl
+  x509 -in cert.pem -noout -enddate` et correspondance clé/certificat.
+- Le certificat du client doit être approuvé par les postes : voir `caPath` dans la configuration machine
+  (la DSI dépose la CA sur les postes, cf. specs/GH53.md).
+
+**Mises à jour servies par le serveur du client (GH52)** — pour un client dont le pare-feu bloque GitHub.
+Le poste lit alors ses mises à jour sur `https://<forge>/polenta-updates/` au lieu de GitHub :
+
+1. Publier une version : télécharger la release (`latest.yml` et les installeurs) dans un dossier, puis
+   `sudo polenta-host updates publish <dossier>`. Le kit ne construit ni ne télécharge rien. Contrôles avant
+   toute copie : `latest.yml` présent, fichiers référencés présents, version non déjà publiée. Les installeurs
+   sont copiés d'abord, `latest.yml` en dernier : un poste ne voit jamais un `latest.yml` qui pointe vers un
+   fichier absent.
+2. Servir : la route `/polenta-updates/` est dans le bloc de chaque instance. **Une instance existante doit être
+   remise à niveau** après cette évolution du kit : `sudo polenta-host instance sync <nom>`.
+3. Poste : `updateFeedUrl` dans la configuration machine (`%ProgramData%\Polenta\config.json`), par exemple
+   `"updateFeedUrl": "https://forge.client.fr/polenta-updates/"`. https obligatoire, sans identifiants dans l'URL.
+   Avec cette clé, le poste n'interroge plus GitHub, et le lien vers les notes GitHub n'est pas proposé.
+4. Vérifier : `curl -fsS https://<forge>/polenta-updates/latest.yml` répond avec la version publiée.
+
+- **Installeurs non signés** : Windows peut afficher des alertes ; la signature du client lourd relève de GH388.
+- **Mode external** : la route n'est pas ajoutée au Caddy de l'exploitant. À ajouter à la main, dans le bloc du
+  domaine : `handle_path /polenta-updates/* { root * <dossier publié> ; file_server }`.
+- **Retour arrière** : republier une version antérieure n'est pas automatisé (hors V1).
+- **Verrous** : `autoUpdate: false` et `updates: managed` restent prioritaires (aucune vérification).
+
 ### A4. Sauvegardes
 
 - **Nocturne** automatique (cron 02:30, toutes les instances) : arrêt de la forge ~10-15 s, copie
@@ -176,11 +219,14 @@ sudo polenta-host instance restore acme --from latest --force
 sudo polenta-host instance restore acme --from 208d222a --force
 sudo polenta-host instance restore acme --from latest:pre-update --force
 
-# Copie de contrôle sous un autre nom et un autre domaine, sans toucher à acme
+# Copie de contrôle sous un autre nom, sans toucher à acme : domaine <nom>.<BASE_DOMAIN> (--domain pour un autre)
 sudo polenta-host instance restore acme-test --source acme --from latest
 
 # Hôte neuf (instance.env absent) : mot de passe restic dans un fichier
 sudo polenta-host instance restore acme --from latest --password-file /root/acme.restic
+
+# En script : --force demande confirmation ; --yes (ou --confirm acme) la donne d'avance
+sudo polenta-host instance restore acme --from latest --force --yes
 ```
 
 Les comptes, mots de passe, double authentification, équipes et dépôts reviennent à l'identique.
@@ -538,8 +584,13 @@ quelques minutes :
 1. Préparer le Caddy existant (prérequis 1 à 3) : réseau `EDGE_NETWORK` créé, Caddy rattaché, montage en
    lecture seule de `CADDY_SITES_DIR` et ligne `import` ajoutés (sans recharger encore). Ce Caddy
    réémettra les certificats : attention aux limites de Let's Encrypt si l'opération est répétée.
+   Pour éviter cette réémission (option validée lors des tests GH61) : copier le contenu de
+   `/opt/polenta/caddy/data/` (certificats et compte ACME) dans le volume `/data` du Caddy existant, avant
+   son premier démarrage avec ce volume.
 2. Libérer 80/443 : `docker compose -f /opt/polenta/caddy/docker-compose.yml down`. Les instances
-   continuent de tourner mais ne sont plus servies.
+   continuent de tourner mais ne sont plus servies. Le réseau `EDGE_NETWORK` n'est pas déclaré externe
+   dans ce compose : `down` ne le retire que s'il n'est plus utilisé, il reste donc en place tant que le
+   Caddy existant y est rattaché (étape 1).
 3. Sites additionnels du Caddy du kit (`/opt/polenta/caddy/etc/sites/_*.caddy`) : à reporter dans la
    configuration du Caddy existant (A10). Les `<instance>.caddy` seront réécrits à l'étape 5.
 4. Dans `/opt/polenta/host.env` : `CADDY_MODE=external` (+ `EDGE_NETWORK`, `CADDY_SITES_DIR`,
@@ -555,7 +606,10 @@ quelques minutes :
 
 1. Libérer 80/443 : arrêter ou reconfigurer le Caddy existant (ou ses ports publiés), supprimer
    `<instance>.caddy` / `<instance>.web.caddy` de `CADDY_SITES_DIR` (et la ligne `import` si elle ne sert
-   plus), puis recharger ce Caddy.
+   plus), puis recharger ce Caddy. Les sites additionnels `_*.caddy` de `CADDY_SITES_DIR` (A10) sont
+   reportés dans `/opt/polenta/caddy/etc/sites/` : le Caddy du kit ne lit que ce dossier. Pour réutiliser
+   les certificats (option de la migration inverse) : copier le volume `/data` du Caddy existant dans
+   `/opt/polenta/caddy/data/` avant l'étape 2.
 2. `host.env` : `CADDY_MODE=managed` (ou retirer la ligne) ; `sudo polenta-host setup` démarre
    `polenta-caddy` et ouvre 80/443.
 3. Pour chaque instance : `sudo polenta-host instance start <nom>` (recrée les conteneurs sans le réseau

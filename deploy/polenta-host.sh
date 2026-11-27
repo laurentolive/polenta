@@ -39,6 +39,8 @@ KIT_DIR="$POLENTA_ROOT/kit"
 . "$SCRIPT_DIR/lib/caddy.sh"
 # shellcheck source=lib/forgejo-api.sh
 . "$SCRIPT_DIR/lib/forgejo-api.sh"
+# shellcheck source=lib/updates.sh
+. "$SCRIPT_DIR/lib/updates.sh"
 # shellcheck source=lib/backup.sh
 . "$SCRIPT_DIR/lib/backup.sh"
 # shellcheck source=lib/modules.sh
@@ -90,7 +92,8 @@ setup_host_env() {
   chmod 600 "$HOST_ENV"
   load_host_env
   [[ "$ACME_EMAIL" != admin@example.fr ]] || die "ACME_EMAIL : remplacez l'exemple dans $HOST_ENV (ou laissez vide)."
-  [[ -n "$ACME_EMAIL" ]] || warn "ACME_EMAIL vide : pas d'avis d'expiration de certificat (recommandé de le renseigner)."
+  # GH84 — en external, ACME_EMAIL n'est pas lu (le Caddy existant gère ses certificats) : pas d'avertissement.
+  [[ -n "$ACME_EMAIL" ]] || caddy_external || warn "ACME_EMAIL vide : pas d'avis d'expiration de certificat (recommandé de le renseigner)."
   [[ -n "$BASE_DOMAIN" && "$BASE_DOMAIN" != forge.example.fr ]] || warn "BASE_DOMAIN non renseigné : chaque instance devra préciser --domain"
 }
 
@@ -732,8 +735,8 @@ write_polenta_config() {
 
 cmd_instance_add() {
   require_operator; require_cmd docker jq dig curl; load_host_env
-  local name="" domain="" org="" admin_login="" admin_email="" demo=1 image="" version="" app_name=""
-  name="${1:-}"; [[ -n "$name" ]] || die "usage : polenta-host instance add <nom> [--domain d] [--org o] [--client-admin login email] [--app-name \"Nom affiché\"] [--no-demo] [--image i] [--version v] [--yes]"
+  local name="" domain="" org="" admin_login="" admin_email="" demo=1 image="" version="" app_name="" tls_cert="" tls_key=""
+  name="${1:-}"; [[ -n "$name" ]] || die "usage : polenta-host instance add <nom> [--domain d] [--org o] [--client-admin login email] [--app-name \"Nom affiché\"] [--no-demo] [--image i] [--version v] [--tls-cert f --tls-key f] [--yes]"
   shift
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -744,11 +747,15 @@ cmd_instance_add() {
       --image) image="$2"; shift 2 ;;
       --app-name) app_name="$2"; shift 2 ;;
       --version) version="$2"; shift 2 ;;
+      --tls-cert) tls_cert="$2"; shift 2 ;;   # GH53 — certificat fourni (PEM) au lieu de Let's Encrypt
+      --tls-key) tls_key="$2"; shift 2 ;;
       --yes|-y) ASSUME_YES=1; shift ;;
       *) die "$E_USAGE" "option inconnue : $1" ;;
     esac
   done
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] || die "$E_USAGE" "nom d'instance invalide « $name » ([a-z0-9-], 2 à 31 caractères)."
+  # GH53 — contrôle du certificat fourni avant toute création (rien n'est écrit si refusé).
+  [[ -z "$tls_cert$tls_key" ]] || tls_check "$tls_cert" "$tls_key"
   local dir; dir="$(instance_dir "$name")"
   [[ -f "$dir/.add-complete" ]] && die "$E_EXISTS" "l'instance « $name » existe déjà (polenta-host instance list)."
   acquire_lock "instance add $name"
@@ -785,6 +792,14 @@ cmd_instance_add() {
   env_set "$env" INSTANCE_DIR "$dir"
   env_set "$env" DOMAIN "$domain"
   env_set "$env" ORG "$org"
+  # GH53 — certificat fourni : source dans l'instance (sauvegardée, supprimée avec elle), rendue par caddy_add_site.
+  if [[ -n "$tls_cert" ]]; then
+    mkdir -p "$dir/tls"; chmod 700 "$dir/tls"
+    cp "$tls_cert" "$dir/tls/cert.pem"; chmod 644 "$dir/tls/cert.pem"
+    cp "$tls_key" "$dir/tls/key.pem"; chmod 600 "$dir/tls/key.pem"
+    env_set "$env" TLS_PROVIDED 1
+    ok "certificat fourni (instance/tls)"
+  fi
   [[ -n "$app_name" ]] && env_set "$env" APP_NAME "$app_name"
   [[ -n "$(env_get "$env" APP_NAME)" ]] || env_set "$env" APP_NAME "Forge $org"
   [[ -n "$(env_get "$env" FORGE_IMAGE)" ]] || env_set "$env" FORGE_IMAGE "${image:-$FORGE_IMAGE_DEFAULT}"
@@ -985,6 +1000,13 @@ cmd_instance_restore() {
     || die "$E_USAGE" "usage : polenta-host instance restore <nom> --from <id|latest> [--source <instance sauvegardée>] [--domain d] [--password-file f] [--force]"
   edge_network_require
   source="${source:-$name}"
+  # GH85 — copie sous un autre nom (--source ≠ nom) sans --domain : <nom>.<BASE_DOMAIN>, comme instance add.
+  # Le domaine de la source appartient à une instance vivante (deux blocs Caddy pour un même domaine) : il
+  # n'est pas repris. Décidé ici, avant toute confirmation et toute écriture dans le dossier de l'instance.
+  if [[ -z "$domain" && "$source" != "$name" ]]; then
+    [[ -n "$BASE_DOMAIN" ]] || die "$E_USAGE" "--domain requis : BASE_DOMAIN absent de host.env (copie « $name » de « $source »)."
+    domain="$name.$BASE_DOMAIN"
+  fi
   local dir; dir="$(instance_dir "$name")"
   local replace=""
   if [[ -e "$dir" ]]; then
@@ -1155,12 +1177,24 @@ cmd_instance_export() {
     wait_healthy "$name"
   fi
   local c; c="$(forge_container "$name")"
-  docker exec -u git "$c" sh -c 'rm -f /tmp/polenta-dump.tar.gz; cd /tmp && if command -v forgejo >/dev/null; then forgejo dump --type tar.gz --file /tmp/polenta-dump.tar.gz; else gitea dump --type tar.gz --file /tmp/polenta-dump.tar.gz; fi' >"$work/dump.log" 2>&1 \
-    || { cat "$work/dump.log" >&2; die "dump de la forge en échec."; }
+  # GH85 — instance jamais mise en service (instance add interrompu : pas de .add-complete) et sans aucun
+  # dépôt : le dump échoue (« open /data/git/repositories ») et il n'y a rien à exporter côté forge. Le dump
+  # est alors ignoré, signalé ; les données brutes sont exportées comme d'habitude. Partout ailleurs, un
+  # échec du dump arrête l'export.
+  local dumped=0
+  if docker exec -u git "$c" sh -c 'rm -f /tmp/polenta-dump.tar.gz; cd /tmp && if command -v forgejo >/dev/null; then forgejo dump --type tar.gz --file /tmp/polenta-dump.tar.gz; else gitea dump --type tar.gz --file /tmp/polenta-dump.tar.gz; fi' >"$work/dump.log" 2>&1; then
+    dumped=1
+  elif [[ ! -f "$dir/.add-complete" ]] && ! docker exec "$c" test -d /data/git/repositories; then
+    warn "instance « $name » jamais mise en service (aucun dépôt) : dump de la forge ignoré"
+  else
+    cat "$work/dump.log" >&2; die "dump de la forge en échec."
+  fi
   rm -f "$work/dump.log"
-  docker cp "$c:/tmp/polenta-dump.tar.gz" "$work/forge-dump.tar.gz" >/dev/null
-  docker exec "$c" rm -f /tmp/polenta-dump.tar.gz
-  ok "dump de la forge"
+  if (( dumped )); then
+    docker cp "$c:/tmp/polenta-dump.tar.gz" "$work/forge-dump.tar.gz" >/dev/null
+    docker exec "$c" rm -f /tmp/polenta-dump.tar.gz
+    ok "dump de la forge"
+  fi
   # 2. Données brutes, copie cohérente (arrêt court, comme une sauvegarde).
   inst_compose "$name" stop >/dev/null 2>&1 || true
   tar -C "$dir" -czf "$work/data.tar.gz" data || { inst_compose "$name" up -d >/dev/null 2>&1; die "copie des données impossible."; }
@@ -1182,12 +1216,14 @@ cmd_instance_export() {
   sed -E "s/^([A-Za-z0-9_.]+)='(.*)'$/\1=\2/" "$dir/forgejo.env" >"$work/forge.env"
   local version image domain
   version="$(env_get "$env" FORGE_VERSION)"; image="$(env_get "$env" FORGE_IMAGE)"; domain="$(env_get "$env" DOMAIN)"
+  local dump_doc="- \`forge-dump.tar.gz\` : export officiel de la forge (${image}, version ${version}), restaurable
+  avec la commande \`restore\` de la forge (documentation Forgejo : « Backup and restore »)."
+  (( dumped )) || dump_doc="- (pas de \`forge-dump.tar.gz\` : instance jamais mise en service, aucun dépôt à exporter)"
   cat >"$work/LISEZMOI.md" <<EOF
 # Export de la forge « ${name} » (${domain}) — ${stamp}
 
 Contenu :
-- \`forge-dump.tar.gz\` : export officiel de la forge (${image}, version ${version}), restaurable
-  avec la commande \`restore\` de la forge (documentation Forgejo : « Backup and restore »).
+${dump_doc}
 - \`data.tar.gz\` : le dossier \`/data\` complet de la forge (dépôts git, base SQLite, configuration).
 - \`forge.env\` : la configuration de la forge (variables GITEA__…), dont la clé SECRET_KEY,
   indispensable pour relire les secrets chiffrés (double authentification…).
@@ -1224,6 +1260,18 @@ export_json() {
     --argjson size "$(stat -c %s "$archive")" --arg sha "$(cut -d' ' -f1 "$archive.sha256" 2>/dev/null || true)" \
     --arg at "$(date -Iseconds -r "$archive")" \
     '{file:$file, path:$path, instance:$inst, sizeBytes:$size, sha256:$sha, createdAt:$at}'
+}
+
+# polenta-host updates publish <dossier> — GH52 : publie une version (latest.yml + installeurs) pour les
+# postes du client, servie par /polenta-updates/ de chaque instance. Le kit ne construit ni ne télécharge rien.
+cmd_updates() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    publish)
+      [[ $# -ge 1 ]] || die "$E_USAGE" "usage : polenta-host updates publish <dossier contenant latest.yml et les installeurs>"
+      updates_publish "$1" ;;
+    *) die "$E_USAGE" "usage : polenta-host updates publish <dossier contenant latest.yml et les installeurs>" ;;
+  esac
 }
 
 # polenta-host exports list [--json] | exports delete <fichier> --confirm <fichier> — GH63 :
@@ -1920,6 +1968,7 @@ main() {
     backup-cron) cmd_backup_cron ;;
     status) require_operator; load_host_env; cmd_status ;;
     exports) require_operator; cmd_exports "$@" ;;
+    updates) require_operator; load_host_env; cmd_updates "$@" ;;
     s3-key) require_operator; cmd_s3_key "$@" ;;
     s3-purge) require_operator; cmd_s3_purge "$@" ;;
     dns)

@@ -54,7 +54,9 @@ interface Props {
    *  Word/Excel. */
   searchTextByObjectId?: Map<string, string>
   readOnly?: boolean
-  onItemNodeAdded?: (nodeId: string, sourceObjectId?: string) => void
+  /** GH463 — `reveal` : l'objet créé doit être sélectionné et montré dans la vue de droite
+   *  (bouton « + Nouvel élément » de tête d'arbre). */
+  onItemNodeAdded?: (nodeId: string, sourceObjectId?: string, options?: { reveal?: boolean }) => void
   /** T161 — un nœud "item" déjà rattaché à un objet a été renommé : propager le nouveau
    *  nom au titre de l'objet (l'`onRootChange` ne touche que l'arbre). */
   onItemRenamed?: (objectId: string, name: string) => void
@@ -367,9 +369,10 @@ export function ElementTree({
   const [draggingIds, setDraggingIds] = useState<string[]>([])
   const [deleteConfirm, setDeleteConfirm] = useState<{ ids: string[]; hasContent: boolean } | null>(null)
   // Menu "Créer un élément / Créer un dossier / Coller" partagé par tous les
-  // déclencheurs (bouton + de fin d'arbre, + de survol de ligne/interstice, clic
+  // déclencheurs (bouton + de tête d'arbre, + de survol de ligne/interstice, clic
   // droit dans le vide) — parentId/afterId fixent où l'action choisie insère le nœud.
-  const [addMenu, setAddMenu] = useState<{ x: number; y: number; parentId: string | null; afterId: string | null } | null>(null)
+  // GH463 — `top` : le menu vient du bouton de tête ; l'élément est inséré en tête de liste.
+  const [addMenu, setAddMenu] = useState<{ x: number; y: number; parentId: string | null; afterId: string | null; top?: boolean } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const visibleNodes = useMemo(
@@ -568,16 +571,18 @@ export function ElementTree({
 
   // ── CRUD operations ───────────────────────────────────────────────────────
 
-  const createItem = useCallback((parentId: string | null, afterId: string | null, kind: 'folder' | 'item') => {
+  // GH463 — `top` (racine seulement) : insertion en tête de liste ; un élément créé ainsi est
+  // révélé dans la vue de droite (sélection + filtres effacés, voir createItemObject).
+  const createItem = useCallback((parentId: string | null, afterId: string | null, kind: 'folder' | 'item', top = false) => {
     const id = generateId()
     const defaultName = kind === 'folder' ? t('system.elementTree.newFolder') : t('system.elementTree.newElement')
     const newNode: TypeTreeNode = { id, kind, name: defaultName, children: [] }
-    const newRoot = treeInsert(root, newNode, parentId, afterId)
+    const newRoot = top ? treeInsertAtBeginning(root, newNode, null) : treeInsert(root, newNode, parentId, afterId)
     onRootChange(newRoot)
     if (parentId) setExpandedIds(prev => new Set([...prev, parentId]))
     onSelect([id])
     setTimeout(() => setRenamingId(id), 50)
-    if (kind === 'item') onItemNodeAdded?.(id)
+    if (kind === 'item') onItemNodeAdded?.(id, undefined, top ? { reveal: true } : undefined)
   }, [generateId, t, root, onRootChange, onSelect, onItemNodeAdded])
 
   function initiateDelete(ids: string[]) {
@@ -712,21 +717,22 @@ export function ElementTree({
 
   /** Position the add-menu under a trigger element, clamped so it stays on screen
    *  even when the trigger sits near the bottom of the panel. */
-  function openAddMenuNear(el: HTMLElement, parentId: string | null, afterId: string | null) {
+  function openAddMenuNear(el: HTMLElement, parentId: string | null, afterId: string | null, top = false) {
     const rect = el.getBoundingClientRect()
     const y = Math.min(rect.bottom + 4, window.innerHeight - 100)
-    setAddMenu({ x: rect.left, y, parentId, afterId })
+    setAddMenu({ x: rect.left, y, parentId, afterId, top })
   }
 
+  // GH463 — bouton « + Nouvel élément » de tête d'arbre : créations insérées en tête de liste.
   function handleAddButtonClick(e: React.MouseEvent<HTMLButtonElement>) {
-    openAddMenuNear(e.currentTarget, null, null)
+    openAddMenuNear(e.currentTarget, null, null, true)
   }
 
   function handleAddMenuAction(action: 'create-item' | 'create-folder' | 'paste') {
     if (!addMenu) return
-    const { parentId, afterId } = addMenu
-    if (action === 'create-item') createItem(parentId, afterId, 'item')
-    else if (action === 'create-folder') createItem(parentId, afterId, 'folder')
+    const { parentId, afterId, top } = addMenu
+    if (action === 'create-item') createItem(parentId, afterId, 'item', top)
+    else if (action === 'create-folder') createItem(parentId, afterId, 'folder', top)
     else if (action === 'paste') pasteAt(parentId, afterId)
   }
 
@@ -945,6 +951,20 @@ export function ElementTree({
         if (e.target === containerRef.current) handleClickEmpty()
       }}
     >
+      {/* GH463 — « + Nouvel élément » en tête d'arbre, collé en haut : reste accessible quand l'arbre défile. */}
+      {!readOnly && (
+        <div className="sticky top-0 z-10 flex items-center px-3 py-1.5 bg-surface">
+          <button
+            type="button"
+            onClick={handleAddButtonClick}
+            className="flex items-center gap-1.5 text-xs text-ink-3 hover:text-ink transition-colors"
+          >
+            <Plus size={12} />
+            <span>{t('system.elementTree.newElement')}</span>
+          </button>
+        </div>
+      )}
+
       {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" {...backdropDismiss(() => setDeleteConfirm(null))}>
@@ -1059,20 +1079,6 @@ export function ElementTree({
           </div>
         )
       })}
-
-      {/* Bouton + permanent en fin d'arbre */}
-      {!readOnly && (
-        <div className="flex items-center px-3 py-1.5">
-          <button
-            type="button"
-            onClick={handleAddButtonClick}
-            className="flex items-center gap-1.5 text-xs text-ink-3 hover:text-ink transition-colors"
-          >
-            <Plus size={12} />
-            <span>{t('system.elementTree.newElement')}</span>
-          </button>
-        </div>
-      )}
 
       {/* Empty area click handler */}
       <div

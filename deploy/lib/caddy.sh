@@ -101,12 +101,39 @@ caddy_disconnect_network() {
   docker network disconnect "$1" "$CADDY_CONTAINER" 2>/dev/null || true
 }
 
+# GH53 — instance dont le certificat est fourni par l'exploitant (instance add --tls-cert/--tls-key) :
+# TLS_PROVIDED=1 dans instance.env. Les fichiers sont rendus dans etc/tls/<nom>/ (voir caddy_sync_tls).
+tls_provided() { [[ "$(env_get "$(instance_env "$1")" TLS_PROVIDED)" == 1 ]]; }
+
+# GH53 — contrôle d'un certificat fourni, avant toute création : PEM lisibles, clé non chiffrée qui
+# correspond au certificat, certificat non expiré. Aucun fichier n'est écrit ici.
+tls_check() {
+  local cert="$1" key="$2" pub_cert pub_key
+  [[ -n "$cert" && -n "$key" ]] || die "$E_USAGE" "--tls-cert et --tls-key vont ensemble."
+  if caddy_external; then
+    die "$E_USAGE" "--tls-cert refusé en CADDY_MODE=external : le certificat relève du Caddy de l'exploitant."
+  fi
+  require_cmd openssl
+  [[ -r "$cert" ]] || die "$E_USAGE" "certificat illisible : $cert"
+  [[ -r "$key" ]] || die "$E_USAGE" "clé illisible : $key"
+  openssl x509 -in "$cert" -noout >/dev/null 2>&1 || die "$E_USAGE" "$cert : pas un certificat PEM."
+  openssl pkey -in "$key" -noout >/dev/null 2>&1 || die "$E_USAGE" "$key : pas une clé privée PEM non chiffrée."
+  pub_cert="$(openssl x509 -in "$cert" -noout -pubkey | openssl sha256)"
+  pub_key="$(openssl pkey -in "$key" -pubout | openssl sha256)"
+  [[ "$pub_cert" == "$pub_key" ]] || die "$E_USAGE" "le certificat et la clé ne correspondent pas."
+  openssl x509 -in "$cert" -noout -checkend 0 >/dev/null 2>&1 || die "$E_USAGE" "$cert : certificat expiré."
+}
+
 caddy_render_site() {
-  local name="$1" domain="$2"
+  local name="$1" domain="$2" tls_line=""
+  if tls_provided "$name"; then
+    tls_line="	tls /etc/caddy/tls/${name}/cert.pem /etc/caddy/tls/${name}/key.pem
+"
+  fi
   cat <<EOF
 # Instance ${name} — généré par polenta-host, ne pas éditer à la main.
 ${domain} {
-	encode zstd gzip
+${tls_line}	encode zstd gzip
 	# Les push git transportent le packfile dans le corps : limite large (design §5.3, écart
 	# assumé aux 60 Mo initiaux qui auraient bloqué le premier push d'un gros dépôt).
 	request_body {
@@ -177,9 +204,26 @@ site_apply() {
   fi
 }
 
+# GH53 — certificat fourni : copie de instances/<nom>/tls/ vers etc/tls/<nom>/ (visible du Caddy sous
+# /etc/caddy/tls/<nom>/), droits 600 pour la clé. Sans certificat fourni : rien à copier ni à garder.
+caddy_sync_tls() {
+  local name="$1" src dst
+  caddy_external && return 0   # GH53 : en external, le certificat relève du Caddy de l'exploitant
+  src="$(instance_dir "$name")/tls"
+  dst="$POLENTA_CADDY/etc/tls/$name"
+  if tls_provided "$name"; then
+    mkdir -p "$dst"
+    cp "$src/cert.pem" "$dst/cert.pem"; chmod 644 "$dst/cert.pem"
+    cp "$src/key.pem" "$dst/key.pem"; chmod 600 "$dst/key.pem"
+  else
+    rm -rf "$dst"
+  fi
+}
+
 # Ajoute (ou met à jour) le site d'une instance, à chaud.
 caddy_add_site() {
   local name="$1" domain="$2"
+  caddy_sync_tls "$name"
   caddy_write_compose || true
   caddy_connect_network "polenta-$name"
   site_apply "$(caddy_sites_dir)/$name.caddy" "$(caddy_render_site "$name" "$domain")" "$domain"
@@ -237,6 +281,7 @@ caddy_remove_web_site() {
 caddy_remove_site() {
   local name="$1"
   site_remove "$name.caddy" "$name.web.caddy"
+  rm -rf "$POLENTA_CADDY/etc/tls/$name"   # GH53 : copie du certificat fourni (la source vit dans l'instance)
   caddy_disconnect_network "polenta-$name"
   caddy_write_compose || true
 }

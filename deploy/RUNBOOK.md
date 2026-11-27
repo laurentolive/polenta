@@ -147,6 +147,25 @@ différents), le lien d'invitation affiché, et la **Partie B** de ce document.
 Remise à niveau d'une instance existante après une évolution du kit : `instance sync <nom>`.
 Arrêt / redémarrage : `instance stop|start <nom>`.
 
+**Certificat fourni (forge interne, GH53)** — au lieu de Let's Encrypt, pour un domaine interne dont l'autorité
+de certification est celle du client (CADDY_MODE=managed uniquement ; en external, le certificat relève du
+Caddy de l'exploitant) :
+
+```
+sudo polenta-host instance add <nom> --domain <domaine> --tls-cert /chemin/cert.pem --tls-key /chemin/cle.pem
+```
+
+- Contrôles avant toute création : certificat et clé lisibles, clé non chiffrée, clé correspondant au
+  certificat, certificat non expiré. Un contrôle échoué n'écrit rien.
+- Les fichiers sont copiés dans `instances/<nom>/tls/` (sauvegardés avec l'instance, supprimés avec elle) et
+  rendus dans le Caddy du kit.
+- **Échéance à surveiller** : le certificat expire, il n'y a pas d'alerte automatique dans cette version.
+- **Renouvellement** (procédure provisoire, non contrôlée par `tls_check`) : remplacer les deux fichiers dans
+  `instances/<nom>/tls/` (clé en 600), puis `sudo polenta-host instance sync <nom>`. À vérifier avant : `openssl
+  x509 -in cert.pem -noout -enddate` et correspondance clé/certificat.
+- Le certificat du client doit être approuvé par les postes : voir `caPath` dans la configuration machine
+  (la DSI dépose la CA sur les postes, cf. specs/GH53.md).
+
 ### A4. Sauvegardes
 
 - **Nocturne** automatique (cron 02:30, toutes les instances) : arrêt de la forge ~10-15 s, copie

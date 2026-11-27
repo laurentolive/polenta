@@ -733,8 +733,8 @@ write_polenta_config() {
 
 cmd_instance_add() {
   require_operator; require_cmd docker jq dig curl; load_host_env
-  local name="" domain="" org="" admin_login="" admin_email="" demo=1 image="" version="" app_name=""
-  name="${1:-}"; [[ -n "$name" ]] || die "usage : polenta-host instance add <nom> [--domain d] [--org o] [--client-admin login email] [--app-name \"Nom affiché\"] [--no-demo] [--image i] [--version v] [--yes]"
+  local name="" domain="" org="" admin_login="" admin_email="" demo=1 image="" version="" app_name="" tls_cert="" tls_key=""
+  name="${1:-}"; [[ -n "$name" ]] || die "usage : polenta-host instance add <nom> [--domain d] [--org o] [--client-admin login email] [--app-name \"Nom affiché\"] [--no-demo] [--image i] [--version v] [--tls-cert f --tls-key f] [--yes]"
   shift
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -745,11 +745,15 @@ cmd_instance_add() {
       --image) image="$2"; shift 2 ;;
       --app-name) app_name="$2"; shift 2 ;;
       --version) version="$2"; shift 2 ;;
+      --tls-cert) tls_cert="$2"; shift 2 ;;   # GH53 — certificat fourni (PEM) au lieu de Let's Encrypt
+      --tls-key) tls_key="$2"; shift 2 ;;
       --yes|-y) ASSUME_YES=1; shift ;;
       *) die "$E_USAGE" "option inconnue : $1" ;;
     esac
   done
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] || die "$E_USAGE" "nom d'instance invalide « $name » ([a-z0-9-], 2 à 31 caractères)."
+  # GH53 — contrôle du certificat fourni avant toute création (rien n'est écrit si refusé).
+  [[ -z "$tls_cert$tls_key" ]] || tls_check "$tls_cert" "$tls_key"
   local dir; dir="$(instance_dir "$name")"
   [[ -f "$dir/.add-complete" ]] && die "$E_EXISTS" "l'instance « $name » existe déjà (polenta-host instance list)."
   acquire_lock "instance add $name"
@@ -786,6 +790,14 @@ cmd_instance_add() {
   env_set "$env" INSTANCE_DIR "$dir"
   env_set "$env" DOMAIN "$domain"
   env_set "$env" ORG "$org"
+  # GH53 — certificat fourni : source dans l'instance (sauvegardée, supprimée avec elle), rendue par caddy_add_site.
+  if [[ -n "$tls_cert" ]]; then
+    mkdir -p "$dir/tls"; chmod 700 "$dir/tls"
+    cp "$tls_cert" "$dir/tls/cert.pem"; chmod 644 "$dir/tls/cert.pem"
+    cp "$tls_key" "$dir/tls/key.pem"; chmod 600 "$dir/tls/key.pem"
+    env_set "$env" TLS_PROVIDED 1
+    ok "certificat fourni (instance/tls)"
+  fi
   [[ -n "$app_name" ]] && env_set "$env" APP_NAME "$app_name"
   [[ -n "$(env_get "$env" APP_NAME)" ]] || env_set "$env" APP_NAME "Forge $org"
   [[ -n "$(env_get "$env" FORGE_IMAGE)" ]] || env_set "$env" FORGE_IMAGE "${image:-$FORGE_IMAGE_DEFAULT}"

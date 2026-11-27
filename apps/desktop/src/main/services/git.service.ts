@@ -263,12 +263,16 @@ export class GitService {
    */
   async fileCommits(
     repoPath: string, filePath: string, opts: { ref?: string; stopAt?: string | null } = {},
-  ): Promise<Array<{ oid: string; at: string; by: string }>> {
+  ): Promise<Array<{ oid: string; at: string; by: string; subject: string }>> {
     // Un seul `git log --first-parent -- <fichier>` (repo sans commit ou ref absente : []).
     const commits = await gitFor(repoPath).pathCommits(opts.ref ?? 'HEAD', [filePath], {
       firstParent: true, ...(opts.stopAt ? { stopAt: opts.stopAt } : {}),
     })
-    return commits.map(c => ({ oid: c.oid, at: new Date(c.committer.timestamp * 1000).toISOString(), by: c.author.name }))
+    // GH446 — `subject` : première ligne du message (popup « Historique »).
+    return commits.map(c => ({
+      oid: c.oid, at: new Date(c.committer.timestamp * 1000).toISOString(), by: c.author.name,
+      subject: c.message.split('\n')[0] ?? '',
+    }))
   }
 
   // ─── Branch operations ──────────────────────────────────────────────────────

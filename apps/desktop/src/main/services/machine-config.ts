@@ -38,6 +38,13 @@ function httpUrl(value: unknown): URL | null {
   }
 }
 
+// GH52 — flux de mise à jour : https seulement, sans identifiants dans l'URL (elle est journalisée).
+function httpsUrlWithoutCredentials(value: unknown): URL | null {
+  const url = httpUrl(value)
+  if (!url || url.protocol !== 'https:' || url.username || url.password) return null
+  return url
+}
+
 export function loadMachineConfig(src: MachineConfigSource): MachineConfig {
   const file = machineConfigPath(src.platform, src.env)
   let raw: string | null
@@ -92,6 +99,15 @@ export function parseMachineConfig(raw: string, file: string, warn: (message: st
         if (typeof value === 'string' && value.trim() !== '') config.caPath = value.trim()
         else warn(`[machine-config] caPath ignoré : chemin de fichier attendu`)
         break
+      case 'updateFeedUrl': {
+        // GH52 — dossier des mises à jour servi par le serveur du client ; le « / » final est ajouté.
+        const url = httpsUrlWithoutCredentials(value)
+        if (url) {
+          const text = url.toString()
+          config.updateFeedUrl = text.endsWith('/') ? text : `${text}/`
+        } else warn(`[machine-config] updateFeedUrl ignoré : URL https attendue, sans identifiants`)
+        break
+      }
       default:
         warn(`[machine-config] clé inconnue ignorée : ${key}`)
     }

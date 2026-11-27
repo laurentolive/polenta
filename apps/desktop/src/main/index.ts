@@ -67,12 +67,14 @@ if (!primaryInstance) {
 
 app.whenReady().then(() => {
   if (!primaryInstance) return   // seconde instance : le lien a été transmis à la première
-  const container = createContainer(createElectronHostContext(), electronPrintRenderer)
+  const host = createElectronHostContext()
+  const container = createContainer(host, electronPrintRenderer)
   // GH337 P3 — config git de Polenta dans userData, identité du compte connecté (terminal, auteur git).
   void initGitHome(path.join(app.getPath('userData'), 'git'), () => container.auth.currentAccount())
   registerHandlers(ipcMainRegistry, container, electronPlatformHost)
   // GH26 — mise à jour automatique : propre au desktop, hors du noyau de services partagé.
-  const update = new UpdateService(container.appSettings)
+  // GH52 — flux du serveur du client (configuration machine) : sans clé, la source reste GitHub.
+  const update = new UpdateService(container.appSettings, host.machineConfig.updateFeedUrl)
   update.onBeforeInstall(prepareForcedQuit)
   // GH238 — terminal de la vue Version ; ses shells ne survivent pas à l'application.
   // GH337 — identifiants askpass de la session terminal : ceux du compte connecté (§6).

@@ -1,6 +1,7 @@
 import { session } from 'electron'
 import { Agent, ProxyAgent, type Dispatcher } from 'undici'
 import { CONNECT_TIMEOUT_BASE_MS, getNetworkTimeoutSeconds, isNetworkTimeoutAdjustable, scaledTimeout } from './net-timeouts'
+import { tlsCaOption } from './extra-ca'
 
 // Les réseaux d'entreprise exposent rarement HTTP_PROXY/HTTPS_PROXY comme variables
 // d'environnement — le proxy y est en général configuré au niveau du système (WPAD/PAC ou
@@ -39,12 +40,15 @@ export async function resolveProxyUrl(targetUrl: string): Promise<string | undef
 export async function resolveProxyDispatcher(targetUrl: string): Promise<Dispatcher> {
   const proxyUrl = await resolveProxyUrl(targetUrl)
   const timeout = scaledTimeout(CONNECT_TIMEOUT_BASE_MS)
-  const key = `${proxyUrl ?? 'DIRECT'}|${timeout}`
+  // GH53 — la CA de l'entreprise (si configurée) s'ajoute aux racines publiques, sur le proxy comme sur la cible.
+  const ca = tlsCaOption()
+  const tlsOpts = ca ? { timeout, ca } : { timeout }
+  const key = `${proxyUrl ?? 'DIRECT'}|${timeout}|${ca ? 'ca' : 'std'}`
   let agent = dispatcherCache.get(key)
   if (!agent) {
     agent = proxyUrl
-      ? new ProxyAgent({ uri: proxyUrl, proxyTls: { timeout }, requestTls: { timeout } })
-      : new Agent({ connect: { timeout } })
+      ? new ProxyAgent({ uri: proxyUrl, proxyTls: tlsOpts, requestTls: tlsOpts })
+      : new Agent({ connect: tlsOpts })
     dispatcherCache.set(key, agent)
   }
   return agent

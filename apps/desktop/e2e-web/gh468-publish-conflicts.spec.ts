@@ -13,9 +13,11 @@ const s = setupSession()
 test.beforeEach(() => s.allowConsoleErrors(/status of 404/))
 
 const WORK = 'dev-gh468'
-const FILES = Array.from({ length: 90 }, (_, i) => `gh468/fichier-${String(i + 1).padStart(2, '0')}.txt`)
+// Noms sans tiret ni barre : aucun point de coupure, donc un mot long peut déborder la largeur de la
+// popup et faire apparaître une barre de défilement en largeur.
+const FILES = Array.from({ length: 90 }, (_, i) => `gh468_EXIGENCE_SYSTEME_LONGUE_DESCRIPTION_FICHIER_${String(i + 1).padStart(2, '0')}.txt`)
 const GRAPH_WORK = 'dev-gh468-arbre'
-const GRAPH_FILES = Array.from({ length: 90 }, (_, i) => `gh468-arbre/fichier-${String(i + 1).padStart(2, '0')}.txt`)
+const GRAPH_FILES = Array.from({ length: 90 }, (_, i) => `gh468_arbre_EXIGENCE_SYSTEME_LONGUE_DESCRIPTION_FICHIER_${String(i + 1).padStart(2, '0')}.txt`)
 
 interface IntegrationState { currentBranch: string; configured: string }
 
@@ -68,11 +70,19 @@ test('GH468-1 — 90 fichiers en conflit : la popup tient dans la fenêtre et «
   expect(box).not.toBeNull()
   expect(box!.y).toBeGreaterThanOrEqual(0)
   expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
+  // Pas de défilement en largeur dans la popup (noms de fichiers longs compris).
+  const overflowing = await s.page.getByText('Publication impossible', { exact: true }).evaluate(h => {
+    const pop = h.parentElement!
+    return [pop, ...pop.querySelectorAll('*')]
+      .filter(el => el instanceof HTMLElement && el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1)
+      .map(el => `${el.tagName.toLowerCase()} « ${(el.textContent ?? '').trim().slice(0, 40)} »`)
+  })
+  expect(overflowing).toEqual([])
   await s.shot('gh468-1-popup')
 
   // Cliquable : la fusion démarre dans l'éditeur de résolution.
   await resolve.click()
-  await expect(s.page.getByTestId('merge-files-panel')).toContainText('fichier-01.txt', { timeout: 60_000 })
+  await expect(s.page.getByTestId('merge-files-panel')).toContainText('FICHIER_01.txt', { timeout: 60_000 })
   await s.shot('gh468-1-resolution')
 })
 
@@ -105,8 +115,16 @@ test('GH468-2 — fusion depuis le clic droit sur la branche (vue arbre de versi
   expect(box).not.toBeNull()
   expect(box!.y).toBeGreaterThanOrEqual(0)
   expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
+  // Pas de défilement en largeur dans le menu (message d'erreur compris).
+  const overflowing = await resolve.evaluate(btn => {
+    const menu = btn.closest('.fixed') as HTMLElement
+    return [menu, ...menu.querySelectorAll('*')]
+      .filter(el => el instanceof HTMLElement && el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1)
+      .map(el => `${el.tagName.toLowerCase()} « ${(el.textContent ?? '').trim().slice(0, 40)} »`)
+  })
+  expect(overflowing).toEqual([])
   await s.shot('gh468-2-menu')
 
   await resolve.click()
-  await expect(s.page.getByTestId('merge-files-panel')).toContainText('fichier-01.txt', { timeout: 60_000 })
+  await expect(s.page.getByTestId('merge-files-panel')).toContainText('FICHIER_01.txt', { timeout: 60_000 })
 })

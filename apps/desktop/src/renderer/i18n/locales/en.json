@@ -1751,6 +1751,7 @@
   "diffView": {
     "raw": "Raw",
     "rendered": "Rendered",
+    "refresh": "Refresh",
     "hideUnchanged": "Hide unchanged",
     "unchangedCount_one": "{{count}} unchanged field",
     "unchangedCount_other": "{{count}} unchanged fields",

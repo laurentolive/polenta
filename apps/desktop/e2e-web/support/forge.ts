@@ -23,6 +23,16 @@ export function remoteLog(format: string, repo = DEMO_REPO, ref = 'HEAD'): strin
   return git(['-C', bareRepoPath(repo), 'log', '-1', `--format=${format}`, ref])
 }
 
+/** La branche existe-t-elle sur le repo nu ? (GH427 : une désignation écrit la copie de travail puis pousse.) */
+export function remoteHasBranch(branch: string, repo = DEMO_REPO): boolean {
+  try {
+    git(['-C', bareRepoPath(repo), 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Fichiers touchés par les `count` derniers commits du repo nu. */
 export function remoteChangedFiles(count: number, repo = DEMO_REPO): string {
   return git(['-C', bareRepoPath(repo), 'log', `-${count}`, '--name-only', '--format='])

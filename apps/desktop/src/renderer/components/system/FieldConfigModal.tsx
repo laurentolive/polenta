@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { ObjectTypeDefinition, LinkTypeDefinition } from '@polenta/types'
@@ -6,7 +6,7 @@ import type { ComputedColumn, ComputedColumnPanelEntry } from '../../hooks/useCo
 import { getRelevantLinkTypes, isLinkTypeValid, linkColumnKeys, linkColumnLabel, parseLinkColumn } from './linkUtils'
 import { defaultVisibleFields } from '../../lib/exportColumns'
 import { toggleVisibleField } from './fieldToggle'
-import { backdropDismiss } from '../../lib/backdropDismiss'
+import { useNonModalDismiss } from '../../lib/nonModalPanel'
 import { ColumnCheckItem } from '../grid/ColumnChecklist'
 
 // ── FieldConfig modal (⚙) — onglets Tableau / Document indépendants ─────────
@@ -147,14 +147,18 @@ export function FieldConfigModal({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [layer, onClose])
 
+  // GH465 — panneau non modal : pas de fond sur la vue, barres de défilement et molette restent à elle.
+  const cardRef = useRef<HTMLDivElement>(null)
+  useNonModalDismiss(cardRef, onClose)
+
   const panel = (
     <div
-      className={`fixed inset-0 ${layer === 'modal' ? 'z-[60]' : 'z-50'} flex items-start justify-end pt-12 pr-4`}
-      {...backdropDismiss(onClose)}
+      className={`fixed inset-0 ${layer === 'modal' ? 'z-[60]' : 'z-50'} flex items-start justify-end pt-12 pr-4 pointer-events-none`}
       data-testid="field-config-panel"
     >
       <div
-        className="bg-surface border border-edge rounded-lg shadow-xl p-4 w-72"
+        ref={cardRef}
+        className="pointer-events-auto bg-surface border border-edge rounded-lg shadow-xl p-4 w-72"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

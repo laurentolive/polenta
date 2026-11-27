@@ -400,6 +400,8 @@ export function createIpcClient(
       pickFile: (repoPath) => invoke('dialog:pick-drawio-file', repoPath),
       read: (repoPath, relativePath, ref) => invoke('drawio:read', repoPath, relativePath, ref ?? null),
       openExternal: (repoPath, relativePath) => invoke('drawio:open-external', repoPath, relativePath),
+      openForEdit: (repoPath, relativePath) => invoke('web:drawio-open', repoPath, relativePath),
+      saveEdit: (repoPath, relativePath, xml, baseHash) => invoke('web:drawio-save', repoPath, relativePath, xml, baseHash),
     },
     image: {
       pickFile: (repoPath) => invoke('image:pick-file', repoPath),

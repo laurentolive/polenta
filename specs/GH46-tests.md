@@ -6,18 +6,22 @@ Chaque critère d'acceptation de `specs/GH46.md` a au moins un test. Les cas lim
 
 | Test | Fichier | Couvre |
 |---|---|---|
-| Script : SHA-256 incorrect → arrêt, rien extrait | `scripts/fetch-drawio-editor.test.ts` | §1.2 |
-| Script : élagage (préfixes), `index.html` conservé | idem | §1.2, AC10 |
+| Script : SHA-256 (test vectoriel, casse, valeur épinglée valide) | `scripts/drawio-editor-lib.test.ts` (fonctions pures de `fetch-drawio-editor.ts`) | §1.2, AC10 |
+| Script : élagage (préfixes, suffixes, exact), service worker conservé, `index.html` gardé | idem | §1.2, AC10 |
+| Script : chemins d'entrée du zip refusés (`..`, absolu, lecteur) | idem | §1.2 |
 | `web:drawio-save` refuse un chemin hors `diagrams/` (`../x.drawio`, absolu, lien symbolique sortant) | `drawio-edit.service.test.ts` | AC8 |
 | `web:drawio-save` refuse un XML non mxfile, n'écrit rien | idem | §5 |
 | `web:drawio-save` renvoie `conflict` si le SHA-256 courant ≠ `baseHash`, ne modifie rien | idem | AC7 |
 | `web:drawio-save` écrit atomiquement, le fichier relu = XML envoyé (deux pages incluses) | idem | AC3, AC6 |
 | `web:drawio-open` renvoie `baseHash` = SHA-256 des octets | idem | AC7 |
 | Canaux `web:drawio-*` classés dans `channel-policy` (le test existant échoue sinon) | `channel-policy.test.ts` | §3.1 |
-| `GRAPH_WRITE_CHANNELS` contient `web:drawio-save` | `graph-invalidation.test.ts` | §3.1 (leçon GH413) |
-| Messages : seul `event.source === contentWindow` et `origin === location.origin` est accepté | `DrawioEditorDialog.test.tsx` | §2 (sécurité) |
-| Protocole : `init` → `load` envoyé avec le XML ; `export` → `saveEdit` ; `conflict` → message | idem | §2, §4 |
-| Capacité : `webDrawioEditor` faux sur le desktop | `platform.test.ts` | §4 |
+| Messages : seul `event.source === contentWindow` et `origin === location.origin` est accepté | `src/renderer/lib/drawioEmbedProtocol.test.ts` | §2 (sécurité) |
+| Protocole : messages `load` / `export` (XML), événements `init` / `load` / `exit`, réponses hors XML ignorées | idem | §2 |
+| URL de l'éditeur : mode embarqué, hors ligne, sans boutons de l'éditeur, aucun hôte externe | idem | §1.4 |
+
+Pas de test unitaire du composant `DrawioEditorDialog` : son comportement (ouverture, enregistrement,
+conflit, fermeture, `beforeunload`) est couvert par les e2e GH46-1 à GH46-7 ci-dessous.
+`GRAPH_WRITE_CHANNELS` n'est pas concerné (lecture et écriture directes, sans cache : §3.1).
 
 ## End-to-end (Playwright, `apps/desktop/e2e-web/gh46-drawio-edit.spec.ts`)
 
@@ -38,9 +42,10 @@ Les e2e sont lancés sur le build web (`pnpm build:web` puis `npx playwright tes
 
 ## Cas limites (unitaires ou e2e selon le coût)
 
-- Éditeur qui ne répond pas (pas d'`init`) : message après 20 s, dialogue fermé (`DrawioEditorDialog.test.tsx`).
-- Session expirée (401) pendant l'enregistrement : message, XML copiable (unitaire).
-- Fichier supprimé pendant l'édition : `refused` (unitaire).
+- Éditeur qui ne répond pas (pas d'`init`) : message après 20 s. Non couvert par un test automatique.
+- Session expirée (401) pendant l'enregistrement : message « rien n'a été écrit ». Non couvert par un test automatique.
+- Fichier supprimé pendant l'édition : `refused` côté service (`drawio-edit.service.test.ts`, cas « fichier absent »).
+  Le message pendant l'édition n'est pas couvert par e2e.
 
 ## Vérifications de niveau 1 et 2
 

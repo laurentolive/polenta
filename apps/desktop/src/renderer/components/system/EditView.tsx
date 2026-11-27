@@ -7,6 +7,7 @@ import { isFieldRequiredNow, objectFieldReader, statusValueLabels } from '@polen
 import { api } from '../../api'
 import { UserFieldInput } from './UserFieldInput'
 import { capabilities } from '../../platform'
+import { DrawioEditorDialog } from '../drawio/DrawioEditorDialog'
 import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor, linkTypeVisibility } from './LinkTypeEditor'
 import { isLinkTypeValid } from './linkUtils'
@@ -54,6 +55,8 @@ const SENT_HISTORY = 5
 function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPath, interfaceRoles, objectId }: FieldControlProps) {
   const { t } = useTranslation()
   const [localVal, setLocalVal] = useState(value)
+  // GH46 — éditeur draw.io embarqué (web) ouvert sur le chemin enregistré du champ.
+  const [editingDrawio, setEditingDrawio] = useState(false)
 
   // T159 — le tampon d'affichage (`localVal`) et la dernière valeur serveur réconciliée
   // (`syncedValRef`). Un refetch de l'objet en arrière-plan (autosave d'un champ voisin,
@@ -242,6 +245,21 @@ function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPa
             >
               Ouvrir dans Draw.io
             </button>
+          )}
+          {/* GH46 — web : édition dans l'éditeur embarqué, sur le chemin déjà enregistré (pas la saisie en cours). */}
+          {capabilities.webDrawioEditor && !readOnly && (
+            <button
+              type="button"
+              onClick={() => setEditingDrawio(true)}
+              disabled={!localVal || !repoPath || localVal !== value}
+              title={localVal !== value ? 'Enregistrez d’abord le chemin du diagramme' : undefined}
+              className="text-xs px-3 py-1.5 border border-edge rounded hover:bg-hover text-ink-2 disabled:opacity-40 shrink-0"
+            >
+              Modifier
+            </button>
+          )}
+          {editingDrawio && repoPath && (
+            <DrawioEditorDialog repoPath={repoPath} relativePath={value} onClose={() => setEditingDrawio(false)} />
           )}
         </div>
       )

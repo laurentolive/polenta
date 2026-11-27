@@ -13,6 +13,8 @@ export const capabilities = {
   localFilesystem: !isWeb,
   /** Ouvrir un `.drawio` dans l'application draw.io du poste (#46 pour le web). */
   externalDrawioEditor: !isWeb,
+  /** GH46 — éditer un diagramme dans l'éditeur draw.io embarqué (web : `drawio-editor/`, §specs/GH46-design.md). */
+  webDrawioEditor: isWeb,
   /** Mise à jour automatique de l'application (le serveur web est mis à jour par l'exploitant). */
   autoUpdate: !isWeb,
   /** Comptes multiples, PAT, Device Flow : sur le web, le compte est celui de la session. */

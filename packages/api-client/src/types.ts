@@ -313,6 +313,15 @@ export interface FileDiffContents {
   newMissing?: boolean
 }
 
+/** GH46 — résultat de `drawio.openForEdit` : XML complet du fichier et empreinte SHA-256 des octets lus. */
+export type DrawioEditOpenResult = { status: 'ok'; xml: string; baseHash: string } | { status: 'error'; message: string }
+
+/** GH46 — résultat de `drawio.saveEdit` : `conflict` si le fichier a changé depuis `baseHash`. */
+export type DrawioEditSaveResult =
+  | { status: 'ok'; baseHash: string }
+  | { status: 'conflict' }
+  | { status: 'refused'; message: string }
+
 export interface DrawioPage {
   id: string
   name: string
@@ -702,6 +711,10 @@ export interface ApiClient {
     read(repoPath: string, relativePath: string, ref?: string | null): Promise<DrawioPage[] | null>
     /** Ouvre le fichier dans l'application associée du poste (best effort, aucune erreur si absente). */
     openExternal(repoPath: string, relativePath: string): Promise<void>
+    /** GH46 (web) — XML d'un diagramme du repo pour l'éditeur embarqué, et son empreinte SHA-256. */
+    openForEdit(repoPath: string, relativePath: string): Promise<DrawioEditOpenResult>
+    /** GH46 (web) — enregistre le XML si le fichier n'a pas changé depuis `baseHash` (sinon `conflict`). */
+    saveEdit(repoPath: string, relativePath: string, xml: string, baseHash: string): Promise<DrawioEditSaveResult>
   }
   image: {
     /**

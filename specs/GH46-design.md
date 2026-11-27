@@ -86,10 +86,11 @@ Nouveau service `apps/desktop/src/main/services/drawio-edit.service.ts`, sur le 
   3. `xml` parse en mxfile : `parseDrawioPages(xml)` non vide (sinon `refused`, rien écrit) ;
   4. SHA-256 du contenu courant = `baseHash` (sinon `conflict`) ;
   5. écriture atomique : `fichier.tmp` puis `rename` (un lecteur ne voit jamais un fichier tronqué).
-- Canal d'écriture : `web:drawio-save` est ajouté à `GRAPH_WRITE_CHANNELS` (invalidation du cache
-  du graphe après écriture, leçon GH413 : ne pas compter sur un événement de watcher seul).
-- `channel-policy.ts` : `web:drawio-open` et `web:drawio-save` dans `WEB_EXPOSED`, argument 0
-  (`repoPath`) soumis au contrôle d'accès du workspace, comme `web:drawio-import`.
+- Enregistrement : `web-handlers.ts` (canaux propres au web, comme `web:drawio-import`), et non le
+  noyau partagé. Pas de `GRAPH_WRITE_CHANNELS` : `drawio:read` et ces canaux lisent et écrivent le
+  fichier directement, sans cache du graphe (la leçon GH413 ne s'applique pas ici).
+- `channel-policy.ts` : `web:drawio-open` et `web:drawio-save` dans `WEB_ONLY_CHANNELS` et `ROOT_ARGS`
+  (argument 0 = `repoPath`, soumis au contrôle d'accès du workspace, comme `web:drawio-import`).
 
 ### 3.2 Pas de commit
 
@@ -116,7 +117,9 @@ Le bundle v32.7.7 n'émet aucun événement de modification (§2). Choix :
 - `renderer/components/drawio/DrawioEditorDialog.tsx` : fenêtre modale plein écran.
   - `iframe` `src` = §1.4, `title` « Éditeur draw.io ».
   - Barre : **Enregistrer** (désactivé tant que l'éditeur n'a pas émis `load`), **Fermer**, nom du
-    fichier, indicateur « Enregistré » / « Non enregistré » (fondé sur la comparaison XML, §3.3).
+    fichier, message d'état. Pas d'indicateur « modifié » permanent : le bundle n'émet aucun
+    événement de modification ; la comparaison se fait à la fermeture (référence = XML canonique
+    réexporté juste après `load`, §3.3).
   - Enregistrer : `export` XML → `web:drawio-save(baseHash)` → `ok` : nouveau `baseHash`, reste ouvert ;
     `conflict` : message « Le diagramme a changé depuis son ouverture » + bouton « Recharger »
     (ferme sans écrire, rouvre) ; `refused` : message, rien écrit.
@@ -155,6 +158,12 @@ Le bundle v32.7.7 n'émet aucun événement de modification (§2). Choix :
 
 ## 8. Résultats mesurés (à compléter en Dev)
 
-- Taille après élagage : _à mesurer_.
-- Notices tierces : _à vérifier_.
-- Constat `icons.diagrams.net` : _à confirmer en e2e_.
+- Taille après élagage : **79,3 Mo** (2 776 fichiers, 398 entrées élaguées), contre 126 Mo décompressés.
+  Le service worker de l'éditeur est conservé (offline=1 l'enregistre ; son absence faisait une erreur console).
+  Reste le plus gros poste : `js/` (≈ 45 Mo après élagage). Pistes si la taille gêne : retirer `shapes/`
+  et `img/` des bibliothèques non utilisées, après relevé des fichiers réellement chargés en e2e.
+- Notices tierces : `out/web/THIRD-PARTY-NOTICES.txt` contient la licence de la webapp (Apache-2.0,
+  `scripts/drawio-editor-LICENSE.txt`), libavoid (LGPL-2.1) et les bibliothèques d'icônes et de formes
+  (licence propre à draw.io, `shapes/LICENSE`), ces deux dernières lues dans `vendor/drawio-editor` au build.
+- Constat `icons.diagrams.net` : aucune requête vers `diagrams.net` pendant ouverture, édition et
+  enregistrement (GH46-2). La recherche d'icônes, non testée, appelle ce domaine ; à traiter avec #88.

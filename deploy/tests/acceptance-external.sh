@@ -62,19 +62,39 @@ tiers_sums() { ( cd "$SITES" 2>/dev/null && find . -maxdepth 1 -name '_*.caddy' 
 no_kit_caddy() { [[ -z "$(docker ps -a --filter name='^polenta-caddy$' -q)" ]]; }
 nets_of() { docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$1"; }
 has_word() { grep -qw -- "$1" <<<"$2"; }
+net_exists() { docker network inspect "$1" >/dev/null 2>&1; }
 
+# GH84 — le nettoyage est vérifié, pas supposé : un « instance remove » en échec (sortie jusqu'ici
+# jetée) laissait l'instance de test en place alors que le message annonçait « nettoyée ».
 cleanup() {
   local rc=$?
   set +e
   [[ -z "$EVENTS_PID" ]] || kill "$EVENTS_PID" 2>/dev/null
   docker rm -f "$TIERS" >/dev/null 2>&1
+  local echec_rm="" reste=""
   if [[ $CREATED == 1 ]]; then
     [[ -z "$WEB_DOMAIN" ]] || "$HOST_BIN" instance web disable "$NAME" >/dev/null 2>&1
-    "$HOST_BIN" instance remove "$NAME" --confirm "$NAME" >/dev/null 2>&1
+    if ! "$HOST_BIN" instance remove "$NAME" --confirm "$NAME" >"$WORK/cleanup-rm.log" 2>&1; then
+      tail -n 20 "$WORK/cleanup-rm.log" >&2
+      echec_rm=1
+    fi
     rm -f "$ROOT/exports/$NAME"-* 2>/dev/null
+    [[ ! -e "$ROOT/instances/$NAME" ]] || reste="$reste dossier $ROOT/instances/$NAME"
+    docker inspect "forgejo-$NAME" >/dev/null 2>&1 && reste="$reste conteneur forgejo-$NAME"
+    [[ ! -e "$SITES/$NAME.caddy" ]] || reste="$reste bloc $SITES/$NAME.caddy"
   fi
   rm -rf "$WORK"
-  if [[ $rc != 0 ]]; then printf '\n\e[31mÉchec à l'\''étape « %s » : instance de test nettoyée.\e[0m\n' "$STEP" >&2; fi
+  if [[ -n "$echec_rm" || -n "$reste" ]]; then
+    local msg="Instance de test « $NAME » NON nettoyée."
+    [[ -z "$echec_rm" ]] || msg="$msg instance remove en échec."
+    [[ -z "$reste" ]] || msg="$msg Reste :$reste."
+    printf '\n\e[31m%s\e[0m\n' "$msg" >&2
+    printf 'Reprendre : sudo polenta-host instance remove %s --confirm %s\n' "$NAME" "$NAME" >&2
+    rc=1
+  elif [[ $rc != 0 ]]; then
+    printf '\n\e[31mÉchec à l'\''étape « %s » : instance de test nettoyée.\e[0m\n' "$STEP" >&2
+  fi
+  exit "$rc"
 }
 trap cleanup EXIT
 
@@ -86,7 +106,7 @@ CADDY_VERSION_NOW="$(hv CADDY_VERSION 2)"
 # ── préconditions ────────────────────────────────────────────────────────────────────────────
 section "préconditions"
 check "host.env en CADDY_MODE=external" test "$CADDY_MODE_NOW" = external
-check "réseau $EDGE présent" docker network inspect "$EDGE"
+check "réseau $EDGE présent" net_exists "$EDGE"
 check "instance « $NAME » absente (nom libre)" test ! -e "$ROOT/instances/$NAME"
 # Empreintes avant : pare-feu, listeners 80/443 tiers, fichiers _*.caddy d'autres projets.
 UFW_BEFORE="$(ufw_web_rules)"; LISTEN_BEFORE="$(listeners)"; TIERS_SUMS="$(tiers_sums)"

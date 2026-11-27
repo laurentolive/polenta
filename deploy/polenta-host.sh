@@ -90,7 +90,8 @@ setup_host_env() {
   chmod 600 "$HOST_ENV"
   load_host_env
   [[ "$ACME_EMAIL" != admin@example.fr ]] || die "ACME_EMAIL : remplacez l'exemple dans $HOST_ENV (ou laissez vide)."
-  [[ -n "$ACME_EMAIL" ]] || warn "ACME_EMAIL vide : pas d'avis d'expiration de certificat (recommandé de le renseigner)."
+  # GH84 — en external, ACME_EMAIL n'est pas lu (le Caddy existant gère ses certificats) : pas d'avertissement.
+  [[ -n "$ACME_EMAIL" ]] || caddy_external || warn "ACME_EMAIL vide : pas d'avis d'expiration de certificat (recommandé de le renseigner)."
   [[ -n "$BASE_DOMAIN" && "$BASE_DOMAIN" != forge.example.fr ]] || warn "BASE_DOMAIN non renseigné : chaque instance devra préciser --domain"
 }
 

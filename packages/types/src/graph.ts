@@ -324,6 +324,13 @@ export interface GraphVersion {
     computedAt: string
     rows: Array<{ id: string; status: string; comment: string | null; reached: boolean; sources: Array<{ rootId: string; path: string[] }> }>
   } | null
+  /** GH441 — couverture figée au passage released (`verification` du fichier de version, GH439). `null` tant que la
+   *  version n'est pas released, et pour une version released avant GH439. Lignes triées par ID ; `tests` : IDs.
+   *  Lu tel quel, jamais recalculé. */
+  verification: {
+    computedAt: string
+    rows: Array<{ id: string; status: GraphCoverageStatus; tests: string[] }>
+  } | null
   fields: Record<string, unknown>
   history: ObjectHistory
 }

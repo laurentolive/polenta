@@ -5,6 +5,7 @@ import { app, shell } from 'electron'
 import type { HostContext, TokenStore } from './host-context'
 import { resolveMcpServerLaunchConfig } from './mcp-launch'
 import { loadMachineConfig } from '../services/machine-config'
+import { configureExtraCa, loadExtraCaCertificates } from '../services/extra-ca'
 import { setNetworkTimeoutSeconds } from '../services/net-timeouts'
 import { applyNetworkTimeoutToGit } from '../git/git-config'
 import { BRAND } from '../../shared/brand'
@@ -28,24 +29,28 @@ export class KeytarTokenStore implements TokenStore {
 }
 
 export function createElectronHostContext(): HostContext {
+  const readOptionalFile = (file: string): string | null => {
+    try {
+      return fs.readFileSync(file, 'utf-8')
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw err
+    }
+  }
+  const warn = (message: string) => console.warn(message)
+  const machineConfig = loadMachineConfig({ platform: process.platform, env: process.env, readFile: readOptionalFile, warn })
+  const userDataDir = app.getPath('userData')
+  // GH53 — CA de l'entreprise : lue une fois, avant le premier appel réseau du processus.
+  configureExtraCa({
+    dataDir: userDataDir,
+    pems: machineConfig.caPath ? loadExtraCaCertificates({ path: machineConfig.caPath, readFile: readOptionalFile, warn }) : [],
+  })
   return {
-    userDataDir: app.getPath('userData'),
+    userDataDir,
     tokenStore: new KeytarTokenStore(),
     openExternal: (url) => shell.openExternal(url),
     mcpServerLaunch: resolveMcpServerLaunchConfig,
-    machineConfig: loadMachineConfig({
-      platform: process.platform,
-      env: process.env,
-      readFile: (file) => {
-        try {
-          return fs.readFileSync(file, 'utf-8')
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
-          throw err
-        }
-      },
-      warn: (message) => console.warn(message),
-    }),
+    machineConfig,
     deviceLabel: os.hostname(),
     // GH337 P3 — le réglage GH15 vaut aussi pour git (http.lowSpeedTime), pas seulement Node.
     applyNetworkTimeout: seconds => {

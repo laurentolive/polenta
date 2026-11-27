@@ -15,6 +15,7 @@ import { isSafeTreePath, nodeCheckout } from './node-checkout'
 import { openAskpassSession, type CredentialResolver } from './askpass'
 import { checkRemote } from '../services/forge/remote-guard'
 import { resolveProxyUrl } from '../services/net-proxy'
+import { extraCaCertificates, gitCaBundlePath, gitDefaultBundle } from '../services/extra-ca'
 import { CONNECT_TIMEOUT_BASE_MS, GIT_IO_TIMEOUT_BASE_MS, scaledTimeout } from '../services/net-timeouts'
 
 /**
@@ -1178,8 +1179,29 @@ function sshCommand(): string {
 }
 
 /**
+ * GH53 — arguments `-c` qui ajoutent la CA de l'entreprise à une opération git en HTTPS. `bundle` est le
+ * bundle combiné (racines publiques de git + CA), jamais la seule CA : `http.sslCAInfo` remplace le bundle.
+ */
+export function gitCaConfigArgs(url: string, bundle: string | null): string[] {
+  return bundle && /^https:\/\//i.test(url) ? ['-c', `http.sslCAInfo=${bundle}`] : []
+}
+
+let gitCaBundleResult: { bundle: string | null } | undefined
+
+/** GH53 — bundle combiné pour git, calculé une fois par processus ; `null` sans CA de l'entreprise. */
+function gitCaBundle(): string | null {
+  if (extraCaCertificates().length === 0) return null
+  if (!gitCaBundleResult) {
+    const bundle = gitCaBundlePath(gitDefaultBundle(gitInstall().gitDir), message => console.warn(message))
+    gitCaBundleResult = { bundle }
+  }
+  return gitCaBundleResult.bundle
+}
+
+/**
  * Opération réseau de git (design §4) : garde du serveur web (GH44) sur l'URL, proxy résolu par
- * Chromium quand il n'est pas dans l'environnement, identifiants par jeton askpass (§6), délai GH15.
+ * Chromium quand il n'est pas dans l'environnement, identifiants par jeton askpass (§6), délai GH15,
+ * CA de l'entreprise (GH53).
  */
 export async function netRun(
   cwd: string, url: string | null, args: string[], opts: NetworkOptions, write: boolean,
@@ -1190,6 +1212,7 @@ export async function netRun(
     const proxy = await resolveProxyUrl(url)
     if (proxy) config.push('-c', `http.proxy=${proxy}`)
   }
+  if (url) config.push(...gitCaConfigArgs(url, gitCaBundle()))
   const session = await openAskpassSession(opts.credentials ?? (async () => null))
   try {
     return await runGit(cwd, [...config, ...args], {

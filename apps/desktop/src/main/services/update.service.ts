@@ -34,7 +34,16 @@ export class UpdateService {
   private scheduled = false
   private installRequested = false
 
-  constructor(private readonly settings: AppSettingsService) {}
+  /**
+   * @param feedUrl GH52 — dossier des mises à jour du serveur du client (`updateFeedUrl`). Présent : le
+   * flux remplace GitHub, sans repli ; absent : comportement d'origine.
+   */
+  constructor(private readonly settings: AppSettingsService, private readonly feedUrl?: string) {}
+
+  /** GH52 — lien vers les notes de version : pas de page GitHub quand le flux est celui du serveur du client. */
+  private releaseLink(version: string): string | undefined {
+    return this.feedUrl ? undefined : releaseUrl(version)
+  }
 
   scheduleStartupCheck(delayMs = 10_000): void {
     if (this.scheduled) return
@@ -53,6 +62,9 @@ export class UpdateService {
     autoUpdater.allowPrerelease = false
     autoUpdater.allowDowngrade = false
     autoUpdater.forceDevUpdateConfig = forceDev
+    // GH52 — flux du serveur du client : fixé avant la première vérification, il remplace le fournisseur
+    // GitHub de app-update.yml (aucune requête vers GitHub tant qu'il est configuré).
+    if (this.feedUrl) autoUpdater.setFeedURL({ provider: 'generic', url: this.feedUrl })
     autoUpdater.logger = {
       info: (m: unknown) => console.log('[update]', m),
       warn: (m: unknown) => console.warn('[update]', m),
@@ -76,7 +88,7 @@ export class UpdateService {
       this.setState({
         status: 'available',
         availableVersion: info.version,
-        releaseUrl: releaseUrl(info.version),
+        releaseUrl: this.releaseLink(info.version),
         managed: this.locked(),
         progress: undefined,
       })
@@ -90,7 +102,7 @@ export class UpdateService {
     autoUpdater.on('update-downloaded', (info) => this.setState({
       status: 'ready',
       availableVersion: info.version,
-      releaseUrl: releaseUrl(info.version),
+      releaseUrl: this.releaseLink(info.version),
       progress: undefined,
     }))
     autoUpdater.on('error', (err) => {

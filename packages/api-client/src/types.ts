@@ -1,6 +1,6 @@
 import type {
   AdoptRepoRequest, ReadmeState, ReadmeSyncOutcome, RepoAccessLevel, RepoSettings, RepoVisibility, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, ForgeMemberSuggestion, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, WidgetParamValues, QueryParameterDef, QueryColumnDef,
+  FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ObjectCommit, ObjectCommitKind, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, WidgetParamValues, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget, RunRef,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
@@ -895,6 +895,8 @@ export interface ApiClient {
     get(repoPath: string, kind: 'requirement' | 'test' | 'campaign' | 'issue', id: string): Promise<ObjectHistory>
     /** GH77 — reprise de l'historique depuis `git log` pour un repo (fichiers réécrits, pas de commit). */
     backfill(repoPath: string): Promise<HistoryBackfillResult>
+    /** GH446 — commits qui modifient le fichier de l'objet (premier parent, du plus récent au plus ancien). */
+    commits(repoPath: string, kind: ObjectCommitKind, id: string): Promise<ObjectCommit[]>
   }
   revalidation: {
     /** T173 — éléments marqués `needsRevalidation` du workspace, avec leurs éléments liés. */

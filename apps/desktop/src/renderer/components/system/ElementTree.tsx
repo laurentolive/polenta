@@ -62,6 +62,8 @@ interface Props {
    *  dépôt d'un drag & drop) → la vue document doit s'y positionner. `null` = clic dans le
    *  vide de l'arbre (efface la cible). */
   onGoto?: (nodeId: string | null) => void
+  /** GH446 — « Historique » d'un élément (popup des commits de son fichier) ; absent : pas d'entrée. */
+  onShowHistory?: (objectId: string, name: string) => void
   /** GH229 — nœud à montrer (élément ciblé par un lien, goto) : dossiers parents dépliés, ligne
    *  défilée dans la vue ; `revealSeq` rejoue la même cible. */
   revealNodeId?: string | null
@@ -127,10 +129,14 @@ function BgContextMenu({
 // ── ContextMenu ───────────────────────────────────────────────────────────────
 
 function ContextMenu({
-  x, y, clipboard, onAction, onClose,
+  x, y, clipboard, historyAvailable, historyDisabled, onAction, onClose,
 }: {
   x: number; y: number; nodeId: string; node: TypeTreeNode | null
   clipboard: ClipboardData | null
+  /** GH446 — entrée « Historique » (élément seulement). */
+  historyAvailable: boolean
+  /** Plusieurs lignes sélectionnées : entrée désactivée (Q4). */
+  historyDisabled: boolean
   onAction: (action: string) => void
   onClose: () => void
 }) {
@@ -146,17 +152,18 @@ function ContextMenu({
     return () => window.removeEventListener('mousedown', handler)
   }, [onClose])
 
-  const items = [
+  const items: ReadonlyArray<{ id: string; label: string; danger?: boolean; disabled?: boolean } | 'separator'> = [
     { id: 'create-item', label: t('system.shared.createItem') },
     { id: 'create-folder', label: t('system.shared.createFolder') },
     { id: 'rename', label: t('system.shared.rename') },
+    ...(historyAvailable ? [{ id: 'history', label: t('history.commits.menu'), disabled: historyDisabled }] : []),
     'separator',
     { id: 'copy', label: t('system.shared.copy') },
     { id: 'cut', label: t('system.shared.cut') },
     ...(clipboard ? [{ id: 'paste', label: t('system.shared.paste') }] : []),
     'separator',
     { id: 'delete', label: t('common.delete'), danger: true },
-  ] as const
+  ]
 
   return (
     <div
@@ -171,10 +178,13 @@ function ContextMenu({
           <button
             key={item.id}
             type="button"
-            onClick={() => { onAction(item.id); onClose() }}
+            disabled={'disabled' in item && item.disabled}
+            title={'disabled' in item && item.disabled ? t('history.commits.multiDisabled') : undefined}
+            onClick={() => { if (!('disabled' in item && item.disabled)) { onAction(item.id); onClose() } }}
             className={[
               'w-full text-left px-3 py-1.5 hover:bg-hover transition-colors',
               'danger' in item && item.danger ? 'text-status-danger' : 'text-ink',
+              'disabled' in item && item.disabled ? 'opacity-50 cursor-not-allowed' : '',
             ].join(' ')}
           >
             {item.label}
@@ -342,6 +352,7 @@ export function ElementTree({
   onItemNodeAdded,
   onItemRenamed,
   onGoto,
+  onShowHistory,
   revealNodeId,
   revealSeq,
 }: Props) {
@@ -758,6 +769,10 @@ export function ElementTree({
       case 'delete':
         initiateDelete(selectedIds.includes(targetId) ? selectedIds : [targetId])
         break
+      case 'history':
+        // GH446 — popup « Historique » de l'élément (une seule ligne : l'entrée est désactivée sinon).
+        if (target?.kind === 'item' && target.objectId && onShowHistory) onShowHistory(target.objectId, target.name)
+        break
     }
   }
 
@@ -961,6 +976,8 @@ export function ElementTree({
           nodeId={contextMenu.nodeId}
           node={treeFindNode(root, contextMenu.nodeId)}
           clipboard={clipboard}
+          historyAvailable={!!onShowHistory && treeFindNode(root, contextMenu.nodeId)?.kind === 'item'}
+          historyDisabled={selectedIds.length > 1}
           onAction={handleContextAction}
           onClose={() => setContextMenu(null)}
         />

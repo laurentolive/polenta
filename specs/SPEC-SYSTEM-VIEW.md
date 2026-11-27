@@ -419,6 +419,13 @@ Système › Arbre › Sélection).
 | Pas de filtre | Tous les éléments de l'arbre (lazy load) |
 | Filtre actif | Résultats du filtre uniquement (lazy load) |
 
+**Historique Git (GH446).** Clic droit sur un élément de l'arbre, de la vue Excel ou de la vue Word (exigence,
+test, campagne, issue ; version et validation depuis leur panneau) → « Historique » ouvre une popup modale : les
+commits qui modifient le fichier de l'objet (`requirements/`, `tests/`, `campaigns/`, `issues/`, `versions/`,
+`validations/`), du plus récent au plus ancien. Un commit est sélectionné pour voir le diff du fichier, en Brut ou
+Rendu (le choix est mémorisé, `diffPrefs`) ; lecture seule. L'entrée est désactivée quand plusieurs lignes sont
+sélectionnées. L'historique GH77 reste dans la section repliée des éditeurs.
+
 ### Vue Excel
 
 - Tableau : une ligne par élément, une colonne par champ visible.

@@ -25,8 +25,10 @@ import { buildFilterRegex } from '../../lib/textFilter'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { api } from '../../api'
 import { useTreeEditLock } from '../../hooks/useTreeEditLock'
-import type { TypeTreeNode } from '@polenta/types'
+import type { ObjectCommitKind, TypeTreeNode } from '@polenta/types'
 import { NoTypeForCategory } from '../system/NoTypeForCategory'
+import { useObjectCommitsDialog } from '../history/ObjectCommitsDialog'
+import { NodeContextMenu } from '../../tiptap/NodeContextMenu'
 import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
 
 interface Props {
@@ -86,14 +88,22 @@ const STATUS_LABEL_KEY: Record<string, string> = {
   abandoned:   'sidebar.system.statusAbandoned',
 }
 
+/** GH446 — kind de la popup « Historique » par catégorie d'arbre ; absent : pas d'entrée. */
+const HISTORY_KIND: Partial<Record<string, ObjectCommitKind>> = {
+  requirement: 'requirement', test: 'test', issue: 'issue', campaign: 'campaign',
+}
+
 function CampaignNavList({
   repoPath,
   component,
   level,
+  onHistory,
 }: {
   repoPath: string
   component?: string
   level?: string
+  /** GH446 — « Historique » d'une campagne (menu clic droit). */
+  onHistory?: (campaignId: string, title: string) => void
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -102,6 +112,8 @@ function CampaignNavList({
   const projectId = new URLSearchParams(searchStr ?? '').get('projectId') ?? ''
   const repo = new URLSearchParams(searchStr ?? '').get('repo') ?? undefined
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  // GH446 — menu clic droit d'une campagne : « Historique ».
+  const [historyMenu, setHistoryMenu] = useState<{ x: number; y: number; id: string; title: string } | null>(null)
   const { filter, filterOptions, category } = useSystemView()
 
   const { data: campaigns = [], isLoading } = useQuery({
@@ -194,10 +206,22 @@ function CampaignNavList({
             </div>
           ) : (
             <div className="py-1">
+              {historyMenu && onHistory && (
+                <NodeContextMenu
+                  x={historyMenu.x} y={historyMenu.y}
+                  items={[{ id: 'history', label: t('history.commits.menu'), onSelect: () => onHistory(historyMenu.id, historyMenu.title) }]}
+                  onClose={() => setHistoryMenu(null)}
+                />
+              )}
               {visibleCampaigns.map(camp => (
                 <div
                   key={camp.id}
                   className="group flex items-center gap-2 px-3 py-1.5 hover:bg-hover transition-colors"
+                  onContextMenu={e => {
+                    if (!onHistory) return
+                    e.preventDefault()
+                    setHistoryMenu({ x: e.clientX, y: e.clientY, id: camp.id, title: camp.title })
+                  }}
                 >
                   <button
                     type="button"
@@ -313,6 +337,9 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
   // GH400 — vue Exécutions : panneau Campagnes, sélecteur des types de test, sans arbre.
   const isExecutionsPage = pathname === EXECUTIONS_PATH
   const currentRepo = useRouterState({ select: s => new URLSearchParams(s.location.searchStr ?? '').get('repo') ?? undefined })
+  // GH446 — popup « Historique » (commits du fichier de l'objet) ouverte depuis l'arbre ou la liste des campagnes.
+  const commitsHistory = useObjectCommitsDialog(repoPath)
+  const commitKind = effectiveType ? HISTORY_KIND[effectiveType.category] : undefined
   useTreeEditLock({
     repoPath, nodeId: effectiveNodeId, typeId: effectiveTypeId,
     enabled: !readOnly && !isExecutionsPage && TREE_LOCK_CATEGORIES.has(effectiveType?.category ?? ''),
@@ -475,6 +502,8 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
         <p className="px-3 py-2 text-xs text-ink-3" data-testid="executions-panel-hint">{t('executionsView.panelHint')}</p>
       )}
 
+      {commitsHistory.dialog}
+
       {/* ── FilterBar ── */}
       {!isExecutionsPage && <FilterBar />}
 
@@ -497,6 +526,7 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
             repoPath={repoPath}
             component={effectiveNodeId || undefined}
             level={effectiveTypeId || undefined}
+            onHistory={(campaignId, title) => commitsHistory.open('campaign', campaignId, title)}
           />
         ) : (
           <ElementTree
@@ -515,6 +545,7 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
             onItemNodeAdded={createItemObject}
             onItemRenamed={handleItemRenamed}
             onGoto={handleGoto}
+            onShowHistory={commitKind ? (objectId, name) => commitsHistory.open(commitKind, objectId, name) : undefined}
             revealNodeId={revealNodeId}
             revealSeq={gotoSeq}
           />

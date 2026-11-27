@@ -2078,6 +2078,14 @@
     "readOnlyProject": "You have read-only access to this project ({{repo}}): you can browse but not publish."
   },
   "history": {
+    "commits": {
+      "menu": "History",
+      "title": "Git history — {{title}}",
+      "none": "No commit: this object's file has never been committed.",
+      "selectOne": "Select a commit to see the file's diff.",
+      "error": "Could not read the history.",
+      "multiDisabled": "Select a single row to see its history"
+    },
     "title": "History",
     "status": "Status",
     "empty": "No history",

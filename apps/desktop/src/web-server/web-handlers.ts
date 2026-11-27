@@ -1,6 +1,6 @@
 import * as fsP from 'fs/promises'
 import * as path from 'path'
-import type { ExportKind, ExportFormat, ExecutionSheetLocale, UpdateState } from '@polenta/types'
+import type { ExportKind, ExportFormat, ExecutionSheetLocale, TemplateExportFormat, UpdateState } from '@polenta/types'
 import type { Container } from '../main/ipc/index'
 import type { HandlerRegistry } from '../main/ipc/registry'
 import { findAvailableFileName, importFileIntoRepo, saveExport, saveExecutionSheet } from '../main/ipc/file-ops'
@@ -135,6 +135,17 @@ export function registerWebHandlers(r: HandlerRegistry, ctx: WebHandlerContext):
     await uploads.remove(uploadId)
     return result
   })
+  // GH54 — gabarit d'export envoyé dans la bibliothèque personnelle de l'utilisateur. Le fichier envoyé
+  // est toujours supprimé, réussite ou refus.
+  handle('web:export-template-import', async (_e, format: TemplateExportFormat, uploadId: string, replace: boolean) => {
+    const file = await uploaded(uploadId)
+    try {
+      return await c.exportTemplateLibrary.importFile(format, file.filePath, file.fileName, replace === true)
+    } finally {
+      await uploads.remove(uploadId)
+    }
+  })
+  handle('web:export-template-delete', (_e, relPath: string) => c.exportTemplateLibrary.deleteFile(relPath))
   handle('web:execution-sheet-preview', async (_e, repoPath: string, campaignId: string, uploadId: string, workspaceDir?: string) => {
     const file = await uploaded(uploadId)
     return c.campaignExecution.preview(repoPath, campaignId, file.filePath, workspaceDir)

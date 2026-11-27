@@ -880,6 +880,11 @@ cmd_instance_sync() {
     wait_healthy "$name"; ok "conteneurs rattachés au réseau $EDGE_NETWORK"
     caddy_add_site "$name" "$domain"
     [[ -z "$(env_get "$env" WEB_DOMAIN)" ]] || caddy_add_web_site "$name" "$(env_get "$env" WEB_DOMAIN)"
+  else
+    # GH52/GH53 — en managé, la remise à niveau réécrit le bloc de site de la forge (route
+    # /polenta-updates/, certificat fourni copié) et recharge Caddy. Sans cela, un bloc créé avant
+    # l'évolution du kit reste tel quel.
+    caddy_add_site "$name" "$domain"
   fi
   ensure_ops_account "$name"
   ensure_service_token "$name"
@@ -1039,6 +1044,15 @@ cmd_instance_restore() {
   env_set "$env" INSTANCE_NAME "$name"
   env_set "$env" INSTANCE_DIR "$dir"
   env_set "$env" DOMAIN "$domain"
+  # GH85 (corrigé après test sur VPS) — copie sous un autre nom : le client web de la source ne se reprend
+  # pas. Son domaine est déjà servi par la source (Caddy refuse deux définitions) et ses secrets OAuth sont
+  # liés à la source. « instance web enable » crée le sien.
+  if [[ "$source" != "$name" && -n "$(env_get "$env" WEB_DOMAIN)" ]]; then
+    local src_web; src_web="$(env_get "$env" WEB_DOMAIN)"
+    sed -i '/^WEB_DOMAIN=/d' "$env"
+    rm -f "$dir/web.env"
+    warn "client web de « $source » ($src_web) non repris : « polenta-host instance web enable $name --domain <domaine web> --version <v> »"
+  fi
   env_set "$env" LAST_BACKUP "$(snapshot_time "$source" "$snapshot")"
   check_front_dns "$domain"
   render_forgejo_env "$name"

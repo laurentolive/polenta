@@ -230,6 +230,8 @@ sudo polenta-host instance restore acme --from latest --force --yes
 ```
 
 Les comptes, mots de passe, double authentification, équipes et dépôts reviennent à l'identique.
+Une copie sous un autre nom **n'a pas le client web** de la source (son domaine est déjà servi par elle) : pour
+le recréer, `sudo polenta-host instance web enable <copie> --domain <domaine web> --version <v>`.
 
 **Test de restauration trimestriel** (obligatoire — une sauvegarde jamais restaurée n'est pas une
 sauvegarde) :

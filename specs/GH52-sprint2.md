@@ -29,6 +29,18 @@ Design : `specs/GH52-design.md` § 3. Scénarios : `specs/GH52-tests.md` S2.
   prévoyait « non pris en charge » : traduit en refus explicite et testé (K-P6).
 - **Pas de contrôle `sha512`** dans le kit : electron-updater le vérifie à l'installation. À ajouter si l'on veut un refus à la publication.
 
+## Défauts trouvés sur le VPS et corrigés (2026-11-27)
+
+- **`instance sync` ne réécrivait pas le bloc en managé** : la route n'arrivait donc pas aux instances existantes, et le
+  renouvellement de GH53 non plus. Le RUNBOOK et ce résumé disaient le contraire. Corrigé : `sync` appelle `caddy_add_site`
+  dans les deux modes. Vérifié en banc (appel effectif) ; sur VPS, la route était absente après `sync` avant correction et
+  présente après `stop`/`start` (même chemin de rendu).
+- **Copie restaurée avec client web** : la copie reprenait `WEB_DOMAIN` de la source (déjà servi par elle) et son `web.env`.
+  Caddy refusait le rechargement (« ambiguous site definition »). Corrigé : la copie ne reprend ni le domaine web ni `web.env`,
+  avec un avertissement qui indique la commande `instance web enable`. Vérifié en banc et sur VPS.
+- Connu, non corrigé : les refus d'usage affichent « Erreur inattendue (code N) » en plus du message utile (gestionnaire d'erreurs
+  du kit, préexistant).
+
 ## Tests lancés
 
 - `deploy/tests/updates-publish.test.sh` : vert (K-P1 à K-P6, K-R1).

@@ -26,9 +26,11 @@ Design : `specs/GH53-design.md` § 3. Scénarios : `specs/GH53-tests.md` S2.
 
 ## Divergences avec le design
 
-- Aucune. Le design prévoyait `caddy_add_site` pour la copie : c'est fait. `instance sync` passe aussi par
-  `caddy_add_site` (ligne 879 de `polenta-host.sh`), donc il reprend les fichiers à jour de `instances/<nom>/tls/`. C'est
-  ce qui sert de renouvellement provisoire (documenté dans le RUNBOOK, non contrôlé par `tls_check`).
+- Aucune. Le design prévoyait `caddy_add_site` pour la copie : c'est fait.
+- **Correction (2026-11-27, test sur VPS)** : ce résumé affirmait que `instance sync` repasse par `caddy_add_site`. Faux en
+  managé : seul le mode external le faisait. Corrigé dans le commit « GH52 … sync managé » : désormais `instance sync` réécrit
+  le bloc et recopie les fichiers de `instances/<nom>/tls/` en managé aussi. Le renouvellement provisoire (RUNBOOK A3) repose
+  sur ce chemin, **non testé sur VPS** (le test a porté sur la création et la route).
 
 ## Tests lancés
 

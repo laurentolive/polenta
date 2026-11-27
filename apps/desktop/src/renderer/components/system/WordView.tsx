@@ -26,6 +26,9 @@ import { LinkEditor } from '../links/LinkEditor'
 import { LinkList } from '../links/LinkList'
 import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
 import { REFLECTION_COLUMNS, ReflectionValue, type ReflectionsData } from './ReflectionCell'
+import { NodeContextMenu } from '../../tiptap/NodeContextMenu'
+import { useObjectCommitsDialog } from '../history/ObjectCommitsDialog'
+import type { ObjectCommitKind } from '@polenta/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -492,10 +495,13 @@ function ItemCard({
   needsRevalidation = false,
   computedColumns,
   onOpenComputedTarget,
+  onHistoryMenu,
 }: {
   node: TypeTreeNode
   obj: AnyObject | null
   typeDef: ObjectTypeDefinition | undefined
+  /** GH446 — clic droit sur la carte : menu « Historique » (absent : pas d'entrée). */
+  onHistoryMenu?: (e: React.MouseEvent, node: TypeTreeNode) => void
   visibleFields: string[]
   section?: string
   linkTypes?: LinkTypeDefinition[]
@@ -574,6 +580,7 @@ function ItemCard({
   return (
     <div
       data-node-id={node.id}
+      onContextMenu={onHistoryMenu ? e => onHistoryMenu(e, node) : undefined}
       className={`border border-edge rounded p-2.5 bg-surface mb-2 group${isGotoTarget ? ` ${GOTO_OUTLINE_CLASS}` : ''}`}
     >
       <div className="flex items-start justify-between mb-1.5">
@@ -846,6 +853,21 @@ export const WordView = memo(function WordView({
   const interfaceRoles = currentSchema?.roles?.map(r => r.name)
   const [activeLinkPopover, setActiveLinkPopover] = useState<ActiveLinkPopover | null>(null)
   const [activeMultiEnumPopover, setActiveMultiEnumPopover] = useState<ActiveMultiEnumPopover | null>(null)
+  // GH446 — clic droit sur une carte d'objet : « Historique » (popup des commits de son fichier).
+  const commitsHistory = useObjectCommitsDialog(repoPath ?? '')
+  const [historyMenu, setHistoryMenu] = useState<{ x: number; y: number; objectId: string; name: string } | null>(null)
+  const historyKind: ObjectCommitKind | undefined = typeDef?.category === 'requirement' ? 'requirement'
+    : typeDef?.category === 'test' ? 'test'
+    : typeDef?.category === 'campaign' ? 'campaign'
+    : typeDef?.category === 'issue' ? 'issue'
+    : undefined
+  const onHistoryMenu = historyKind && repoPath
+    ? (e: React.MouseEvent, node: TypeTreeNode) => {
+      if (!node.objectId) return
+      e.preventDefault()
+      setHistoryMenu({ x: e.clientX, y: e.clientY, objectId: node.objectId, name: node.name })
+    }
+    : undefined
   const collapsedFolders = useMemo(() => new Set(collapsedFolderIds), [collapsedFolderIds])
 
   // T164 — "goto" : défiler jusqu'à la carte / l'en-tête portant data-node-id.
@@ -1016,6 +1038,7 @@ export const WordView = memo(function WordView({
             onInlineEdit={onInlineEdit}
             onRenameNode={onRenameNode}
             onEditOpen={onEditOpen}
+            onHistoryMenu={onHistoryMenu}
             onLinkClick={repoPath ? handleLinkClick : undefined}
             activeLinkKey={activeLinkKey}
             steps={stepsByObjectId !== undefined && node.objectId ? (stepsByObjectId.get(node.objectId) ?? []) : undefined}
@@ -1041,6 +1064,14 @@ export const WordView = memo(function WordView({
 
   return (
     <div ref={containerRef} className="flex-1 overflow-auto" data-view-scroll>
+      {historyMenu && historyKind && (
+        <NodeContextMenu
+          x={historyMenu.x} y={historyMenu.y}
+          items={[{ id: 'history', label: t('history.commits.menu'), onSelect: () => commitsHistory.open(historyKind, historyMenu.objectId, historyMenu.name) }]}
+          onClose={() => setHistoryMenu(null)}
+        />
+      )}
+      {commitsHistory.dialog}
       <div className="px-6 py-2">
         {root.length === 0 ? (
           <p className="text-ink-3 text-sm italic">{t('common.noElements')}</p>

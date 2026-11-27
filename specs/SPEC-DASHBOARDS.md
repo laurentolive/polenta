@@ -101,6 +101,11 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 >
 > **GH204** — collection `validations` (`GraphValidation` : `state`, `versionId`, `entries`), catégorie `validation`.
 > `designVersion` n'est renseigné que si la version inclut l'exigence à l'identique ; manifeste v15.
+>
+> **GH441 (contrat v1, ajout)** — `GraphVersion.verification` : couverture figée au passage released (`computedAt`,
+> lignes `{ id, status, tests }` triées par ID), lue du fichier de version telle quelle ; `null` tant que la version
+> n'est pas released et pour une version released avant GH439. Aucun calcul : la matrice courante ne l'alimente pas.
+> `polenta.d.ts` régénéré (manifeste v19).
 
 ## 3. Exécution (bac à sable)
 

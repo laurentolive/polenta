@@ -37,8 +37,10 @@ export function PublishPopover({ children, onClose }: { children: ReactNode; onC
   return (
     <>
       <div className="fixed inset-0 z-40" {...backdropDismiss(onClose)} />
+      {/* GH468 — hauteur bornée à la fenêtre : au-delà, le contenu défile (sinon les boutons du bas,
+          « Résoudre les conflits » ou « Fermer », sortent de l'écran). */}
       <div
-        className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-6 w-96"
+        className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-6 w-96 max-h-[calc(100vh-8rem)] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {children}
@@ -630,7 +632,9 @@ export function ModificationControl({ currentProjectId }: Props) {
             <p className="text-xs text-ink-3 mb-2 break-words">{publishError.detail}</p>
           )}
           {publishError.kind === 'conflict' && publishError.files.length > 0 && (
-            <ul className="text-xs font-mono text-ink-2 mb-2 list-disc list-inside">
+            // GH468 — une liste de conflits peut compter des dizaines de fichiers : défilante, pour que
+            // les boutons d'action restent visibles sans défiler la popup.
+            <ul className="text-xs font-mono text-ink-2 mb-2 list-disc list-inside max-h-40 overflow-y-auto">
               {publishError.files.map(f => <li key={f}>{f}</li>)}
             </ul>
           )}

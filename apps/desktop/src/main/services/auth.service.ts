@@ -13,6 +13,11 @@ import { normalizeBaseUrl } from './forge/forge-http'
 import type { ForgeProvider } from './forge/forge-provider'
 import { githubProvider, isGithubHost, GITHUB_HOST, startGithubDeviceFlow, pollGithubDeviceFlow } from './forge/github.provider'
 import { forgejoProvider, detectForge, createAccessToken, probeAccess } from './forge/forgejo.provider'
+import {
+  authorizeUrl, exchangeCode, newPkcePair, newState, OAuthTokenError, refreshTokens, SsoLoginError,
+  SSO_REFRESH_MARGIN_MS, SSO_TIMEOUT_MS, type SsoTokens,
+} from './forge/forgejo-sso'
+import { startLoopbackCallback, type LoopbackCallback } from './forge/loopback-callback'
 import { BRAND } from '../../shared/brand'
 
 export type { DeviceFlowSession } from './forge/github.provider'
@@ -42,6 +47,23 @@ interface AuthStore {
 }
 
 type NormalizedAccount = StoredAccount & { provider: ForgeKind; baseUrl: string }
+
+/**
+ * GH51 — renouvellement d'un compte connecté par le navigateur. Stocké dans le magasin de jetons, sous
+ * `<hôte>:<login>#sso` : jamais dans `auth.json`. Absent sans refresh token (D5 : pas de renouvellement).
+ */
+interface SsoRecord {
+  clientId: string
+  refreshToken: string
+  expiresAt?: number
+}
+
+/** Ce qu'il faut pour renouveler un jeton : clé du compte, hôte (bannière) et origine de la forge. */
+interface SsoTarget {
+  key: string
+  host: string
+  baseUrl: string
+}
 
 /**
  * GH45 — jetons « nus » (sans compte dans auth.json) hérités d'anciennes versions, uniquement sur
@@ -98,6 +120,10 @@ export class AuthService {
    * fournie par le renderer.
    */
   private pendingPasswordChangeUrl: string | null = null
+  /** GH51 — connexion au navigateur en cours (un seul flux à la fois). */
+  private ssoPending: LoopbackCallback | null = null
+  /** GH51 — renouvellements en vol, un par compte. */
+  private readonly refreshing = new Map<string, Promise<string>>()
 
   constructor(private readonly host: HostContext) {}
 
@@ -127,6 +153,7 @@ export class AuthService {
     const host = extractHost(remote)
     const account = username ? `${host}:${username}` : host
     await this.host.tokenStore.delete(account)
+    if (username) await this.host.tokenStore.delete(`${account}#sso`)
   }
 
   // ─── Forges (GH45) ──────────────────────────────────────────────────────────
@@ -300,6 +327,8 @@ export class AuthService {
     const bare = await this.host.tokenStore.get(account.remoteHost)
     const own = await this.host.tokenStore.get(keyOf(account))
     await this.host.tokenStore.delete(keyOf(account))
+    // GH51 — renouvellement (refresh token) du compte retiré.
+    await this.host.tokenStore.delete(`${keyOf(account)}#sso`)
     // Le jeton « nu » de l'hôte n'est supprimé que s'il appartient à ce compte.
     if (bare && (bare === own || !store.accounts.some(a => keyOf(a) !== keyOf(account) && a.remoteHost === account.remoteHost))) {
       await this.host.tokenStore.delete(account.remoteHost)
@@ -468,6 +497,72 @@ export class AuthService {
     return { login, name, email }
   }
 
+  // ─── Connexion par le navigateur (GH51) ────────────────────────────────────
+
+  /**
+   * GH51 — connexion au navigateur vers la forge Forgejo `defaultServer`, client public
+   * `forgeSsoClientId` (PKCE S256, sans secret). La promesse se résout au retour de la forge, ou se
+   * rejette avec un `SsoLoginError`. Un nouvel appel annule le flux en cours.
+   */
+  async ssoLogin(remote: string): Promise<ForgeAccount> {
+    const clientId = this.host.machineConfig.forgeSsoClientId
+    const configured = this.host.machineConfig.defaultServer
+    if (!clientId || !configured) throw new SsoLoginError('not-configured')
+    const requested = normalizeBaseUrl(remote)
+    if (normalizeBaseUrl(configured) !== requested) throw new SsoLoginError('not-configured')
+    const openExternal = this.host.openExternal
+    if (!openExternal) throw new SsoLoginError('browser')
+
+    let detection: ForgeDetection
+    try {
+      detection = await detectForge(requested)
+    } catch (err) {
+      throw new SsoLoginError(isNetworkUnreachable(err) ? 'network' : 'not-a-forge')
+    }
+    if (detection.provider !== 'forgejo') throw new SsoLoginError('not-a-forge')
+    const baseUrl = detection.baseUrl
+
+    this.ssoPending?.cancel()
+    const pkce = newPkcePair()
+    const state = newState()
+    const callback = await startLoopbackCallback({ timeoutMs: SSO_TIMEOUT_MS })
+    this.ssoPending = callback
+    try {
+      try {
+        await openExternal(authorizeUrl({ baseUrl, clientId, redirectUri: callback.redirectUri, state, challenge: pkce.challenge }))
+      } catch {
+        throw new SsoLoginError('browser')
+      }
+      const params = await callback.result
+      if (params.error) throw new SsoLoginError('denied')
+      if (params.state !== state) throw new SsoLoginError('state')
+      if (!params.code) throw new SsoLoginError('no-code')
+
+      let tokens: SsoTokens
+      try {
+        tokens = await exchangeCode({ baseUrl, clientId, redirectUri: callback.redirectUri, code: params.code, verifier: pkce.verifier })
+      } catch (err) {
+        if (err instanceof OAuthTokenError) throw new SsoLoginError('exchange')
+        throw new SsoLoginError(isNetworkUnreachable(err) ? 'network' : 'exchange')
+      }
+      try {
+        return await this.persistToken(baseUrl, tokens.accessToken, 'forgejo', undefined, {
+          clientId, refreshToken: tokens.refreshToken, expiresAt: tokens.expiresAt,
+        })
+      } catch {
+        throw new SsoLoginError('identity')
+      }
+    } finally {
+      callback.cancel()
+      if (this.ssoPending === callback) this.ssoPending = null
+    }
+  }
+
+  /** GH51 — interrompt la connexion au navigateur en cours (bouton « Annuler »). */
+  ssoCancel(): void {
+    this.ssoPending?.cancel()
+  }
+
   // ─── GitHub OAuth Device Flow ───────────────────────────────────────────────
 
   async startDeviceFlow(remote: string) {
@@ -509,7 +604,10 @@ export class AuthService {
    * be resolved fails the login: no more « Git User » account, whose commits would be anonymous.
    * `generic` keeps the pre-GH45 fallback (bare token, minimal identity).
    */
-  private async persistToken(remote: string, token: string, kind: ForgeKind, knownIdentity?: ForgeIdentity): Promise<ForgeAccount> {
+  private async persistToken(
+    remote: string, token: string, kind: ForgeKind, knownIdentity?: ForgeIdentity,
+    sso?: { clientId: string; refreshToken?: string; expiresAt?: number },
+  ): Promise<ForgeAccount> {
     const baseUrl = normalizeBaseUrl(remote)
     const host = extractHost(baseUrl)
     const provider = providerFor(kind)
@@ -531,6 +629,10 @@ export class AuthService {
     }
     await this.host.tokenStore.set(host, token)
     await this.host.tokenStore.set(`${host}:${identity.login}`, token)
+    // GH51 — un renouvellement n'existe que pour une connexion au navigateur avec refresh token ; toute
+    // autre connexion (PAT, mot de passe, Device Flow) retire celui qui restait pour ce compte.
+    const record = sso?.refreshToken ? { clientId: sso.clientId, refreshToken: sso.refreshToken, ...(sso.expiresAt ? { expiresAt: sso.expiresAt } : {}) } : null
+    await this.writeSsoRecord(`${host}:${identity.login}`, record)
     const account: StoredAccount = {
       remoteHost: host, username: identity.login, name: identity.name, email: identity.email, provider: kind, baseUrl,
     }
@@ -579,8 +681,99 @@ export class AuthService {
     return account ? normalize(account) : null
   }
 
+  /**
+   * Jeton d'un compte, lu à chaque appel. GH51 — un compte connecté au navigateur est renouvelé ici
+   * avant son expiration (60 s de marge) ; sans refresh token, le jeton est rendu tel quel et la forge
+   * le refusera (401 → bannière de reconnexion).
+   */
   private async tokenFor(account: StoredAccount): Promise<string | null> {
-    return (await this.host.tokenStore.get(keyOf(account))) ?? (await this.host.tokenStore.get(account.remoteHost))
+    const key = keyOf(account)
+    const token = (await this.host.tokenStore.get(key)) ?? (await this.host.tokenStore.get(account.remoteHost))
+    if (!token) return null
+    const record = await this.ssoRecord(key)
+    if (!record?.expiresAt || record.expiresAt - SSO_REFRESH_MARGIN_MS > Date.now()) return token
+    return this.refreshSso({ key, host: account.remoteHost, baseUrl: account.baseUrl ?? `https://${account.remoteHost}` }, token)
+  }
+
+  /**
+   * GH51 — après un 401 de la forge : renouvellement forcé d'un compte connecté au navigateur, pour
+   * une seule relance de la requête. `null` si le compte n'a pas de refresh token ou si le
+   * renouvellement est refusé (la révocation suit son cours).
+   */
+  async refreshAfterUnauthorized(account: ForgeAccount, stale: string): Promise<string | null> {
+    const record = await this.ssoRecord(account.key)
+    if (!record) return null
+    const fresh = await this.refreshSso({ key: account.key, host: account.host, baseUrl: account.baseUrl }, stale)
+    return fresh !== stale ? fresh : null
+  }
+
+  /** Un seul renouvellement en vol par compte : les appels concurrents attendent le même résultat. */
+  private refreshSso(target: SsoTarget, stale: string): Promise<string> {
+    const inFlight = this.refreshing.get(target.key)
+    if (inFlight) return inFlight
+    const promise: Promise<string> = this.runRefresh(target, stale).finally(() => {
+      if (this.refreshing.get(target.key) === promise) this.refreshing.delete(target.key)
+    })
+    this.refreshing.set(target.key, promise)
+    return promise
+  }
+
+  /**
+   * Renouvellement : le jeton d'accès remplace l'ancien (clé du compte, et clé d'hôte si elle le
+   * portait), le refresh token et l'expiration sont mis à jour. Refus 4xx : renouvellement retiré et
+   * hôte marqué « à reconnecter ». Réseau ou 5xx : le jeton courant reste utilisé, sans erreur.
+   * Aucun journal : ni jeton, ni refresh token.
+   */
+  private async runRefresh(target: SsoTarget, stale: string): Promise<string> {
+    const record = await this.ssoRecord(target.key)
+    if (!record) return stale
+    let tokens: SsoTokens
+    try {
+      tokens = await refreshTokens({ baseUrl: target.baseUrl, clientId: record.clientId, refreshToken: record.refreshToken })
+    } catch (err) {
+      if (err instanceof OAuthTokenError && err.status >= 400 && err.status < 500) {
+        await this.host.tokenStore.delete(`${target.key}#sso`)
+        this.markAccessRevoked(target.host)
+      }
+      return stale
+    }
+    // Reconnexion pendant le renouvellement : ce sont les jetons de la nouvelle connexion qui valent.
+    const current = await this.ssoRecord(target.key)
+    if (current?.refreshToken !== record.refreshToken) return (await this.host.tokenStore.get(target.key)) ?? stale
+    await this.host.tokenStore.set(target.key, tokens.accessToken)
+    if ((await this.host.tokenStore.get(target.host)) === stale) await this.host.tokenStore.set(target.host, tokens.accessToken)
+    await this.writeSsoRecord(target.key, {
+      clientId: record.clientId,
+      refreshToken: tokens.refreshToken ?? record.refreshToken,
+      ...(tokens.expiresAt ? { expiresAt: tokens.expiresAt } : {}),
+    })
+    return tokens.accessToken
+  }
+
+  /** Renouvellement d'un compte : `null` sans refresh token. Entrée `<clé>#sso` du magasin de jetons. */
+  private async ssoRecord(accountKey: string): Promise<SsoRecord | null> {
+    const raw = await this.host.tokenStore.get(`${accountKey}#sso`)
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw) as Partial<SsoRecord>
+      if (typeof parsed.clientId !== 'string' || typeof parsed.refreshToken !== 'string') return null
+      return {
+        clientId: parsed.clientId,
+        refreshToken: parsed.refreshToken,
+        ...(typeof parsed.expiresAt === 'number' ? { expiresAt: parsed.expiresAt } : {}),
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /** Écrit le renouvellement d'un compte, ou le retire (`null`). */
+  private async writeSsoRecord(accountKey: string, record: SsoRecord | null): Promise<void> {
+    if (!record) {
+      await this.host.tokenStore.delete(`${accountKey}#sso`)
+      return
+    }
+    await this.host.tokenStore.set(`${accountKey}#sso`, JSON.stringify(record))
   }
 
   private async readStore(): Promise<AuthStore> {

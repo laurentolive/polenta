@@ -23,6 +23,8 @@ export interface ForgeRequestOptions {
   /** Code 2FA (en-tête `X-Gitea-OTP`, accepté par Forgejo et Gitea). */
   otp?: string
   json?: unknown
+  /** Corps `application/x-www-form-urlencoded` (échanges OAuth2, GH51). Exclusif de `json`. */
+  form?: Record<string, string>
   headers?: Record<string, string>
   /** Délai en-têtes / corps en ms (défaut 20 s), pour le réglage réseau par défaut — mis à l'échelle (GH15). */
   timeoutMs?: number
@@ -96,6 +98,9 @@ export async function forgeRequest<T = unknown>(url: string, opts: ForgeRequestO
   if (opts.json !== undefined) {
     headers['Content-Type'] = 'application/json'
     body = JSON.stringify(opts.json)
+  } else if (opts.form !== undefined) {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+    body = new URLSearchParams(opts.form).toString()
   }
   const timeout = scaledTimeout(opts.timeoutMs ?? FORGE_TIMEOUT_BASE_MS)
   const method = opts.method ?? 'GET'

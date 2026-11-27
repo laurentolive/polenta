@@ -35,6 +35,11 @@ export interface MachineConfig {
   demoProjectUrl?: string
   /** `false` : vérification des mises à jour désactivée et verrouillée. */
   autoUpdate?: false
+  /**
+   * GH51 — identifiant du client OAuth public créé sur la forge `defaultServer` (`polenta-admin
+   * oauth-app create --public`). Absent → pas de bouton « Se connecter avec le navigateur ».
+   */
+  forgeSsoClientId?: string
 }
 
 /** Ce que l'écran de connexion doit proposer pour un serveur donné (`auth:detect-forge`). */

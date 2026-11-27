@@ -87,9 +87,23 @@ export function parseMachineConfig(raw: string, file: string, warn: (message: st
         if (value === false) config.autoUpdate = false
         else if (value !== true) warn(`[machine-config] autoUpdate ignoré : seul false a un effet`)
         break
+      case 'forgeSsoClientId': {
+        // GH51 — identifiant de client public : une chaîne courte, sans espace (aucun secret ici).
+        const id = typeof value === 'string' ? value.trim() : ''
+        if (id && id.length <= SSO_CLIENT_ID_MAX && !/\s/.test(id)) config.forgeSsoClientId = id
+        else warn(`[machine-config] forgeSsoClientId ignoré : identifiant de client attendu`)
+        break
+      }
       default:
         warn(`[machine-config] clé inconnue ignorée : ${key}`)
     }
   }
+  // GH51 — le client SSO est celui de la forge `defaultServer` : sans elle, la clé ne sert à rien.
+  if (config.forgeSsoClientId && !config.defaultServer) {
+    warn(`[machine-config] forgeSsoClientId ignoré : defaultServer absent`)
+    delete config.forgeSsoClientId
+  }
   return config
 }
+
+const SSO_CLIENT_ID_MAX = 200

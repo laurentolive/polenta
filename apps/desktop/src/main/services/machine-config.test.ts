@@ -68,4 +68,27 @@ describe('machine-config', () => {
     expect(parseMachineConfig('[]', 'f', () => {})).toEqual({ hideGithub: false })
     expect(parseMachineConfig('42', 'f', () => {})).toEqual({ hideGithub: false })
   })
+
+  it('forgeSsoClientId (GH51) : identifiant valide retenu, rattaché à defaultServer', () => {
+    const warnings: string[] = []
+    const config = parseMachineConfig(JSON.stringify({ defaultServer: 'https://forge.acme.fr', forgeSsoClientId: ' abc-123 ' }), 'f', m => warnings.push(m))
+    expect(config).toEqual({ hideGithub: false, defaultServer: 'https://forge.acme.fr', forgeSsoClientId: 'abc-123' })
+    expect(warnings).toEqual([])
+  })
+
+  it('forgeSsoClientId invalide (vide, avec espace, non chaîne, trop long) : ignoré et signalé', () => {
+    for (const value of ['', 'a b', 42, 'x'.repeat(201)]) {
+      const warnings: string[] = []
+      const config = parseMachineConfig(JSON.stringify({ defaultServer: 'https://forge.acme.fr', forgeSsoClientId: value }), 'f', m => warnings.push(m))
+      expect(config).toEqual({ hideGithub: false, defaultServer: 'https://forge.acme.fr' })
+      expect(warnings.join('\n')).toMatch(/forgeSsoClientId ignoré : identifiant de client attendu/)
+    }
+  })
+
+  it('forgeSsoClientId sans defaultServer : ignoré et signalé', () => {
+    const warnings: string[] = []
+    const config = parseMachineConfig(JSON.stringify({ forgeSsoClientId: 'abc' }), 'f', m => warnings.push(m))
+    expect(config).toEqual({ hideGithub: false })
+    expect(warnings.join('\n')).toMatch(/forgeSsoClientId ignoré : defaultServer absent/)
+  })
 })

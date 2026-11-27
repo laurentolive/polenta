@@ -20,7 +20,7 @@ async function openExcelAllColumns(view: string) {
   for (const box of await modal.getByRole('checkbox').all()) {
     if (await box.isEnabled()) await box.check()
   }
-  await modal.click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
   await expect(s.page.locator('tbody td').first()).toBeVisible()
 }
 

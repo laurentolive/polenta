@@ -80,7 +80,7 @@ async function toggleSub(tab: 'Tableau' | 'Document', label: string) {
   await s.page.getByTitle('Configurer les colonnes').click()
   await modal().getByRole('button', { name: tab, exact: true }).click()
   await group().getByRole('checkbox', { name: label }).click()
-  await modal().click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
 }
 
 /** Cellule d'une sous-colonne (clé `query::<ID>::<campagne>`) sur la ligne d'un test. */
@@ -100,7 +100,7 @@ test('T21 — ⚙️ : groupe et une case par campagne, dans l\'ordre du script,
   await expect(group().locator('label')).toHaveText(['GH126 Alpha', 'GH126 Beta'])
   for (const box of await boxes.all()) await expect(box).not.toBeChecked()
   await s.shot('gh126-field-config-group')
-  await modal().click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
 })
 
 test('T23 / T25 / T26 — deux sous-colonnes cochées : en-têtes, valeurs, pref par sous-colonne, infobulle', async () => {
@@ -160,7 +160,7 @@ test('T30 / T31 — résultat saisi et nouvelle campagne : mis à jour sans rech
   await s.page.getByTitle('Configurer les colonnes').click()
   await expect(group().locator('label')).toHaveText(['GH126 Alpha', 'GH126 Beta', 'GH126 Gamma'], { timeout: 20_000 })
   await expect(group().getByRole('checkbox', { name: 'GH126 Gamma' })).not.toBeChecked()
-  await modal().click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
 })
 
 test('T34 — Vue Document : sous-colonne cochée dans l\'onglet Document', async () => {
@@ -194,7 +194,7 @@ test('T33 — script en erreur : ⚠ dans l\'en-tête et dans le groupe, vue uti
   // Toujours décochable dans ⚙️ ; la campagne supprimée (Beta) n'est pas ressuscitée.
   await expect(group().getByRole('checkbox', { name: new RegExp(`GH126 Alpha|${a.id}`) })).toBeChecked()
   await expect(group().getByRole('checkbox', { name: new RegExp(`GH126 Beta|${b.id}`) })).toHaveCount(0)
-  await modal().click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
   await s.invoke('queries:update', localPath, username, queryId, { script: SCRIPT })
 })
 
@@ -217,7 +217,7 @@ test('T47 — modèle « Résultat par campagne » : une sous-colonne par campag
   await expect(groupOf().getByRole('checkbox', { name: 'GH126 Alpha' })).toBeVisible()
   expect(await groupOf().getByRole('checkbox').count()).toBeGreaterThan(1)
   await groupOf().getByRole('checkbox', { name: 'GH126 Alpha' }).click()
-  await modal().click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
   await expect(row().locator(`[data-computed-cell="query::${q.id}::${a.id}"]`)).toHaveText('FAIL', { timeout: 15_000 })
   await s.shot('gh126-template-split')
 })

@@ -986,6 +986,13 @@ cmd_instance_restore() {
     || die "$E_USAGE" "usage : polenta-host instance restore <nom> --from <id|latest> [--source <instance sauvegardée>] [--domain d] [--password-file f] [--force]"
   edge_network_require
   source="${source:-$name}"
+  # GH85 — copie sous un autre nom (--source ≠ nom) sans --domain : <nom>.<BASE_DOMAIN>, comme instance add.
+  # Le domaine de la source appartient à une instance vivante (deux blocs Caddy pour un même domaine) : il
+  # n'est pas repris. Décidé ici, avant toute confirmation et toute écriture dans le dossier de l'instance.
+  if [[ -z "$domain" && "$source" != "$name" ]]; then
+    [[ -n "$BASE_DOMAIN" ]] || die "$E_USAGE" "--domain requis : BASE_DOMAIN absent de host.env (copie « $name » de « $source »)."
+    domain="$name.$BASE_DOMAIN"
+  fi
   local dir; dir="$(instance_dir "$name")"
   local replace=""
   if [[ -e "$dir" ]]; then
@@ -1156,12 +1163,24 @@ cmd_instance_export() {
     wait_healthy "$name"
   fi
   local c; c="$(forge_container "$name")"
-  docker exec -u git "$c" sh -c 'rm -f /tmp/polenta-dump.tar.gz; cd /tmp && if command -v forgejo >/dev/null; then forgejo dump --type tar.gz --file /tmp/polenta-dump.tar.gz; else gitea dump --type tar.gz --file /tmp/polenta-dump.tar.gz; fi' >"$work/dump.log" 2>&1 \
-    || { cat "$work/dump.log" >&2; die "dump de la forge en échec."; }
+  # GH85 — instance jamais mise en service (instance add interrompu : pas de .add-complete) et sans aucun
+  # dépôt : le dump échoue (« open /data/git/repositories ») et il n'y a rien à exporter côté forge. Le dump
+  # est alors ignoré, signalé ; les données brutes sont exportées comme d'habitude. Partout ailleurs, un
+  # échec du dump arrête l'export.
+  local dumped=0
+  if docker exec -u git "$c" sh -c 'rm -f /tmp/polenta-dump.tar.gz; cd /tmp && if command -v forgejo >/dev/null; then forgejo dump --type tar.gz --file /tmp/polenta-dump.tar.gz; else gitea dump --type tar.gz --file /tmp/polenta-dump.tar.gz; fi' >"$work/dump.log" 2>&1; then
+    dumped=1
+  elif [[ ! -f "$dir/.add-complete" ]] && ! docker exec "$c" test -d /data/git/repositories; then
+    warn "instance « $name » jamais mise en service (aucun dépôt) : dump de la forge ignoré"
+  else
+    cat "$work/dump.log" >&2; die "dump de la forge en échec."
+  fi
   rm -f "$work/dump.log"
-  docker cp "$c:/tmp/polenta-dump.tar.gz" "$work/forge-dump.tar.gz" >/dev/null
-  docker exec "$c" rm -f /tmp/polenta-dump.tar.gz
-  ok "dump de la forge"
+  if (( dumped )); then
+    docker cp "$c:/tmp/polenta-dump.tar.gz" "$work/forge-dump.tar.gz" >/dev/null
+    docker exec "$c" rm -f /tmp/polenta-dump.tar.gz
+    ok "dump de la forge"
+  fi
   # 2. Données brutes, copie cohérente (arrêt court, comme une sauvegarde).
   inst_compose "$name" stop >/dev/null 2>&1 || true
   tar -C "$dir" -czf "$work/data.tar.gz" data || { inst_compose "$name" up -d >/dev/null 2>&1; die "copie des données impossible."; }
@@ -1183,12 +1202,14 @@ cmd_instance_export() {
   sed -E "s/^([A-Za-z0-9_.]+)='(.*)'$/\1=\2/" "$dir/forgejo.env" >"$work/forge.env"
   local version image domain
   version="$(env_get "$env" FORGE_VERSION)"; image="$(env_get "$env" FORGE_IMAGE)"; domain="$(env_get "$env" DOMAIN)"
+  local dump_doc="- \`forge-dump.tar.gz\` : export officiel de la forge (${image}, version ${version}), restaurable
+  avec la commande \`restore\` de la forge (documentation Forgejo : « Backup and restore »)."
+  (( dumped )) || dump_doc="- (pas de \`forge-dump.tar.gz\` : instance jamais mise en service, aucun dépôt à exporter)"
   cat >"$work/LISEZMOI.md" <<EOF
 # Export de la forge « ${name} » (${domain}) — ${stamp}
 
 Contenu :
-- \`forge-dump.tar.gz\` : export officiel de la forge (${image}, version ${version}), restaurable
-  avec la commande \`restore\` de la forge (documentation Forgejo : « Backup and restore »).
+${dump_doc}
 - \`data.tar.gz\` : le dossier \`/data\` complet de la forge (dépôts git, base SQLite, configuration).
 - \`forge.env\` : la configuration de la forge (variables GITEA__…), dont la clé SECRET_KEY,
   indispensable pour relire les secrets chiffrés (double authentification…).

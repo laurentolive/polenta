@@ -57,6 +57,9 @@ un domaine.
    ssh admin@hote
    cd ~/polenta-kit && sudo ./polenta-host.sh setup
    ```
+   Les scripts sont exécutables dans git, mais une copie faite depuis Windows (scp, WinSCP) perd le bit
+   d'exécution (`Permission denied`) : sur l'hôte, `chmod +x polenta-host.sh polenta-admin.sh admin/install.sh tests/*.sh`,
+   ou lancer `sudo bash ./polenta-host.sh setup`. Les fichiers `lib/*.sh` sont sourcés : pas besoin du bit.
    Le premier passage crée `/opt/polenta/host.env` depuis l'exemple et s'arrête : le compléter
    (`sudo nano /opt/polenta/host.env`) — `ACME_EMAIL`, `BASE_DOMAIN`, `BACKUP_S3_*`, facultatifs
    `SMTP_*`, `ADMIN_IPS` (A8), `POLENTA_DOWNLOAD_URL`, `BACKUP_PING_URL` — puis relancer
@@ -176,11 +179,14 @@ sudo polenta-host instance restore acme --from latest --force
 sudo polenta-host instance restore acme --from 208d222a --force
 sudo polenta-host instance restore acme --from latest:pre-update --force
 
-# Copie de contrôle sous un autre nom et un autre domaine, sans toucher à acme
+# Copie de contrôle sous un autre nom, sans toucher à acme : domaine <nom>.<BASE_DOMAIN> (--domain pour un autre)
 sudo polenta-host instance restore acme-test --source acme --from latest
 
 # Hôte neuf (instance.env absent) : mot de passe restic dans un fichier
 sudo polenta-host instance restore acme --from latest --password-file /root/acme.restic
+
+# En script : --force demande confirmation ; --yes (ou --confirm acme) la donne d'avance
+sudo polenta-host instance restore acme --from latest --force --yes
 ```
 
 Les comptes, mots de passe, double authentification, équipes et dépôts reviennent à l'identique.
@@ -538,8 +544,13 @@ quelques minutes :
 1. Préparer le Caddy existant (prérequis 1 à 3) : réseau `EDGE_NETWORK` créé, Caddy rattaché, montage en
    lecture seule de `CADDY_SITES_DIR` et ligne `import` ajoutés (sans recharger encore). Ce Caddy
    réémettra les certificats : attention aux limites de Let's Encrypt si l'opération est répétée.
+   Pour éviter cette réémission (option validée lors des tests GH61) : copier le contenu de
+   `/opt/polenta/caddy/data/` (certificats et compte ACME) dans le volume `/data` du Caddy existant, avant
+   son premier démarrage avec ce volume.
 2. Libérer 80/443 : `docker compose -f /opt/polenta/caddy/docker-compose.yml down`. Les instances
-   continuent de tourner mais ne sont plus servies.
+   continuent de tourner mais ne sont plus servies. Le réseau `EDGE_NETWORK` n'est pas déclaré externe
+   dans ce compose : `down` ne le retire que s'il n'est plus utilisé, il reste donc en place tant que le
+   Caddy existant y est rattaché (étape 1).
 3. Sites additionnels du Caddy du kit (`/opt/polenta/caddy/etc/sites/_*.caddy`) : à reporter dans la
    configuration du Caddy existant (A10). Les `<instance>.caddy` seront réécrits à l'étape 5.
 4. Dans `/opt/polenta/host.env` : `CADDY_MODE=external` (+ `EDGE_NETWORK`, `CADDY_SITES_DIR`,
@@ -555,7 +566,10 @@ quelques minutes :
 
 1. Libérer 80/443 : arrêter ou reconfigurer le Caddy existant (ou ses ports publiés), supprimer
    `<instance>.caddy` / `<instance>.web.caddy` de `CADDY_SITES_DIR` (et la ligne `import` si elle ne sert
-   plus), puis recharger ce Caddy.
+   plus), puis recharger ce Caddy. Les sites additionnels `_*.caddy` de `CADDY_SITES_DIR` (A10) sont
+   reportés dans `/opt/polenta/caddy/etc/sites/` : le Caddy du kit ne lit que ce dossier. Pour réutiliser
+   les certificats (option de la migration inverse) : copier le volume `/data` du Caddy existant dans
+   `/opt/polenta/caddy/data/` avant l'étape 2.
 2. `host.env` : `CADDY_MODE=managed` (ou retirer la ligne) ; `sudo polenta-host setup` démarre
    `polenta-caddy` et ouvre 80/443.
 3. Pour chaque instance : `sudo polenta-host instance start <nom>` (recrée les conteneurs sans le réseau

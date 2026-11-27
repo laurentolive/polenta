@@ -247,6 +247,14 @@
             "fr": "Commentaire du statut de design corrigé (inclusion dans la version, état identique)",
             "en": "Design status comment corrected (included in the version, identical state)"
           }
+        },
+        {
+          "version": 19,
+          "hash": "0bcbb4f322162dcf8dc4ea63612c32dfb624439e4951656018f80240f956bfb1",
+          "summary": {
+            "fr": "GH441 : GraphVersion.verification (couverture figée au passage released)",
+            "en": "GH441: GraphVersion.verification (coverage frozen at release)"
+          }
         }
       ]
     },

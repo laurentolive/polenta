@@ -635,7 +635,8 @@ d'abord le statut (réouverture, `version + 1`), puis le contenu. `get_history` 
 
 Lecture (SPEC-REQ §11) : `list_versions` (par composant : versions du plus récent au plus
 ancien, état, `basedOn`, `freeze`, nombre d'éléments au backlog ; filtre `component`),
-`get_version` (`id`, `component` : champs, composants retenus, changements avec `base` et `toSha`),
+`get_version` (`id`, `component` : champs, composants retenus, changements avec `base` et `toSha`, `verification` :
+couverture figée au passage released, `null` sinon — GH441 ; `version` ne la porte pas, GH439),
 `get_version_backlog` (`component`). `component` = nom du repo dans le workspace, absent = repo
 ouvert (résolution commune : `tools/component-repo.ts`). Listés dans `AGENTS.md`.
 

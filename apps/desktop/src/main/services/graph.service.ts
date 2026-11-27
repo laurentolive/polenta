@@ -279,6 +279,12 @@ export class GraphService {
             sources: (r.sources ?? []).map((s) => ({ rootId: s.rootId, path: (s.path ?? []).map((p) => p.id) })),
           })),
         } : null,
+        // GH441 — couverture figée lue telle quelle. Garde `?? []` : une exception ici tomberait dans le `catch`
+        // ci-dessous et retirerait toutes les versions du repo.
+        verification: v.verification ? {
+          computedAt: v.verification.computedAt,
+          rows: (v.verification.rows ?? []).map((r) => ({ id: r.id, status: r.status, tests: r.tests ?? [] })),
+        } : null,
         fields: v.fields ?? {}, history: v.history ?? {},
       }))
       return { versions, designVersions }

@@ -274,15 +274,21 @@ export interface SystemViewState {
   // même quand la cible est identique (re-clic, re-drop du même nœud).
   gotoNodeId: string | null
   gotoSeq: number
-  /** GH228 — pose aussi `item` dans l'URL de la page courante quand le nœud a un objet. */
-  requestGoto: (nodeId: string) => void
+  /** GH228 — pose aussi `item` dans l'URL de la page courante quand le nœud a un objet.
+   *  GH463 — `knownObjectId` : objet qui vient d'être créé, pas encore visible dans `root`. */
+  requestGoto: (nodeId: string, knownObjectId?: string) => void
   /** `dropItem` (clic dans le vide de l'arbre) retire aussi `item` de l'URL, sans nouvelle page. */
   clearGoto: (opts?: { dropItem?: boolean }) => void
+
+  // GH463 — incrémenté quand une création révèle son objet (filtre global effacé ici) : l'écran
+  // remet alors à zéro ses filtres de colonne, qui pourraient masquer la nouvelle ligne.
+  filtersResetSeq: number
 
   // Immediate object creation on item insert
   // sourceObjectId: when provided, the new object is a copy of the source (paste);
   // when absent, a blank object is created (normal insertion).
-  createItemObject: (nodeId: string, sourceObjectId?: string) => Promise<void>
+  // options.reveal (GH463) : sélectionne l'objet créé dans la vue de droite et efface le filtre.
+  createItemObject: (nodeId: string, sourceObjectId?: string, options?: { reveal?: boolean }) => Promise<void>
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -715,6 +721,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // ── Filter ─────────────────────────────────────────────────────────────────
   const [filterVisible, setFilterVisible] = useState(false)
   const [filter, setFilter] = useState('')
+  // GH463 — voir `filtersResetSeq`.
+  const [filtersResetSeq, setFiltersResetSeq] = useState(0)
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     caseSensitive: false,
     wholeWord: false,
@@ -804,9 +812,10 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // sur l'élément ciblé). `appliedGotoRef` = dernier `(arbre, item)` appliqué depuis l'URL ; remis
   // à zéro en Édition pour que le retour en Tableau / Document re-cible.
   const appliedGotoRef = useRef('')
-  const requestGoto = useCallback((nodeId: string) => {
+  const requestGoto = useCallback((nodeId: string, knownObjectId?: string) => {
     setGotoTarget(g => ({ nodeId, seq: g.seq + 1 }))
-    const objectId = treeFindNode(rootRef.current, nodeId)?.objectId
+    // GH463 — `rootRef` n'est mis à jour qu'après rendu : juste après une création, l'objectId est passé.
+    const objectId = knownObjectId ?? treeFindNode(rootRef.current, nodeId)?.objectId
     // GH230 — un goto remplace l'ancrage `top` (sinon la vue s'y recalerait, ex. au rendu complet
     // des lignes du Tableau juste après l'affichage) ; un dossier n'a pas d'objectId pour `item`.
     if (!objectId) {
@@ -909,7 +918,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // When sourceObjectId is provided (paste), the new object is created as a copy
   // of the source object's content (title + fields + steps for tests).
   // When absent (normal insertion), a blank object is created.
-  const createItemObject = useCallback(async (nodeId: string, sourceObjectId?: string) => {
+  const createItemObject = useCallback(async (nodeId: string, sourceObjectId?: string, options?: { reveal?: boolean }) => {
     const cat = effectiveType?.category
     if (!cat || !repoPath || !effectiveNodeId || !effectiveTypeId) return
     const objectTypeRef = `${effectiveNodeId}::${effectiveTypeId}`
@@ -918,6 +927,12 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     // cet `await` l'utilisateur peut renommer un nœud qui n'a pas encore d'`objectId` — le
     // renommage ne se propage alors PAS au titre de l'objet. On rattrape après coup.
     const nodeNameAtStart = treeFindNode(rootRef.current, nodeId)?.name
+    // GH463 — « + Nouvel élément » : filtres effacés dès l'insertion, pour que le nœud (et son titre en
+    // édition, ouvert 50 ms après) soit visible. Les autres points d'entrée (`reveal` absent) n'y touchent pas.
+    if (options?.reveal) {
+      setFilter('')
+      setFiltersResetSeq(n => n + 1)
+    }
     try {
       let objectId: string
       if (cat === 'requirement') {
@@ -966,6 +981,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
       } else return
       const updatedRoot = treeUpdateObjectId(rootRef.current, nodeId, objectId)
       setRoot(updatedRoot)
+      // GH463 — « + Nouvel élément » : l'objet créé est sélectionné et montré dans la vue de droite.
+      if (options?.reveal) requestGoto(nodeId, objectId)
       await api.tree.save(repoPath, { nodeId: effectiveNodeId, typeId: effectiveTypeId, root: updatedRoot })
 
       // T161 — le nœud a-t-il été renommé pendant la création ? Si oui, le renommage n'a
@@ -993,7 +1010,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     } catch (err) {
       console.error('[SystemView] Erreur création objet immédiate:', err)
     }
-  }, [effectiveType, repoPath, effectiveNodeId, effectiveTypeId, setRoot, qc])
+  }, [effectiveType, repoPath, effectiveNodeId, effectiveTypeId, setRoot, qc, requestGoto])
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -1079,6 +1096,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     setEditingNodeId,
     gotoNodeId: gotoTarget.nodeId,
     gotoSeq: gotoTarget.seq,
+    filtersResetSeq,
     switchView,
     anchorNodeId,
     requestGoto,

@@ -77,6 +77,8 @@ export function useColumnFilters(visibleKeys: readonly string[], resetKey?: stri
     setPopover(prev => (prev?.column === column ? null : { column, top: anchor.bottom + 4, left: anchor.left }))
   }, [])
   const closePopover = useCallback(() => setPopover(null), [])
+  /** GH463 — retire tous les filtres de colonne (une ligne créée doit rester visible). */
+  const clear = useCallback(() => update(prev => (Object.keys(prev).length === 0 ? prev : NO_FILTERS)), [update])
 
-  return { filters, active, activeKeys, setFilter, popover, togglePopover, closePopover }
+  return { filters, active, activeKeys, setFilter, clear, popover, togglePopover, closePopover }
 }

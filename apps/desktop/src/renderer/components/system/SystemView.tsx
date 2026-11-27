@@ -142,6 +142,7 @@ export function SystemView() {
     createItemObject,
     gotoNodeId,
     gotoSeq,
+    filtersResetSeq,
     anchorNodeId,
     clearGoto,
   } = useSystemView()
@@ -1316,6 +1317,7 @@ export function SystemView() {
             onItemNodeAdded={readOnly ? undefined : stableCreateItemObject}
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
+            filtersResetSeq={filtersResetSeq}
             anchorNodeId={anchorNodeId}
             scrollMemoryKey={scrollMemoryKey}
             rowMaxLines={excelRowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : excelRowMaxLines}

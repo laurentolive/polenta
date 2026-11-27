@@ -27,7 +27,7 @@ async function openExcelWithLinks() {
     const modal = s.page.getByTestId('field-config-panel')
     const section = modal.locator('div.border-t').filter({ has: s.page.getByText('Liens', { exact: true }) })
     for (const box of await section.getByRole('checkbox').all()) await box.check()
-    await modal.click({ position: { x: 5, y: 5 } })
+    await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465, le conteneur ne reçoit pas les clics)
   }
   await expect(links().first()).toBeVisible()
 }
@@ -140,7 +140,7 @@ test('N6 — onglet « Popup » du ⚙️ : champs de la popup, défaut aucun', 
   const version = modal.getByTestId('field-config-field-version')
   await version.check()
   // Persisté : panneau refermé puis rouvert, l'onglet Popup garde la case.
-  await modal.click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
   await s.page.getByTitle('Configurer les colonnes').click()
   await modal.getByRole('button', { name: 'Popup', exact: true }).click()
   await expect(version).toBeChecked()

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { backdropDismiss } from '../../lib/backdropDismiss'
+import { useNonModalDismiss } from '../../lib/nonModalPanel'
 import { toggleVisibleField } from '../system/fieldToggle'
 import { ColumnChecklist, type ChecklistGroup } from './ColumnChecklist'
 
@@ -40,13 +40,16 @@ export function ColumnPickerPanel({ groups, shown, locked, onChange, onReset, on
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onClose])
 
+  // GH465 — panneau non modal : la grille derrière reste utilisable (barres de défilement, molette).
+  const cardRef = useRef<HTMLDivElement>(null)
+  useNonModalDismiss(cardRef, onClose)
+
   return createPortal(
     <div
-      className={`fixed inset-0 ${layer === 'modal' ? 'z-[60]' : 'z-50'} flex items-start justify-end pt-12 pr-4`}
-      {...backdropDismiss(onClose)}
+      className={`fixed inset-0 ${layer === 'modal' ? 'z-[60]' : 'z-50'} flex items-start justify-end pt-12 pr-4 pointer-events-none`}
       data-testid="column-picker-panel"
     >
-      <div className="bg-surface border border-edge rounded-lg shadow-xl p-4 w-72" onClick={e => e.stopPropagation()}>
+      <div ref={cardRef} className="pointer-events-auto bg-surface border border-edge rounded-lg shadow-xl p-4 w-72" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-semibold text-ink">{t('grid.columns')}</p>
           <button type="button" onClick={onClose} className="text-ink-3 hover:text-ink text-xs" aria-label={t('common.close')} data-testid="column-picker-close">✕</button>

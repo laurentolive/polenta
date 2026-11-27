@@ -156,7 +156,8 @@ export class DiffEditService {
   }
 }
 
-function isInside(root: string, target: string): boolean {
+/** `target` est `root` ou un chemin situé sous `root` (sans suivre de lien : appelant en `realpath`). */
+export function isInside(root: string, target: string): boolean {
   const rel = path.relative(root, target)
   return !(path.isAbsolute(rel) || rel === '..' || rel.startsWith('..' + path.sep))
 }

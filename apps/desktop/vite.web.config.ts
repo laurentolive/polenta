@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { TanStackRouterVite } from '@tanstack/router-vite-plugin'
 import { resolve } from 'path'
+import { cpSync, existsSync } from 'fs'
 import { loadBrand } from './scripts/brand'
 import { brandPlugin } from './scripts/vite-brand-plugin'
 import { appVersion } from './scripts/app-version'
@@ -36,6 +37,24 @@ function webHtmlFallback(): Plugin {
   }
 }
 
+/**
+ * GH46 — l'éditeur draw.io embarqué (`pnpm drawio:fetch` → `vendor/drawio-editor`) est copié dans
+ * le build web, sous `drawio-editor/` : le serveur web le sert avec le reste de `out/web`. Le
+ * desktop n'en a pas besoin (il lance draw.io installé sur le poste).
+ */
+function drawioEditorCopy(): Plugin {
+  const source = resolve(__dirname, 'vendor/drawio-editor')
+  const target = resolve(__dirname, 'out/web/drawio-editor')
+  return {
+    name: 'polenta-drawio-editor-copy',
+    apply: 'build',
+    closeBundle() {
+      if (!existsSync(source)) throw new Error('vendor/drawio-editor absent : lancer `pnpm drawio:fetch` (ou `pnpm build:web`).')
+      cpSync(source, target, { recursive: true })
+    },
+  }
+}
+
 // GH49 — même marque que le desktop (POLENTA_BRAND, défaut polenta) : define + plugin de marque.
 const brand = loadBrand()
 
@@ -57,6 +76,7 @@ export default defineConfig(({ command }) => ({
     react(),
     brandPlugin(brand),
     webHtmlFallback(),
+    drawioEditorCopy(),
   ],
   resolve: {
     alias: {

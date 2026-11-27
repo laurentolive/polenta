@@ -14,6 +14,7 @@ import type { SyncService } from '../services/sync.service'
 import type { RepoConformityService } from '../services/repo-conformity.service'
 import type { MergeResolutionService } from '../services/merge-resolution.service'
 import type { DiffEditService } from '../services/diff-edit.service'
+import type { DrawioEditService } from '../services/drawio-edit.service'
 import type { WorkspaceService } from '../services/workspace.service'
 import type { RequirementsIndexService } from '../services/requirements-index.service'
 import type { TestsIndexService } from '../services/tests-index.service'
@@ -113,6 +114,8 @@ export interface Container {
   sync: SyncService
   mergeResolution: MergeResolutionService
   diffEdit: DiffEditService
+  // GH46 — édition des diagrammes dans le client web (canaux web:drawio-open / web:drawio-save).
+  drawioEdit: DrawioEditService
   workspace: WorkspaceService
   reqIndex: RequirementsIndexService
   testsIndex: TestsIndexService

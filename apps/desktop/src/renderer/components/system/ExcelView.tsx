@@ -48,6 +48,8 @@ import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
 import { isReflectionColumn, ReflectionValue, reflectionText, type ReflectionsData } from './ReflectionCell'
 import { backdropDismiss } from '../../lib/backdropDismiss'
 import { useMenuPosition } from '../../hooks/useMenuPosition'
+import { useObjectCommitsDialog } from '../history/ObjectCommitsDialog'
+import type { ObjectCommitKind } from '@polenta/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -97,11 +99,13 @@ interface Props {
   stepsByObjectId?: Map<string, { action: string; expectedResult: string }[]>
   onStepsChange?: (objectId: string, steps: StepDraft[]) => void
   onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
-  onItemNodeAdded?: (nodeId: string, sourceObjectId?: string) => void
+  onItemNodeAdded?: (nodeId: string, sourceObjectId?: string, options?: { reveal?: boolean }) => void
   /** T164 — nœud d'arbre (item ou folder) sur lequel se positionner (scroll + contour) ;
    *  `gotoSeq` s'incrémente à chaque requête pour re-scroller sur une cible identique. */
   gotoNodeId?: string | null
   gotoSeq?: number
+  /** GH463 — s'incrémente quand une création révèle son objet : les filtres de colonne sont effacés. */
+  filtersResetSeq?: number
   /** GH230 — nœud aligné en haut de la vue, sans contour (ancrage `top` de l'URL). */
   anchorNodeId?: string | null
   /** GH300 — clé de la mémoire de défilement (onglet + entrée d'historique + page), null en
@@ -905,14 +909,17 @@ function FolderNameText({
 // ── ExcelContextMenu ──────────────────────────────────────────────────────────
 
 type ClipboardData = { nodes: TypeTreeNode[]; cut: boolean }
-type ExcelMenuItem = { id: string; label: string; danger?: true } | { separator: true }
+type ExcelMenuItem = { id: string; label: string; danger?: true; disabled?: true } | { separator: true }
 
 function ExcelContextMenu({
-  x, y, canEdit, clipboard, onAction, onClose,
+  x, y, canEdit, clipboard, historyAvailable, historyDisabled, onAction, onClose,
 }: {
   x: number; y: number
   canEdit: boolean
   clipboard: ClipboardData | null
+  /** GH446 — « Historique » (exigence, test, campagne, issue) ; désactivé en sélection multiple (Q4). */
+  historyAvailable: boolean
+  historyDisabled: boolean
   onAction: (action: string) => void
   onClose: () => void
 }) {
@@ -928,7 +935,9 @@ function ExcelContextMenu({
     return () => window.removeEventListener('mousedown', handler)
   }, [onClose])
 
-  const items: ExcelMenuItem[] = [{ id: 'copy', label: t('system.shared.copy') }]
+  const items: ExcelMenuItem[] = []
+  if (historyAvailable) items.push({ id: 'history', label: t('history.commits.menu'), disabled: historyDisabled ? true : undefined }, { separator: true })
+  items.push({ id: 'copy', label: t('system.shared.copy') })
   if (canEdit) items.push({ id: 'cut', label: t('system.shared.cut') })
   if (canEdit && clipboard) items.push({ id: 'paste', label: t('system.shared.paste') })
   items.push({ separator: true })
@@ -947,10 +956,13 @@ function ExcelContextMenu({
           <button
             key={item.id}
             type="button"
-            onClick={() => { onAction(item.id); onClose() }}
+            disabled={item.disabled}
+            title={item.disabled ? t('history.commits.multiDisabled') : undefined}
+            onClick={() => { if (!item.disabled) { onAction(item.id); onClose() } }}
             className={[
               'w-full text-left px-3 py-1.5 hover:bg-hover transition-colors',
               item.danger ? 'text-status-danger' : 'text-ink',
+              item.disabled ? 'opacity-50 cursor-not-allowed' : '',
             ].join(' ')}
           >
             {item.label}
@@ -1259,6 +1271,7 @@ function ExcelViewInner({
   onItemNodeAdded,
   gotoNodeId,
   gotoSeq,
+  filtersResetSeq,
   anchorNodeId,
   scrollMemoryKey,
   rowMaxLines = 1,
@@ -1298,7 +1311,14 @@ function ExcelViewInner({
   const [cellStore] = useState(createExcelCellStore)
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ ids: string[]; hasContent: boolean } | null>(null)
-  const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number; objectId: string | null; name: string } | null>(null)
+  // GH446 — « Historique » d'une ligne (exigence, test, campagne, issue) : popup des commits de son fichier.
+  const commitsHistory = useObjectCommitsDialog(repoPath ?? '')
+  const historyKind: ObjectCommitKind | undefined = typeDef?.category === 'requirement' ? 'requirement'
+    : typeDef?.category === 'test' ? 'test'
+    : typeDef?.category === 'campaign' ? 'campaign'
+    : typeDef?.category === 'issue' ? 'issue'
+    : undefined
   // Figer les volets (T151) — nombre de colonnes, depuis la gauche, épinglées hors du
   // scroll latéral. Index dans `columns`. GH24 — persisté dans la pref du type (SystemView),
   // borné au nombre de colonnes affichées (cf. `freezeColCount` après `columns`).
@@ -1429,6 +1449,16 @@ function ExcelViewInner({
   // compris), remis à zéro au changement de composant / type, même si le nouveau type partage un nom
   // de colonne avec le précédent (ex. "status").
   const colFilters = useColumnFilters(columns, `${typeDef?.prefix ?? ''}|${repoPath ?? ''}`)
+  // GH463 — création révélée (« + Nouvel élément ») : les filtres de colonne sont effacés pour que la
+  // nouvelle ligne soit visible. La ref garde la dernière valeur vue : au montage (changement de vue),
+  // rien n'est effacé.
+  const filtersResetSeen = useRef(filtersResetSeq)
+  const clearColumnFilters = colFilters.clear
+  useEffect(() => {
+    if (filtersResetSeq === filtersResetSeen.current) return
+    filtersResetSeen.current = filtersResetSeq
+    clearColumnFilters()
+  }, [filtersResetSeq, clearColumnFilters])
   // Cellule sélectionnée dont la colonne disparaît.
   useEffect(() => {
     const selected = cellStore.getSelected()
@@ -1815,12 +1845,12 @@ function ExcelViewInner({
     }
   }
 
-  function handleContextMenu(e: React.MouseEvent, nodeId: string) {
+  function handleContextMenu(e: React.MouseEvent, node: { id: string; name: string; objectId?: string }) {
     e.preventDefault()
     e.stopPropagation()
     if (selection) return // GH33 — lecture seule : pas de menu contextuel de ligne
-    if (!effectiveSelectedIds.includes(nodeId)) effectiveOnSelect([nodeId])
-    setContextMenu({ nodeId, x: e.clientX, y: e.clientY })
+    if (!effectiveSelectedIds.includes(node.id)) effectiveOnSelect([node.id])
+    setContextMenu({ nodeId: node.id, x: e.clientX, y: e.clientY, objectId: node.objectId ?? null, name: node.name })
   }
 
   function handleContextAction(action: string) {
@@ -1828,6 +1858,10 @@ function ExcelViewInner({
     if (!targetId) return
     const ids = effectiveSelectedIds.includes(targetId) ? effectiveSelectedIds : [targetId]
     switch (action) {
+      case 'history':
+        // GH446 — une seule ligne (l'entrée est désactivée en sélection multiple).
+        if (historyKind && contextMenu?.objectId) commitsHistory.open(historyKind, contextMenu.objectId, contextMenu.name)
+        break
       case 'copy': copyToClipboard(ids, false); break
       case 'cut': copyToClipboard(ids, true); break
       case 'paste': paste(targetId); break
@@ -2201,10 +2235,13 @@ function ExcelViewInner({
           x={contextMenu.x} y={contextMenu.y}
           canEdit={canEdit}
           clipboard={clipboard}
+          historyAvailable={!!historyKind && !!contextMenu.objectId && !!repoPath}
+          historyDisabled={effectiveSelectedIds.length > 1}
           onAction={handleContextAction}
           onClose={() => setContextMenu(null)}
         />
       )}
+      {commitsHistory.dialog}
 
       {/* Column header context menu — figer/libérer les volets (T151) */}
       {columnFreezeMenu && (
@@ -2325,7 +2362,7 @@ function ExcelViewInner({
                   dropInside={dropInside}
                   isSelected={effectiveSelectedIds.includes(node.id)}
                   onSelectRow={e => handleRowSelect(node.id, e)}
-                  onContextMenu={e => handleContextMenu(e, node.id)}
+                  onContextMenu={e => handleContextMenu(e, node)}
                   freezeColCount={freezeColCount}
                   getFreezeStyle={getFreezeStyle}
                   nameStickyLeft={freezeColCount > 0 ? colLeftOffset(columns[0] === 'section' ? 1 : 0) : undefined}
@@ -2373,7 +2410,7 @@ function ExcelViewInner({
                   if (selection) { if (node.objectId) handleSelectionRowClick(node.objectId, e) }
                   else handleRowSelect(node.id, e)
                 }}
-                onContextMenu={e => handleContextMenu(e, node.id)}
+                onContextMenu={e => handleContextMenu(e, node)}
                 draggable={rowDnd}
                 onDragStart={rowDnd ? (e) => handleRowDragStart(e, node.id) : undefined}
                 onDragOver={dndEnabled ? (e) => handleRowDragOver(e, node.id) : undefined}

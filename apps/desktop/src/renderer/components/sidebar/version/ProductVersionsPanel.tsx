@@ -7,6 +7,7 @@ import type { VersionComponentNode, VersionSummary } from '@polenta/types'
 import { api } from '../../../api'
 import { decodeProjectId } from '../../../lib/projectId'
 import { NodeContextMenu, type NodeContextMenuEntry } from '../../../tiptap/NodeContextMenu'
+import { useObjectCommitsDialog } from '../../history/ObjectCommitsDialog'
 import { useModalHotkeys } from '../../../hooks/useModalHotkeys'
 import { ComponentTypeCombobox } from '../../system/ComponentTypeCombobox'
 import type { ComponentTypeOption } from '../../../contexts/SystemViewContext'
@@ -116,6 +117,7 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
     }
   }
   const canPaste = !!copied && copied.repoPath === current?.repoPath && !current?.readonly
+  const commitsHistory = useObjectCommitsDialog(current?.repoPath ?? '')
   const pasteItem: NodeContextMenuEntry = {
     id: 'paste', label: copied ? t('versions.menu.pasteHint', { version: copied.title }) : t('versions.menu.paste'),
     disabled: !canPaste, onSelect: () => void paste(),
@@ -124,6 +126,8 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
     if (!v || !current) return [pasteItem]
     const frozen = !!v.freeze || v.state === 'released'
     return [
+      // GH446 — historique Git de la version (son fichier `versions/<ID>.yaml`).
+      { id: 'history', label: t('history.commits.menu'), onSelect: () => commitsHistory.open('version', v.id, v.title) },
       { id: 'copy', label: t('versions.menu.copy'), onSelect: () => setCopied({ repoPath: current.repoPath, id: v.id, title: v.title }) },
       pasteItem,
       'separator',
@@ -211,6 +215,7 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
       </div>
 
       {menu && <NodeContextMenu x={menu.x} y={menu.y} items={menuItems(menu.version)} onClose={() => setMenu(null)} />}
+      {commitsHistory.dialog}
       {deleting && <DeleteVersionDialog version={deleting} onConfirm={() => void confirmDelete()} onClose={() => setDeleting(null)} />}
       {creating && current && (
         <NewVersionDialog

@@ -60,6 +60,7 @@ import type { ParametersService } from '../services/parameters.service'
 import type { RevalidationService } from '../services/revalidation.service'
 import type { WorkspaceLinksService } from '../services/workspace-links.service'
 import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } from '../services/history.service'
+import { listObjectCommits } from '../services/object-commits.service'
 import type { FieldRenameService } from '../services/field-rename.service'
 import type { TypeRenameService } from '../services/type-rename.service'
 import type { SchemaDeleteService } from '../services/schema-delete.service'
@@ -606,6 +607,9 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   // ── Historique des champs suivis (GH77) — lecture effective, entrées implicites marquées ──
   r.handle('history:get', (_e, repoPath: string, kind: HistoryObjectKind, id: string) =>
     readEffectiveHistory(c, repoPath, kind, id))
+  // GH446 — historique Git de l'objet : commits qui modifient son fichier (popup « Historique »).
+  r.handle('history:commits', (_e, repoPath: string, kind: string, id: string) =>
+    listObjectCommits(c.git, repoPath, kind, id))
   r.handle('history:backfill', (_e, repoPath: string) => c.historyBackfill.run(repoPath))
 
   // ── Reviews ───────────────────────────────────────────────────────────────────

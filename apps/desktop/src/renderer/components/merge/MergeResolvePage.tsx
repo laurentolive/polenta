@@ -12,6 +12,7 @@ import {
   PublishConflictError, PublishRepoError, resumePublishAfterResolution, type ResumePublishResult,
 } from '../../lib/publishWorkspace'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
+import { HistoryNavButtons } from '../layout/HistoryNavButtons'
 import { FileResolver } from './FileResolver'
 import { primeMergeSession, useMergeSession } from './useMergeSession'
 
@@ -155,8 +156,9 @@ export function MergeResolvePage({ id, projectId, selected, onSelect: setSelecte
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Barre de la résolution */}
+      {/* Barre de la résolution — Précédent / Suivant de l'onglet en tête (GH464, comme ViewHeader) */}
       <div className="px-4 py-2.5 border-b border-edge shrink-0 flex items-center gap-3">
+        <HistoryNavButtons />
         <GitMerge size={16} className="text-ink-3 shrink-0" />
         <div className="flex-1 min-w-0">
           <h1 className="text-sm font-semibold text-ink truncate">{t('mergeResolve.tabTitle', { repo: repoLabel(session.repoPath) })}</h1>

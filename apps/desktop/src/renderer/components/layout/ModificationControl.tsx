@@ -40,7 +40,7 @@ export function PublishPopover({ children, onClose }: { children: ReactNode; onC
       {/* GH468 — hauteur bornée à la fenêtre : au-delà, le contenu défile (sinon les boutons du bas,
           « Résoudre les conflits » ou « Fermer », sortent de l'écran). */}
       <div
-        className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-6 w-96 max-h-[calc(100vh-8rem)] overflow-y-auto"
+        className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-6 w-96 max-h-[calc(100vh-8rem)] overflow-y-auto break-words"
         onClick={e => e.stopPropagation()}
       >
         {children}

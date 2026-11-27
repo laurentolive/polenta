@@ -517,7 +517,7 @@ function GraphContextMenu({
     return createPortal(
       <div
         ref={ref}
-        className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-64 text-xs"
+        className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-64 text-xs break-words"
         style={pos}
       >
         <p className="px-3 py-1.5 text-ink-3 font-medium">{title}</p>
@@ -620,7 +620,7 @@ function GraphContextMenu({
       ref={ref}
       // GH468 — menu borné à la fenêtre, et message d'erreur défilant : « Résoudre les conflits » (en
       // dessous) reste visible même avec une liste de plusieurs dizaines de fichiers.
-      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-56 text-xs max-h-[calc(100vh-1rem)] overflow-y-auto"
+      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-56 text-xs max-h-[calc(100vh-1rem)] overflow-y-auto break-words"
       style={pos}
     >
       {mutationError && (

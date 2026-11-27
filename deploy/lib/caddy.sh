@@ -146,6 +146,11 @@ ${tls_line}	encode zstd gzip
 		X-Frame-Options "SAMEORIGIN"
 		-Server
 	}
+	# GH52 — mises à jour du poste (flux updateFeedUrl) : dossier publié par « polenta-host updates publish ».
+	handle_path /polenta-updates/* {
+		root * /etc/caddy/updates
+		file_server
+	}
 	reverse_proxy forgejo-${name}:3000
 }
 EOF

@@ -166,6 +166,27 @@ sudo polenta-host instance add <nom> --domain <domaine> --tls-cert /chemin/cert.
 - Le certificat du client doit être approuvé par les postes : voir `caPath` dans la configuration machine
   (la DSI dépose la CA sur les postes, cf. specs/GH53.md).
 
+**Mises à jour servies par le serveur du client (GH52)** — pour un client dont le pare-feu bloque GitHub.
+Le poste lit alors ses mises à jour sur `https://<forge>/polenta-updates/` au lieu de GitHub :
+
+1. Publier une version : télécharger la release (`latest.yml` et les installeurs) dans un dossier, puis
+   `sudo polenta-host updates publish <dossier>`. Le kit ne construit ni ne télécharge rien. Contrôles avant
+   toute copie : `latest.yml` présent, fichiers référencés présents, version non déjà publiée. Les installeurs
+   sont copiés d'abord, `latest.yml` en dernier : un poste ne voit jamais un `latest.yml` qui pointe vers un
+   fichier absent.
+2. Servir : la route `/polenta-updates/` est dans le bloc de chaque instance. **Une instance existante doit être
+   remise à niveau** après cette évolution du kit : `sudo polenta-host instance sync <nom>`.
+3. Poste : `updateFeedUrl` dans la configuration machine (`%ProgramData%\Polenta\config.json`), par exemple
+   `"updateFeedUrl": "https://forge.client.fr/polenta-updates/"`. https obligatoire, sans identifiants dans l'URL.
+   Avec cette clé, le poste n'interroge plus GitHub, et le lien vers les notes GitHub n'est pas proposé.
+4. Vérifier : `curl -fsS https://<forge>/polenta-updates/latest.yml` répond avec la version publiée.
+
+- **Installeurs non signés** : Windows peut afficher des alertes ; la signature du client lourd relève de GH388.
+- **Mode external** : la route n'est pas ajoutée au Caddy de l'exploitant. À ajouter à la main, dans le bloc du
+  domaine : `handle_path /polenta-updates/* { root * <dossier publié> ; file_server }`.
+- **Retour arrière** : republier une version antérieure n'est pas automatisé (hors V1).
+- **Verrous** : `autoUpdate: false` et `updates: managed` restent prioritaires (aucune vérification).
+
 ### A4. Sauvegardes
 
 - **Nocturne** automatique (cron 02:30, toutes les instances) : arrêt de la forge ~10-15 s, copie

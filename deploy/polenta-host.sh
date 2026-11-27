@@ -39,6 +39,8 @@ KIT_DIR="$POLENTA_ROOT/kit"
 . "$SCRIPT_DIR/lib/caddy.sh"
 # shellcheck source=lib/forgejo-api.sh
 . "$SCRIPT_DIR/lib/forgejo-api.sh"
+# shellcheck source=lib/updates.sh
+. "$SCRIPT_DIR/lib/updates.sh"
 # shellcheck source=lib/backup.sh
 . "$SCRIPT_DIR/lib/backup.sh"
 # shellcheck source=lib/modules.sh
@@ -1260,6 +1262,18 @@ export_json() {
     '{file:$file, path:$path, instance:$inst, sizeBytes:$size, sha256:$sha, createdAt:$at}'
 }
 
+# polenta-host updates publish <dossier> — GH52 : publie une version (latest.yml + installeurs) pour les
+# postes du client, servie par /polenta-updates/ de chaque instance. Le kit ne construit ni ne télécharge rien.
+cmd_updates() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    publish)
+      [[ $# -ge 1 ]] || die "$E_USAGE" "usage : polenta-host updates publish <dossier contenant latest.yml et les installeurs>"
+      updates_publish "$1" ;;
+    *) die "$E_USAGE" "usage : polenta-host updates publish <dossier contenant latest.yml et les installeurs>" ;;
+  esac
+}
+
 # polenta-host exports list [--json] | exports delete <fichier> --confirm <fichier> — GH63 :
 # archives de restitution conservées dans $POLENTA_ROOT/exports (remises au client, puis effacées).
 cmd_exports() {
@@ -1954,6 +1968,7 @@ main() {
     backup-cron) cmd_backup_cron ;;
     status) require_operator; load_host_env; cmd_status ;;
     exports) require_operator; cmd_exports "$@" ;;
+    updates) require_operator; load_host_env; cmd_updates "$@" ;;
     s3-key) require_operator; cmd_s3_key "$@" ;;
     s3-purge) require_operator; cmd_s3_purge "$@" ;;
     dns)

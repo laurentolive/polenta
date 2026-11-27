@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTabs } from '../../contexts/TabsContext'
-import { useHistoryNavigation } from '../../hooks/useHistoryNavigation'
 import { historyMenuEntries, stepHistory } from '../../lib/tabHistory'
 import { IS_MAC } from './sidebarCollapse'
 import { backdropDismiss } from '../../lib/backdropDismiss'
@@ -10,13 +9,14 @@ import { backdropDismiss } from '../../lib/backdropDismiss'
 const LONG_PRESS_MS = 500
 const SHORTCUTS = IS_MAC ? { back: '⌘[', forward: '⌘]' } : { back: 'Alt+←', forward: 'Alt+→' }
 
-/** GH228 — boutons Précédent / Suivant de l'onglet actif, à gauche de la barre d'onglets.
- *  Clic droit ou appui long : liste des pages de ce côté de l'historique, comme un navigateur. */
+/** GH228 — boutons Précédent / Suivant de l'onglet actif, en tête de l'en-tête de la vue (ViewHeader ;
+ *  GH464 : ils étaient dans le coin de la barre d'onglets, peu vu). Clic droit ou appui long : liste des
+ *  pages de ce côté de l'historique, comme un navigateur. Les raccourcis clavier et les boutons de la souris
+ *  sont écoutés par `useHistoryNavigation`, monté une seule fois dans TabBar (ici, chaque en-tête l'écouterait). */
 export function HistoryNavButtons() {
   const { t } = useTranslation()
   const { activeTab, attemptHistoryNav } = useTabs()
   const [menu, setMenu] = useState<-1 | 1 | null>(null)
-  useHistoryNavigation()
 
   const button = (delta: -1 | 1) => {
     const index = stepHistory(activeTab, delta)

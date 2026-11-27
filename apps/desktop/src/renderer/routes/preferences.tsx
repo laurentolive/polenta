@@ -11,6 +11,8 @@ import { CancelConfirmModal } from '../components/schema/objectTypeEditor'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { HistoryBackfillPanel } from '../components/history/HistoryBackfillPanel'
 import { TEMPLATE_KEYS, templateKey } from '../lib/exportTemplates'
+import { capabilities } from '../platform'
+import { TemplateLibraryWeb } from '../components/export/TemplateLibraryWeb'
 import { DEFAULT_AUTO_PULL_MINUTES, MAX_AUTO_PULL_MINUTES, MIN_AUTO_PULL_MINUTES, effectivePullIntervalMinutes } from '../lib/autoPullInterval'
 import type { ExportTemplateKey, ProjectSchema, TemplateExportFormat } from '@polenta/types'
 
@@ -254,6 +256,14 @@ function PreferencesPage() {
                 )
               })}
             </div>
+
+            {/* GH54 — web : ajouter, remplacer et supprimer les gabarits de sa bibliothèque personnelle. */}
+            {capabilities.webTemplateLibrary && (
+              <TemplateLibraryWeb
+                formats={templateFormats}
+                projectTemplates={schema?.preferences?.exportTemplates ?? {}}
+              />
+            )}
           </div>
 
           {/* GH77 — reprise de l'historique des champs suivis depuis git, par repo. */}

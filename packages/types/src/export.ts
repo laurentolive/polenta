@@ -130,6 +130,13 @@ export interface ExportTemplateInfo {
   relPath: string
 }
 
+/** GH54 — résultat d'un ajout de gabarit depuis le client web. `exists` : le nom est déjà pris (D3). */
+export type TemplateImportResult =
+  | { status: 'ok'; relPath: string }
+  | { status: 'exists'; relPath: string }
+  | { status: 'refused'; message: string }
+  | { status: 'canceled' }
+
 export interface ExportTemplateListResult {
   /** Préférence application renseignée. */
   dirConfigured: boolean

@@ -224,6 +224,8 @@ export const WEB_ONLY_CHANNELS = [
   'web:drawio-import',
   'web:drawio-open',
   'web:drawio-save',
+  'web:export-template-import',
+  'web:export-template-delete',
   'web:execution-sheet-preview',
   'web:execution-sheet-export',
   'web:export',

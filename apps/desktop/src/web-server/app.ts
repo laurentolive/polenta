@@ -29,7 +29,8 @@ import { configureGitHome } from '../main/git/git-config'
 import { registerAdminRoutes } from './admin/admin-routes'
 
 /** Extensions acceptées en upload : celles des sélecteurs du desktop (images, draw.io, classeur). */
-const UPLOAD_EXTENSIONS = new Set([...Object.keys(IMAGE_MIME_BY_EXT), 'drawio', 'xlsx'])
+// GH54 — `docx` : gabarits Word de la bibliothèque (le canal qui le reçoit valide son contenu).
+const UPLOAD_EXTENSIONS = new Set([...Object.keys(IMAGE_MIME_BY_EXT), 'drawio', 'xlsx', 'docx'])
 const API_PREFIXES = ['/rpc/', '/auth/', '/events', '/upload', '/download/', '/healthz', '/admin/api/', '/admin/status']
 
 /** Vérification des accès des utilisateurs connectés (compte désactivé sans opération git). */

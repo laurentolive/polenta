@@ -491,6 +491,8 @@ export function createIpcClient(
         invoke('export:save', repoPath, kind, format, payload, printParams, suggestedName, templateRelPath),
       listTemplates: (format) => invoke('export-templates:list', format),
       installExampleTemplates: () => invoke('export-templates:install-examples'),
+      importTemplate: (format, replace, expectedName) => invoke('export-templates:import', format, replace, expectedName ?? null),
+      deleteTemplate: (relPath) => invoke('web:export-template-delete', relPath),
       drawioSnapshotReady: (index, rect) => invoke('export:drawio-snapshot-ready', index, rect),
       notifyPrintReady: () => invoke('export:print-ready'),
       showInFolder: (filePath) => invoke('export:show-in-folder', filePath),

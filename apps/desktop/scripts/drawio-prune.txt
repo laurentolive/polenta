@@ -1,0 +1,21 @@
+# GH46 — entrées du draw.war non copiées dans l'éditeur embarqué (vendor/drawio-editor).
+# Le service worker (service-worker.js, workbox-*) est conservé : offline=1 l'enregistre, et son absence
+# produit une erreur console dans l'éditeur.
+# Une règle par ligne. `#` = commentaire.
+#   préfixe  : `dossier/` ou `nom-` (startsWith)
+#   suffixe  : `*.ext` (endsWith)
+#   exacte   : chemin complet
+WEB-INF/
+META-INF/
+templates/
+plugins/
+js/integrate.min.js
+js/viewer.min.js
+js/viewer-static.min.js
+teams.html
+onedrive3.html
+export3.html
+open.html
+clear.html
+vsdxImporter.html
+*.map

@@ -43,6 +43,7 @@ import { TemplateExportService } from './services/export/template/template-expor
 import { AppSettingsService } from './services/app-settings.service'
 import { MergeResolutionService } from './services/merge-resolution.service'
 import { DiffEditService } from './services/diff-edit.service'
+import { DrawioEditService } from './services/drawio-edit.service'
 import { ForgeConfigService } from './services/forge-config.service'
 import { ForgeService } from './services/forge/forge.service'
 import { RepoProvisioningService } from './services/forge/repo-provisioning.service'
@@ -214,6 +215,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
   // GH222 — enregistrement depuis la vue de diff (service de l'objet pour une exigence / un test).
   const diffEdit = new DiffEditService(requirements, tests, schema, issues)
+  // GH46 — édition d'un diagramme dans le client web (éditeur draw.io embarqué).
+  const drawioEdit = new DrawioEditService()
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
   const exportTemplateLibrary = new ExportTemplateLibrary(appSettings)
   const exportSvc = new ExportService(
@@ -232,6 +235,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     sync,
     mergeResolution,
     diffEdit,
+    drawioEdit,
     workspace,
     reqIndex,
     testsIndex,

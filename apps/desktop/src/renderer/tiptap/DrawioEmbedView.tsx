@@ -9,6 +9,7 @@ import type { DrawioEmbedOptions, DrawioCropRect } from './DrawioEmbedExtension'
 import { ResizableMediaFrame, type MediaBounds } from './ResizableMediaFrame'
 import type { NodeContextMenuEntry } from './NodeContextMenu'
 import { DrawioPagePicker } from './DrawioPagePicker'
+import { DrawioEditorDialog } from '../components/drawio/DrawioEditorDialog'
 
 type LoadState =
   | { status: 'loading' }
@@ -47,6 +48,8 @@ export function DrawioEmbedView({ node, extension, updateAttributes, selected, e
     { mode: 'replace' | 'change-page'; path: string; pages: DrawioPage[]; top: number; left: number } | null
   >(null)
   const [pickerError, setPickerError] = useState<string | null>(null)
+  // GH46 — éditeur draw.io embarqué (web uniquement) ouvert depuis le menu du bloc.
+  const [editing, setEditing] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<{ showLightbox(): void } | null>(null)
@@ -195,6 +198,10 @@ export function DrawioEmbedView({ node, extension, updateAttributes, selected, e
     ...(capabilities.externalDrawioEditor
       ? [{ id: 'open-external', label: 'Ouvrir dans draw.io', disabled: !repoPath || !path, onSelect: handleOpenExternal }]
       : []),
+    // GH46 — web : édition dans l'éditeur embarqué (absente en lecture seule).
+    ...(capabilities.webDrawioEditor && editor.isEditable
+      ? [{ id: 'edit-web', label: 'Modifier le diagramme', disabled: !repoPath || !path, onSelect: () => setEditing(true) }]
+      : []),
     { id: 'change-page', label: 'Changer de page/node-id', disabled: state.status !== 'ok', onSelect: () => void handleChangePage() },
     'separator',
     { id: 'replace', label: 'Remplacer le fichier', onSelect: () => void handleReplaceFile() },
@@ -287,6 +294,14 @@ export function DrawioEmbedView({ node, extension, updateAttributes, selected, e
           {pickerError}
           <button type="button" onClick={() => setPickerError(null)} className="ml-2 text-ink-3 hover:text-ink">×</button>
         </div>
+      )}
+      {editing && repoPath && (
+        <DrawioEditorDialog
+          repoPath={repoPath}
+          relativePath={path}
+          onClose={() => setEditing(false)}
+          onSaved={() => void load()}
+        />
       )}
     </NodeViewWrapper>
   )

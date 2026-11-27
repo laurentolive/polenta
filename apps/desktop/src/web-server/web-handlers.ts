@@ -124,6 +124,11 @@ export function registerWebHandlers(r: HandlerRegistry, ctx: WebHandlerContext):
     await uploads.remove(uploadId)
     return result
   })
+  // GH46 — édition d'un diagramme dans l'éditeur embarqué : lecture (XML + empreinte) et enregistrement
+  // conditionnel à l'empreinte d'ouverture (conflit si le fichier a changé entre-temps).
+  handle('web:drawio-open', (_e, repoPath: string, relativePath: string) => c.drawioEdit.open(repoPath, relativePath))
+  handle('web:drawio-save', (_e, repoPath: string, relativePath: string, xml: string, baseHash: string) =>
+    c.drawioEdit.save(repoPath, relativePath, xml, baseHash))
   handle('web:drawio-import', async (_e, repoPath: string, uploadId: string) => {
     const file = await uploaded(uploadId)
     const result = await importFileIntoRepo(repoPath, file.filePath, 'diagrams', file.fileName)

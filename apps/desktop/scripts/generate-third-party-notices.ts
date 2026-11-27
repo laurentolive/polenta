@@ -34,6 +34,17 @@ const PERMISSIVE = new Set([
 /** Fichiers vendorisés hors npm : [composant, fichier de licence relatif à apps/desktop]. */
 const VENDORED: Array<[string, string]> = [
   ['drawio-viewer.min.js (draw.io, Apache-2.0)', 'src/renderer/public/vendor/DRAWIO-VIEWER-LICENSE.txt'],
+  // GH46 — éditeur draw.io embarqué (web) : licence de la webapp ; ses composants sont listés plus bas.
+  ['draw.io webapp, éditeur embarqué v32.7.7 (Apache-2.0)', 'scripts/drawio-editor-LICENSE.txt'],
+]
+
+/**
+ * GH46 — composants tiers livrés dans l'éditeur draw.io (`vendor/drawio-editor`, `pnpm drawio:fetch`),
+ * avec leurs propres licences. Seulement si le fichier est présent (build web uniquement).
+ */
+const DRAWIO_EDITOR_BUNDLED: Array<[string, string]> = [
+  ['libavoid (draw.io éditeur embarqué, LGPL-2.1)', 'vendor/drawio-editor/js/libavoid-js/LICENSE'],
+  ['bibliothèques d’icônes et de formes draw.io (licence propre à draw.io)', 'vendor/drawio-editor/shapes/LICENSE'],
 ]
 
 const root = path.resolve(__dirname, '..')
@@ -99,6 +110,13 @@ for (const pkg of packages) {
 
 for (const [component, file] of VENDORED) {
   sections.push(separator, component, '', readFileSync(path.join(root, file), 'utf8').trim())
+}
+
+// GH46 — licences des composants inclus dans l'éditeur draw.io (présentes après `pnpm drawio:fetch`).
+for (const [component, file] of DRAWIO_EDITOR_BUNDLED) {
+  if (existsSync(path.join(root, file))) {
+    sections.push(separator, component, '', readFileSync(path.join(root, file), 'utf8').trim())
+  }
 }
 
 // GH337 — Git for Windows (PortableGit) embarqué sous Windows (`vendor/git`, `pnpm git:fetch`) :

@@ -70,7 +70,7 @@ async function choose(scope: 'personal' | 'team', name: string) {
 async function toggleColumn(field: string) {
   await s.page.getByTitle('Configurer les colonnes').click()
   await panel().getByTestId(`field-config-field-${field}`).click()
-  await s.page.locator('.fixed.inset-0.z-50').click({ position: { x: 5, y: 5 } })
+  await s.page.mouse.click(5, 5) // clic hors du panneau : fermé (GH465)
   await expect(panel()).toHaveCount(0)
 }
 

@@ -82,6 +82,10 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   handle('auth:device-flow-start', (_e, remote: string) => c.auth.startDeviceFlow(remote))
   handle('auth:device-flow-poll', (_e, remote: string, deviceCode: string) =>
     c.auth.pollDeviceFlow(remote, deviceCode))
+  // GH51 — connexion par le navigateur vers une forge Forgejo (client public) : la promesse se résout au
+  // retour de la forge ; « Annuler » passe par auth:sso-cancel.
+  handle('auth:sso-login', (_e, remote: string) => c.auth.ssoLogin(remote))
+  handle('auth:sso-cancel', () => c.auth.ssoCancel())
   // GH45 — déconnexion du compte courant (le web a sa propre déconnexion de session).
   handle('auth:logout', (_e, key?: string) => c.auth.logout(typeof key === 'string' ? key : undefined))
   handle('auth:open-password-change', () => c.auth.openPasswordChange())

@@ -345,27 +345,28 @@ describe('renouvellement du jeton (GH51, AC9, D5)', () => {
   })
 
   it('après un 401 : renouvellement forcé, nouveau jeton rendu', async () => {
-    const { auth, key } = await loggedIn()
+    const { auth, key, h } = await loggedIn()
     const account = (await auth.forgeAccounts())[0]
     expect(account.key).toBe(key)
-    const fresh = await auth.refreshAfterUnauthorized(account, 'sso-access-1')
-    expect(fresh).toBe('sso-access-2')
+    expect(await auth.refreshAfterUnauthorized(account)).toBe(true)
+    expect(tokens.map.get(`${h}:bob`)).toBe('sso-access-2')
+    expect(await auth.freshTokenFor(account)).toBe('sso-access-2')
     expect(flow.refreshCount).toBe(1)
   })
 
-  it('après un 401 sans refresh token : null, pas de renouvellement', async () => {
+  it('après un 401 sans refresh token : false, pas de renouvellement', async () => {
     const { auth, h } = await loggedIn()
     tokens.map.delete(`${h}:bob#sso`)
     const account = (await auth.forgeAccounts())[0]
-    expect(await auth.refreshAfterUnauthorized(account, 'sso-access-1')).toBeNull()
+    expect(await auth.refreshAfterUnauthorized(account)).toBe(false)
     expect(flow.refreshCount).toBe(0)
   })
 
-  it('après un 401 avec renouvellement refusé : null, hôte à reconnecter', async () => {
+  it('après un 401 avec renouvellement refusé : false, hôte à reconnecter', async () => {
     const { auth, h } = await loggedIn()
     flow.refreshStatus = 400
     const account = (await auth.forgeAccounts())[0]
-    expect(await auth.refreshAfterUnauthorized(account, 'sso-access-1')).toBeNull()
+    expect(await auth.refreshAfterUnauthorized(account)).toBe(false)
     expect(auth.isAccessRevoked(h)).toBe(true)
   })
 })

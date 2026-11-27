@@ -44,35 +44,35 @@ export class ForgeService {
   }
 
   async listRepos(accountKey: string): Promise<ForgeRepo[]> {
-    const { account, token, provider } = await this.require(accountKey)
+    const { account, provider } = await this.require(accountKey)
     // Le repo de configuration de l'organisation (GH45 S2b) n'est pas un projet Polenta.
-    return (await this.guard(account, () => provider.listRepos!(account.baseUrl, token))).filter(r => r.name !== CONFIG_REPO)
+    return (await this.guard(account, (token) => provider.listRepos!(account.baseUrl, token))).filter(r => r.name !== CONFIG_REPO)
   }
 
   /** GH107 — le compte, puis les organisations où créer un repo. */
   async owners(accountKey: string): Promise<ForgeOwners> {
-    const { account, token, provider } = await this.require(accountKey)
-    return this.guard(account, () => provider.listOwners!(account.baseUrl, token, account.login))
+    const { account, provider } = await this.require(accountKey)
+    return this.guard(account, (token) => provider.listOwners!(account.baseUrl, token, account.login))
   }
 
   /** GH107 — nom libre chez ce propriétaire (vérifié pendant la saisie, et avant la création). */
   async nameAvailable(accountKey: string, owner: string, name: string): Promise<boolean> {
     assertRepoName(name)
-    const { account, token, provider } = await this.require(accountKey)
-    return !(await this.guard(account, () => provider.repoExists!(account.baseUrl, token, owner, name)))
+    const { account, provider } = await this.require(accountKey)
+    return !(await this.guard(account, (token) => provider.repoExists!(account.baseUrl, token, owner, name)))
   }
 
   /** GH107 — équipes d'une organisation (widget Membres). */
   async orgTeams(accountKey: string, org: string): Promise<ForgeTeam[]> {
-    const { account, token, provider } = await this.require(accountKey)
-    return this.guard(account, () => provider.listOrgTeams!(account.baseUrl, token, org))
+    const { account, provider } = await this.require(accountKey)
+    return this.guard(account, (token) => provider.listOrgTeams!(account.baseUrl, token, org))
   }
 
   /** GH107 — repo distant vide ; nom vérifié une dernière fois juste avant. */
   async createRemote(accountKey: string, input: CreateRepoInput): Promise<ForgeRepo> {
     assertRepoName(input.name)
-    const { account, token, provider } = await this.require(accountKey)
-    return this.guard(account, async () => {
+    const { account, provider } = await this.require(accountKey)
+    return this.guard(account, async (token) => {
       if (await provider.repoExists!(account.baseUrl, token, input.owner, input.name)) throw new RepoNameTakenError(`${input.owner}/${input.name}`)
       return provider.createRepo!(account.baseUrl, token, input)
     })
@@ -80,14 +80,14 @@ export class ForgeService {
 
   /** GH107 — détails d'un repo ; `null` : introuvable ou sans accès. */
   async repoDetails(accountKey: string, owner: string, repo: string): Promise<ForgeRepoDetails | null> {
-    const { account, token, provider } = await this.require(accountKey)
-    return this.guard(account, () => provider.repoDetails!(account.baseUrl, token, owner, repo))
+    const { account, provider } = await this.require(accountKey)
+    return this.guard(account, (token) => provider.repoDetails!(account.baseUrl, token, owner, repo))
   }
 
   /** GH107 — description, puis visibilité. */
   async updateRepo(accountKey: string, owner: string, repo: string, patch: { description?: string; visibility?: RepoVisibility }): Promise<void> {
-    const { account, token, provider } = await this.require(accountKey)
-    await this.guard(account, () => provider.updateRepo!(account.baseUrl, token, owner, repo, patch))
+    const { account, provider } = await this.require(accountKey)
+    await this.guard(account, (token) => provider.updateRepo!(account.baseUrl, token, owner, repo, patch))
   }
 
   /**
@@ -97,10 +97,10 @@ export class ForgeService {
    */
   async checkMembers(accountKey: string, owner: string, ownerKind: 'user' | 'org' | undefined, members: RepoMemberGrant[]): Promise<void> {
     if (members.length === 0) return
-    const { account, token, provider } = await this.require(accountKey)
+    const { account, provider } = await this.require(accountKey)
     const personal = (ownerKind ?? (owner.toLowerCase() === account.login.toLowerCase() ? 'user' : 'org')) === 'user'
     const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
-    const problems = await this.guard(account, async () => {
+    const problems = await this.guard(account, async (token) => {
       const users = members.filter(m => m.kind === 'user')
       const teams = members.filter(m => m.kind === 'team')
       const known = !personal && teams.length > 0
@@ -122,9 +122,9 @@ export class ForgeService {
 
   /** GH107 — accès d'un compte ou d'une équipe ; `'invited'` : invitation à accepter (GitHub). */
   async grantMember(accountKey: string, owner: string, repo: string, grant: RepoMemberGrant): Promise<'added' | 'invited'> {
-    const { account, token, provider } = await this.require(accountKey)
+    const { account, provider } = await this.require(accountKey)
     // GH354 — un refus (403) sur un membre ne dit rien du jeton : le compte n'est pas marqué révoqué.
-    return this.guard(account, async () => {
+    return this.guard(account, async (token) => {
       if (grant.kind === 'team') {
         await provider.setRepoTeam!(account.baseUrl, token, owner, repo, grant.name, grant.level)
         return 'added'
@@ -222,7 +222,7 @@ export class ForgeService {
     const target = await this.originTarget(repoPath, REPO_KINDS)
     const provider = target ? providerFor(target.account.provider) : null
     if (!target || !provider) return null
-    const { account, token, owner, repo } = target
+    const { account, owner, repo } = target
     const { baseUrl } = account
     let restricted = false
     const soft = async <T>(op: () => Promise<T>, fallback: T): Promise<T> => {
@@ -235,7 +235,7 @@ export class ForgeService {
       }
     }
     // Dans `guard`, qui traduirait l'erreur réseau en simple message.
-    return this.guard(account, async (): Promise<RepoSettings> => {
+    return this.guard(account, async (token): Promise<RepoSettings> => {
       try {
         const details = await provider.repoDetails!(baseUrl, token, owner, repo)
         if (!details) throw new Error(`Dépôt ${owner}/${repo} introuvable sur ${account.host} (ou inaccessible avec ce compte).`)
@@ -305,10 +305,10 @@ export class ForgeService {
     const target = await this.originTarget(repoPath, REPO_KINDS)
     const provider = target ? providerFor(target.account.provider) : null
     if (!target || !provider) throw new Error('Compte introuvable ou déconnecté : reconnectez-vous.')
-    return this.guard(target.account, async () => {
-      const details = await provider.repoDetails!(target.account.baseUrl, target.token, target.owner, target.repo)
+    return this.guard(target.account, async (token) => {
+      const details = await provider.repoDetails!(target.account.baseUrl, token, target.owner, target.repo)
       if (!details?.permissions.admin) throw new AdminRequiredError(`${target.owner}/${target.repo}`)
-      return op(target, provider)
+      return op({ ...target, token }, provider)
     })
   }
 
@@ -328,21 +328,39 @@ export class ForgeService {
    * Erreurs des API de la forge comme pour git (design §3.4) : jeton refusé ou compte désactivé →
    * hôte marqué « accès révoqué » et erreur qui déclenche la bannière de reconnexion ; réseau →
    * message lisible ; autre réponse → statut et message de la forge, sans URL technique.
+   *
+   * GH51 — `op` reçoit le jeton courant du compte (renouvelé au besoin). Un 401 sur un compte connecté
+   * au navigateur (refresh token) déclenche un renouvellement puis une seule relance de `op` ; un
+   * second refus, ou un compte sans renouvellement, révoque comme avant.
    */
-  private async guard<T>(account: ForgeAccount, op: () => Promise<T>, { revokeOnForbidden = true } = {}): Promise<T> {
-    try {
-      return await op()
-    } catch (err) {
-      if (err instanceof ForgeHttpError) {
-        if (err.status === 401 || (revokeOnForbidden && err.status === 403 && /prohibited|not allowed/i.test(err.forgeMessage))) {
-          this.auth.markAccessRevoked(account.host)
-          throw revokedError(account.host, account.baseUrl)
+  private async guard<T>(account: ForgeAccount, op: (token: string) => Promise<T>, { revokeOnForbidden = true } = {}): Promise<T> {
+    let renewed = false
+    for (;;) {
+      try {
+        return await op(await this.currentToken(account))
+      } catch (err) {
+        if (!renewed && err instanceof ForgeHttpError && err.status === 401 && (await this.auth.refreshAfterUnauthorized(account))) {
+          renewed = true
+          continue
         }
-        throw new Error(`Le serveur ${account.host} a refusé l'opération (HTTP ${err.status}${err.forgeMessage ? ` : ${err.forgeMessage}` : ''}).`)
+        if (err instanceof ForgeHttpError) {
+          if (err.status === 401 || (revokeOnForbidden && err.status === 403 && /prohibited|not allowed/i.test(err.forgeMessage))) {
+            this.auth.markAccessRevoked(account.host)
+            throw revokedError(account.host, account.baseUrl)
+          }
+          throw new Error(`Le serveur ${account.host} a refusé l'opération (HTTP ${err.status}${err.forgeMessage ? ` : ${err.forgeMessage}` : ''}).`)
+        }
+        if (isNetworkUnreachable(err)) throw new Error(describeFetchError(err))
+        throw err
       }
-      if (isNetworkUnreachable(err)) throw new Error(describeFetchError(err))
-      throw err
     }
+  }
+
+  /** Jeton courant du compte (renouvelé au besoin) ; le compte peut avoir été déconnecté entre-temps. */
+  private async currentToken(account: ForgeAccount): Promise<string> {
+    const token = await this.auth.freshTokenFor(account)
+    if (!token) throw new Error('Compte introuvable ou déconnecté : reconnectez-vous.')
+    return token
   }
 
   /** GH107 — compte d'une forge ayant un provider (Forgejo ou GitHub), avec ce provider. */
@@ -361,9 +379,9 @@ export class ForgeService {
     const target = await this.originTarget(repoPath, ['forgejo', 'github'])
     const provider = target ? providerFor(target.account.provider) : null
     if (!target || !provider?.repoInfo || !provider.setDefaultBranch) return 'no-forge'
-    const { account, token, owner, repo } = target
+    const { account, owner, repo } = target
     try {
-      return await this.guard(account, async (): Promise<DefaultBranchOutcome> => {
+      return await this.guard(account, async (token): Promise<DefaultBranchOutcome> => {
         const info = await provider.repoInfo!(account.baseUrl, token, owner, repo)
         if (!info) return { error: `Dépôt ${owner}/${repo} introuvable sur ${account.host} (ou inaccessible avec ce compte).` }
         if (info.defaultBranch === branch) return 'unchanged'

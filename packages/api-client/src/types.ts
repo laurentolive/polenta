@@ -674,6 +674,11 @@ export interface ApiClient {
     setup(remote: string, pat: string): Promise<{ login: string; name: string; email: string }>
     startDeviceFlow(remote: string): Promise<DeviceFlowSession>
     pollDeviceFlow(remote: string, deviceCode: string): Promise<DeviceFlowPollResult>
+    /** GH51 — desktop : connexion par le navigateur vers la forge Forgejo `defaultServer` (client public).
+     *  Se résout au retour de la forge ; rejette avec un message fixe (annulation, délai, refus…). */
+    ssoLogin(remote: string): Promise<ForgeAccount>
+    /** GH51 — desktop : interrompt la connexion par le navigateur en cours. */
+    ssoCancel(): Promise<void>
     /** GH45 — type de forge d'un serveur (écran de connexion). */
     detectForge(serverUrl: string): Promise<ForgeDetection>
     /** GH45 — connexion identifiant + mot de passe (+ 2FA) : la forge crée un jeton, seul conservé. */

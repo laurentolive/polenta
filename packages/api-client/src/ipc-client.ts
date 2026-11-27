@@ -165,6 +165,8 @@ export function createIpcClient(
       setup: (r, p) => invoke('auth:setup', r, p),
       startDeviceFlow: (r) => invoke('auth:device-flow-start', r),
       pollDeviceFlow: (r, d) => invoke('auth:device-flow-poll', r, d),
+      ssoLogin: (r) => invoke('auth:sso-login', r),
+      ssoCancel: () => invoke('auth:sso-cancel'),
       detectForge: (serverUrl) => invoke('auth:detect-forge', serverUrl),
       loginWithPassword: (serverUrl, login, password, otp) => invoke('auth:login-password', serverUrl, login, password, otp),
       currentAccount: (remoteUrl) => invoke('auth:current-account', remoteUrl),

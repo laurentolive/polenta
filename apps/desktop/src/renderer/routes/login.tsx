@@ -72,6 +72,12 @@ function serverOptions(config: MachineConfig): string[] {
   return [...new Set([...(config.defaultServer ? [config.defaultServer] : []), ...COMMON_REMOTES])]
 }
 
+/** Message d'erreur de l'IPC sans son préfixe Electron (« Error invoking remote method '…': SsoLoginError: »). */
+function ssoErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  return raw.replace(/^Error invoking remote method '[^']+': (\w+: )?/, '')
+}
+
 function LoginPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -116,6 +122,12 @@ function LoginPage() {
   const pollGeneration = useRef(0)
   const startingDeviceFlow = useRef(false)
 
+  // GH51 — connexion par le navigateur vers la forge Forgejo du poste (client public).
+  const [ssoWaiting, setSsoWaiting] = useState(false)
+  const [ssoError, setSsoError] = useState<string | null>(null)
+  const startingSso = useRef(false)
+  const ssoCancelled = useRef(false)
+
   // Serveurs proposés : la configuration machine peut masquer GitHub/GitLab et imposer le serveur
   // de l'entreprise (spec §3).
   const hideGithub = machineConfig?.hideGithub ?? false
@@ -152,7 +164,10 @@ function LoginPage() {
   const passwordMode = isForge && !usePat
   // Gitea ne signale pas la 2FA requise (réponse générique) : le champ code est toujours proposé.
   const showOtp = passwordMode && (otpRequested || (detection.status === 'done' && detection.value.flavor === 'gitea'))
-  const busy = loading || deviceState === 'waiting'
+  const busy = loading || deviceState === 'waiting' || ssoWaiting
+  // GH51 — bouton navigateur : forge Forgejo du poste, avec un client public configuré pour elle.
+  const ssoAvailable = isForge && Boolean(machineConfig?.forgeSsoClientId) && Boolean(defaultServer)
+    && sameOrigin(effectiveRemote, defaultServer ?? '')
 
   // Détection du type de forge à la saisie de l'URL (anti-rebond ; github.com : sans réseau).
   useEffect(() => {
@@ -257,6 +272,34 @@ function LoginPage() {
     setDeviceError(null)
   }
 
+  // GH51 — la promesse se résout au retour de la forge ; « Annuler » interrompt (silencieusement).
+  const handleSsoLogin = async () => {
+    if (startingSso.current) return
+    startingSso.current = true
+    ssoCancelled.current = false
+    setSsoError(null)
+    setSsoWaiting(true)
+    try {
+      await api.auth.ssoLogin(effectiveRemote)
+      setSsoWaiting(false)
+      await loggedIn(effectiveRemote)
+    } catch (err) {
+      setSsoWaiting(false)
+      if (!ssoCancelled.current) setSsoError(ssoErrorMessage(err))
+    } finally {
+      startingSso.current = false
+    }
+  }
+
+  const handleCancelSso = () => {
+    ssoCancelled.current = true
+    setSsoWaiting(false)
+    void api.auth.ssoCancel()
+  }
+
+  // Quitter l'écran pendant l'attente interrompt le flux (le serveur de retour est fermé).
+  useEffect(() => () => { void api.auth.ssoCancel() }, [])
+
   const passwordError = (result: Exclude<PasswordLoginResult, { status: 'ok' }>): string | null => {
     switch (result.status) {
       case 'otp-required':
@@ -338,7 +381,7 @@ function LoginPage() {
             {hideGithub && defaultServer && remote !== 'custom' ? (
               <p className="input-field w-full bg-canvas text-ink-2 font-mono text-sm">{defaultServer}</p>
             ) : options.length > 0 ? (
-              <select value={remote} onChange={e => { setRemote(e.target.value); handleCancelDeviceFlow() }}
+              <select value={remote} onChange={e => { setRemote(e.target.value); handleCancelDeviceFlow(); handleCancelSso() }}
                 className="input-field w-full" disabled={busy}>
                 {options.map(r => (
                   <option key={r} value={r}>{r}</option>
@@ -358,6 +401,35 @@ function LoginPage() {
               <p className="text-xs text-status-danger mt-1">{detection.message}</p>
             )}
           </div>
+
+          {ssoAvailable && (
+            <div className="space-y-3">
+              {ssoWaiting ? (
+                <div className="rounded border border-edge bg-canvas p-4 space-y-2 text-center">
+                  <p className="text-xs text-ink-2">{t('login.sso.waiting')}</p>
+                  <button type="button" onClick={handleCancelSso}
+                    className="text-sm text-ink-2 underline hover:text-ink">
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={handleSsoLogin} disabled={busy}
+                  className="btn-primary w-full">
+                  {t('login.sso.button')}
+                </button>
+              )}
+              {ssoError && (
+                <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
+                  {ssoError}
+                </p>
+              )}
+              <div className="flex items-center gap-2 text-xs text-ink-3">
+                <div className="flex-1 border-t border-edge" />
+                {t('common.or')}
+                <div className="flex-1 border-t border-edge" />
+              </div>
+            </div>
+          )}
 
           {isGithub && (
             <div className="space-y-3">

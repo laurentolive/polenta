@@ -88,7 +88,7 @@ function normalize(a: StoredAccount): NormalizedAccount {
   }
 }
 
-function keyOf(a: StoredAccount): string {
+function keyOf(a: Pick<StoredAccount, 'remoteHost' | 'username'>): string {
   return `${a.remoteHost}:${a.username}`
 }
 
@@ -686,7 +686,7 @@ export class AuthService {
    * avant son expiration (60 s de marge) ; sans refresh token, le jeton est rendu tel quel et la forge
    * le refusera (401 → bannière de reconnexion).
    */
-  private async tokenFor(account: StoredAccount): Promise<string | null> {
+  private async tokenFor(account: Pick<StoredAccount, 'remoteHost' | 'username' | 'baseUrl'>): Promise<string | null> {
     const key = keyOf(account)
     const token = (await this.host.tokenStore.get(key)) ?? (await this.host.tokenStore.get(account.remoteHost))
     if (!token) return null
@@ -695,16 +695,22 @@ export class AuthService {
     return this.refreshSso({ key, host: account.remoteHost, baseUrl: account.baseUrl ?? `https://${account.remoteHost}` }, token)
   }
 
+  /** GH51 — jeton courant d'un compte (renouvelé au besoin) ; `null` si le compte n'a plus de jeton. */
+  freshTokenFor(account: ForgeAccount): Promise<string | null> {
+    return this.tokenFor({ remoteHost: account.host, username: account.login, baseUrl: account.baseUrl })
+  }
+
   /**
    * GH51 — après un 401 de la forge : renouvellement forcé d'un compte connecté au navigateur, pour
-   * une seule relance de la requête. `null` si le compte n'a pas de refresh token ou si le
+   * une seule relance de la requête. `false` si le compte n'a pas de refresh token ou si le
    * renouvellement est refusé (la révocation suit son cours).
    */
-  async refreshAfterUnauthorized(account: ForgeAccount, stale: string): Promise<string | null> {
+  async refreshAfterUnauthorized(account: ForgeAccount): Promise<boolean> {
     const record = await this.ssoRecord(account.key)
-    if (!record) return null
+    if (!record) return false
+    const stale = (await this.host.tokenStore.get(account.key)) ?? (await this.host.tokenStore.get(account.host)) ?? ''
     const fresh = await this.refreshSso({ key: account.key, host: account.host, baseUrl: account.baseUrl }, stale)
-    return fresh !== stale ? fresh : null
+    return fresh !== stale
   }
 
   /** Un seul renouvellement en vol par compte : les appels concurrents attendent le même résultat. */

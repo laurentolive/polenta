@@ -205,6 +205,10 @@
     "connectWithGithub": "Log in with GitHub",
     "validateInBrowser": "Validate in the browser with this code:",
     "waitingValidation": "Waiting for validation in the browser…",
+    "sso": {
+      "button": "Sign in with the browser",
+      "waiting": "Finish signing in in your browser…"
+    },
     "patLabel": "Personal Access Token (PAT)",
     "patHelp": "GitHub: Settings → Developer settings → Personal access tokens. Permissions: Contents (read/write), Metadata (read).",
     "codeExpired": "Code expired, try again.",

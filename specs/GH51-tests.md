@@ -64,19 +64,21 @@ vérification préalable, design §9).
 
 | # | Couche | Scénario | Fichier |
 |---|---|---|---|
-| F1 | `forgeRequest` | option `form` : `Content-Type: application/x-www-form-urlencoded`, corps encodé, proxy appliqué | `forge-http.test.ts` (existant, cas ajouté) |
-| F2 | `machine-config` | `forgeSsoClientId` valide, vide, non chaîne (ignoré et signalé) | `machine-config.test.ts` |
-| F3 | canaux IPC | `auth:sso-login` et `auth:sso-cancel` listés comme desktop-only, absents du serveur web | `channel-policy.test.ts` (existant) |
-| F4 | `ForgeService.guard` | relance sur 401 (R7, R8) | `forge.service.test.ts` (cas ajouté) |
-| F5 | script admin | `oauth-app create --public` : `confidential_client: false`, sortie sans secret ; sans l'option, inchangé | `deploy/tests/` (sur le modèle de `admin-users.test.sh`) |
+| F1 | `forgeRequest` | option `form` : `Content-Type: application/x-www-form-urlencoded`, corps encodé ; sans `form`, pas de Content-Type de formulaire | `forge/forge-http.gh51.test.ts` (nouveau ; le proxy n'est pas testé ici, il l'est par `net-proxy.gh15.test.ts`) |
+| F2 | `machine-config` | `forgeSsoClientId` valide, vide, espace, non chaîne, trop long, sans `defaultServer` (ignoré et signalé) | `machine-config.test.ts` (cas ajoutés) |
+| F3 | canaux IPC | `auth:sso-login` et `auth:sso-cancel` listés comme desktop-only, absents du serveur web | `web-server/channel-policy.test.ts` (existant, inchangé) |
+| F4 | `ForgeService.guard` | relance sur 401 (R7, R8) et révocation sans relance (renouvellement refusé, compte PAT) | `forge/forge-renewal.gh51.test.ts` (nouveau) |
+| F5 | script admin | `oauth-app create --public` : `confidential_client: false`, sortie sans secret ; sans l'option, inchangé ; usage sans appel | `deploy/tests/oauth-app-public.test.sh` (nouveau, sur le modèle de `admin-users.test.sh` ; conteneur Debian + jq) |
 | F6 | renderer | bouton visible seulement si C9 est satisfait ; « Annuler » appelle `ssoCancel` ; `cancelled` n'affiche rien | vérification manuelle (pas de test renderer unitaire pour cette page) |
 
 ## 6. Fichiers de test
 
 - `apps/desktop/src/main/services/forge/forgejo-sso.gh51.test.ts` : PKCE, URL d'autorisation, échange, renouvellement (N1, N2, R1 à R5, A5, A6).
 - `apps/desktop/src/main/services/forge/loopback-callback.gh51.test.ts` : retour, chemin, second retour, délai, annulation, liaison (A3, A4, A8, A9, A10, A11, A13, S3).
-- `apps/desktop/src/main/services/auth-sso.gh51.test.ts` : flux complet avec `startFakeForge` (N1 à N6, A1, A2, A7, A12, A14 à A16, R2 à R4, R6 à R9, S1, S2).
-- Cas ajoutés aux fichiers existants : F1, F2, F3, F4, F5.
+- `apps/desktop/src/main/services/auth-sso.gh51.test.ts` : flux complet avec `startFakeForge` (N1 à N6, A1, A2, A7, A12, A14 à A16, R1 à R9, S1, S2). A6 (verifier faux) est testé au niveau de l'échange, dans `forgejo-sso.gh51.test.ts`.
+- `apps/desktop/src/main/services/forge/forge-renewal.gh51.test.ts` : relance après 401 (F4).
+- Cas ajoutés aux fichiers existants : F2 (`machine-config.test.ts`).
+- Fichiers de F1, F3 et F5 : voir le tableau ci-dessus.
 
 ## 7. Critères de sortie
 

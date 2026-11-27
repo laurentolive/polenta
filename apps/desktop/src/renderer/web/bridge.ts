@@ -197,6 +197,7 @@ async function callPrintHook(name: string, args: unknown[]): Promise<unknown> {
 const UNAVAILABLE = new Set([
   'dialog:pick-folder', 'drawio:open-external', 'export:show-in-folder', 'export:open-file',
   'app:open-release-page', 'app:open-link', 'update:download', 'update:prepare-install', 'update:install', 'auth:device-flow-start', 'auth:device-flow-poll',
+  'auth:sso-login', 'auth:sso-cancel',
 ])
 
 // ── Événements ──────────────────────────────────────────────────────────────────

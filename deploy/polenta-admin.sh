@@ -7,7 +7,7 @@
 #   polenta-admin [--instance <nom>] team add <nom> <read|write> [repo…]
 #   polenta-admin [--instance <nom>] team member add|rm <équipe> <login>
 #   polenta-admin [--instance <nom>] project create <nom> [--team <équipe>]…
-#   polenta-admin [--instance <nom>] oauth-app create <nom> <redirect-uri>
+#   polenta-admin [--instance <nom>] oauth-app create [--public] <nom> <redirect-uri>   (--public : client sans secret, SSO du desktop)
 #   polenta-admin [--instance <nom>] access report [--csv]          (alias : access-report)
 #   polenta-admin [--instance <nom>] invite <login>                 lien et message d'invitation
 #
@@ -333,14 +333,23 @@ cmd_project_create() {
 # ─── oauth-app ────────────────────────────────────────────────────────────────
 
 cmd_oauth_app_create() {
+  # GH51 — `--public` : client public (sans secret) pour la connexion SSO du desktop (PKCE).
+  local public=0
+  if [[ "${1:-}" == --public ]]; then public=1; shift; fi
   local name="${1:-}" redirect="${2:-}"
   [[ -n "$name" && "$redirect" =~ ^https?:// ]] || usage 1
-  api_ok POST /user/applications/oauth2 "$(jq -n --arg n "$name" --arg r "$redirect" \
-    '{name: $n, redirect_uris: [$r], confidential_client: true}')"
+  local confidential=true
+  if ((public)); then confidential=false; fi
+  api_ok POST /user/applications/oauth2 "$(jq -n --arg n "$name" --arg r "$redirect" --argjson c "$confidential" \
+    '{name: $n, redirect_uris: [$r], confidential_client: $c}')"
   admin_log "$INSTANCE" "$CMDLINE" OK
   ok "application OAuth2 « $name »"
-  printf '  client_id     : %s\n  client_secret : %s (affiché une seule fois)\n' \
-    "$(jq -r .client_id <<<"$API_BODY")" "$(jq -r .client_secret <<<"$API_BODY")"
+  if ((public)); then
+    printf '  client_id     : %s (client public : aucun secret)\n' "$(jq -r .client_id <<<"$API_BODY")"
+  else
+    printf '  client_id     : %s\n  client_secret : %s (affiché une seule fois)\n' \
+      "$(jq -r .client_id <<<"$API_BODY")" "$(jq -r .client_secret <<<"$API_BODY")"
+  fi
 }
 
 # ─── access report (S3) ───────────────────────────────────────────────────────

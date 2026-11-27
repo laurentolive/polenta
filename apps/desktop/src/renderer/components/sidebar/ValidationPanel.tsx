@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -10,6 +10,8 @@ import { decodeProjectId } from '../../lib/projectId'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { ComponentTypeCombobox } from '../system/ComponentTypeCombobox'
+import { NodeContextMenu } from '../../tiptap/NodeContextMenu'
+import { useObjectCommitsDialog } from '../history/ObjectCommitsDialog'
 import type { ComponentTypeOption } from '../../contexts/SystemViewContext'
 import { DynamicField } from '../DynamicField'
 import { flattenVersionTree } from './version/ProductVersionsPanel'
@@ -46,6 +48,12 @@ export function ValidationPanel({ projectId }: { projectId: string }) {
   const validationType = schema?.nodes?.find(n => n.name === 'root')?.objectTypes?.find(o => o.category === 'validation') ?? null
   const { data: items = [] } = useValidationVersions(validationType ? repoPath : '')
   const [creating, setCreating] = useState<ValidationVersionItem['version'] | null>(null)
+  // GH446 — clic droit sur une validation existante : « Historique » (son fichier `validations/<ID>.yaml`).
+  const [historyMenu, setHistoryMenu] = useState<{ x: number; y: number; id: string; title: string } | null>(null)
+  const commitsHistory = useObjectCommitsDialog(repoPath)
+  const historyRowProps = (validationId: string | null, title: string) => validationId
+    ? { onContextMenu: (e: ReactMouseEvent) => { e.preventDefault(); setHistoryMenu({ x: e.clientX, y: e.clientY, id: validationId, title }) } }
+    : {}
 
   const options: ComponentTypeOption[] = flat.map(f => ({ repoName: f.node.repoPath, nodeId: '', typeId: '', label: f.label }))
   const open = (id: string) => void navigate({ to: '/validation/$validationId', params: { validationId: id }, search: { projectId, repoPath } })
@@ -90,11 +98,20 @@ export function ValidationPanel({ projectId }: { projectId: string }) {
               ) : <span className="text-ink-3">—</span>}
             </>
           )
+          const historyRow = historyRowProps(validation?.id ?? null, item.version.title)
           return onClick
-            ? <button type="button" key={item.version.id} className={className} onClick={onClick} data-testid={`validation-version-${item.version.id}`}>{content}</button>
-            : <div key={item.version.id} className={className} data-testid={`validation-version-${item.version.id}`}>{content}</div>
+            ? <button type="button" key={item.version.id} className={className} onClick={onClick} data-testid={`validation-version-${item.version.id}`} {...historyRow}>{content}</button>
+            : <div key={item.version.id} className={className} data-testid={`validation-version-${item.version.id}`} {...historyRow}>{content}</div>
         })}
       </div>
+      {historyMenu && (
+        <NodeContextMenu
+          x={historyMenu.x} y={historyMenu.y}
+          items={[{ id: 'history', label: t('history.commits.menu'), onSelect: () => commitsHistory.open('validation', historyMenu.id, historyMenu.title) }]}
+          onClose={() => setHistoryMenu(null)}
+        />
+      )}
+      {commitsHistory.dialog}
       {creating && validationType && (
         <NewValidationDialog
           repoPath={repoPath}

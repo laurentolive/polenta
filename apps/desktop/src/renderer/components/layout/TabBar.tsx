@@ -5,7 +5,7 @@ import { useTabs } from '../../contexts/TabsContext'
 import { TabListMenu } from './TabListMenu'
 import { ConfirmCloseTabModal } from './ConfirmCloseTabModal'
 import { ConfirmLeavePageModal } from './ConfirmLeavePageModal'
-import { HistoryNavButtons } from './HistoryNavButtons'
+import { useHistoryNavigation } from '../../hooks/useHistoryNavigation'
 import { NodeContextMenu } from '../../tiptap/NodeContextMenu'
 import { api } from '../../api'
 import { isWeb } from '../../platform'
@@ -23,6 +23,9 @@ export function TabBar() {
   const { t } = useTranslation()
   const { tabs, activeTabId, dirtyTabIds, attemptOpenTab, attemptCloseTab, attemptActivateTab, moveTab, detachTab, adoptTab, snapshotTab } = useTabs()
   const [showMenu, setShowMenu] = useState(false)
+  // GH228 — Précédent / Suivant clavier et souris : écoutés ici, une seule fois ; les boutons sont
+  // dans l'en-tête de chaque vue (GH464).
+  useHistoryNavigation()
   // GH342 — menu contextuel d'un onglet (clic droit).
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const menuTab = tabMenu ? tabs.find(tab => tab.id === tabMenu.tabId) : undefined
@@ -158,7 +161,6 @@ export function TabBar() {
 
   return (
     <div className="relative flex items-center h-8 shrink-0 bg-surface border-b border-edge">
-      <HistoryNavButtons />
       <button
         type="button"
         onClick={() => setShowMenu(v => !v)}

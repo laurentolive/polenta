@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { ModificationControl } from './ModificationControl'
 import { SyncIndicator } from './SyncIndicator'
+import { HistoryNavButtons } from './HistoryNavButtons'
 
 interface ViewHeaderProps {
   /** Optional leading back button — replaces the ad hoc back buttons each view used to define. */
@@ -16,11 +17,13 @@ interface ViewHeaderProps {
   currentProjectId?: string | null
 }
 
-/** Shared title bar for every main view — see specs/T92.md / T92-design.md §1-§2.1. */
+/** Shared title bar for every main view — see specs/T92.md / T92-design.md §1-§2.1.
+ *  GH464 — Précédent / Suivant de l'onglet en tête de barre, à gauche du retour éventuel. */
 export function ViewHeader({ back, title, subtitle, actions, currentProjectId }: ViewHeaderProps) {
   const { t } = useTranslation()
   return (
     <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-edge bg-surface">
+      <HistoryNavButtons />
       {back && (
         <button
           type="button"

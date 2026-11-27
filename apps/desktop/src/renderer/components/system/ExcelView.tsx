@@ -99,11 +99,13 @@ interface Props {
   stepsByObjectId?: Map<string, { action: string; expectedResult: string }[]>
   onStepsChange?: (objectId: string, steps: StepDraft[]) => void
   onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
-  onItemNodeAdded?: (nodeId: string, sourceObjectId?: string) => void
+  onItemNodeAdded?: (nodeId: string, sourceObjectId?: string, options?: { reveal?: boolean }) => void
   /** T164 — nœud d'arbre (item ou folder) sur lequel se positionner (scroll + contour) ;
    *  `gotoSeq` s'incrémente à chaque requête pour re-scroller sur une cible identique. */
   gotoNodeId?: string | null
   gotoSeq?: number
+  /** GH463 — s'incrémente quand une création révèle son objet : les filtres de colonne sont effacés. */
+  filtersResetSeq?: number
   /** GH230 — nœud aligné en haut de la vue, sans contour (ancrage `top` de l'URL). */
   anchorNodeId?: string | null
   /** GH300 — clé de la mémoire de défilement (onglet + entrée d'historique + page), null en
@@ -1269,6 +1271,7 @@ function ExcelViewInner({
   onItemNodeAdded,
   gotoNodeId,
   gotoSeq,
+  filtersResetSeq,
   anchorNodeId,
   scrollMemoryKey,
   rowMaxLines = 1,
@@ -1446,6 +1449,16 @@ function ExcelViewInner({
   // compris), remis à zéro au changement de composant / type, même si le nouveau type partage un nom
   // de colonne avec le précédent (ex. "status").
   const colFilters = useColumnFilters(columns, `${typeDef?.prefix ?? ''}|${repoPath ?? ''}`)
+  // GH463 — création révélée (« + Nouvel élément ») : les filtres de colonne sont effacés pour que la
+  // nouvelle ligne soit visible. La ref garde la dernière valeur vue : au montage (changement de vue),
+  // rien n'est effacé.
+  const filtersResetSeen = useRef(filtersResetSeq)
+  const clearColumnFilters = colFilters.clear
+  useEffect(() => {
+    if (filtersResetSeq === filtersResetSeen.current) return
+    filtersResetSeen.current = filtersResetSeq
+    clearColumnFilters()
+  }, [filtersResetSeq, clearColumnFilters])
   // Cellule sélectionnée dont la colonne disparaît.
   useEffect(() => {
     const selected = cellStore.getSelected()

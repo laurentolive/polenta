@@ -4,6 +4,7 @@ import { IMPACT_ANALYSIS_STATUSES, suggestVersionTag, type ImpactAnalysisStatus 
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
 import { componentRepoResolver, componentSchema, freshComponentRepoResolver, flattenComponents as flatten } from './component-repo'
+import { frozenVerificationView } from '../../main/services/version-verification.util'
 
 /**
  * Versions de composant / produit : lecture (GH201 §8, GH245) et, depuis GH362, création,
@@ -42,18 +43,23 @@ export function registerVersionTools(server: McpServer, container: McpContainer)
       description:
         'Une version : champs, composants (versions des dépendances retenues) et changements — ceux de la ' +
         'version et ceux des versions des composants postérieures à la version précédente (composant, version, ' +
-        'type, ID, label, état de base `{ sha, version }` ; `toSha` = commit figé, null = état courant).',
+        'type, ID, label, état de base `{ sha, version }` ; `toSha` = commit figé, null = état courant). ' +
+        '`verification` : couverture figée au passage released (`computedAt`, lignes `{ id, status, tests }`), null sinon.',
       inputSchema: {
         id: z.string().describe('ID de la version (ex. VER-0004)'),
         component: componentSchema,
       },
     },
     async ({ id, component }) => {
-      const page = await container.versions.page(await repoOf(component), id, ws)
+      const repo = await repoOf(component)
+      const page = await container.versions.page(repo, id, ws)
+      // GH441 — `page()` retire `verification` (GH439) : lu sur la version brute.
+      const version = await container.versions.get(repo, id)
       return jsonToolResult({
         version: page.version, state: page.state, component: page.component.name, basedOn: page.basedOn,
         components: page.components.map(c => ({ name: c.name, selected: c.selected })),
         changes: page.rows.map(({ repoPath: _repoPath, ...row }) => row),
+        verification: frozenVerificationView(version.verification),
       })
     },
   )

@@ -21,6 +21,22 @@ export function buildVerification(
   return { computedAt: now.toISOString(), rows }
 }
 
+/**
+ * GH441 — couverture figée telle qu'exposée au graphe de données et au MCP (`get_version`) : même forme pour les
+ * deux. `null` : non figée. Fichier édité à la main : une ligne `null` ou incomplète est écartée ou complétée, sans
+ * faire tomber la lecture du repo.
+ */
+export function frozenVerificationView(
+  verification: VersionVerification | null | undefined,
+): { computedAt: string; rows: Array<{ id: string; status: CoverageStatus; tests: string[] }> } | null {
+  if (!verification) return null
+  const rows = (verification.rows ?? []).filter(Boolean)
+  return {
+    computedAt: verification.computedAt,
+    rows: rows.map(r => ({ id: r.id, status: r.status, tests: r.tests ?? [] })),
+  }
+}
+
 /** Couverture d'une exigence telle qu'affichée : statut et tests ; `null` : non figée. */
 export interface RequirementCoverage { status: CoverageStatus; tests: string[] }
 
